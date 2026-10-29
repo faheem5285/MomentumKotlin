@@ -42,7 +42,16 @@ fun isModuleVisible(context: Context, module: AppModule): Boolean =
 fun AppSettingsScreen() {
     val context = LocalContext.current
     var version by remember { mutableIntStateOf(0) }
-    var remindersOpen by remember { mutableStateOf(false) }\n    var backupMessage by remember { mutableStateOf<String?>(null) }\n    var backupBusy by remember { mutableStateOf(false) }\n    val scope = rememberCoroutineScope()\n    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->\n        if (uri != null) scope.launch { backupBusy = true; backupMessage = try { MomentumBackup.export(context, uri); "Backup exported. Vault secrets and file contents are excluded." } catch (e: Exception) { "Export failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } }\n    }\n    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->\n        if (uri != null) scope.launch { backupBusy = true; backupMessage = try { MomentumBackup.restore(context, uri) } catch (e: Exception) { "Restore failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } }\n    }
+    var remindersOpen by remember { mutableStateOf(false) }
+    var backupMessage by remember { mutableStateOf<String?>(null) }
+    var backupBusy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
+        if (uri != null) scope.launch { backupBusy = true; backupMessage = try { MomentumBackup.export(context, uri); "Backup exported. Vault secrets and file contents are excluded." } catch (e: Exception) { "Export failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } }
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) scope.launch { backupBusy = true; backupMessage = try { MomentumBackup.restore(context, uri) } catch (e: Exception) { "Restore failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } }
+    }
     val modules = AppModule.entries.filter { it != AppModule.Settings }
     BackHandler(enabled = remindersOpen) { remindersOpen = false }
     if (remindersOpen) {
@@ -60,6 +69,27 @@ fun AppSettingsScreen() {
                 Text("App settings", fontSize = 14.sp, color = Color.White.copy(alpha = .86f))
                 Text("Make Momentum yours", fontSize = 25.sp, fontWeight = FontWeight.Bold)
                 Text("Choose which tools appear on your Home screen. Hiding a module keeps all of its saved data.", fontSize = 13.sp, color = Color.White.copy(alpha = .9f))
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBubble(Icons.Rounded.Backup, MaterialTheme.colorScheme.primary, 42.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Backup & restore", fontWeight = FontWeight.SemiBold)
+                            Text("Export or merge your app records", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Text("Restores add records without deleting existing data. Password Vault entries and actual file contents are excluded; saved file references may not work on another device.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(enabled = !backupBusy, onClick = { exportLauncher.launch("momentum-backup.json") }, modifier = Modifier.weight(1f)) { Text("Export JSON") }
+                        Button(enabled = !backupBusy, onClick = { importLauncher.launch(arrayOf("application/json", "text/json", "*/*")) }, modifier = Modifier.weight(1f)) { Text("Restore JSON") }
+                    }
+                    if (backupBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    backupMessage?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) }
+                }
             }
         }
         item {
