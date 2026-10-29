@@ -82,8 +82,12 @@ fun MomentumApp() {
                 onBack = { destination = MomentumDestination.Home },
                 modifier = Modifier.padding(padding)
             )
+        } else if (isRestoringSession) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
         } else {
-            AuthScreen(onAuthenticated = { isAuthenticated = true })
+            AuthScreen(initialMessage = authNotice, onAuthenticated = { isAuthenticated = true })
         }
     }
 }
