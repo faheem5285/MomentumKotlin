@@ -38,7 +38,7 @@ object SecureTokenStore {
 
     @Synchronized
     fun readRefreshToken(context: Context): String? {
-        val encoded = appContext().getSharedPreferences(PREFS, 0).getString(TOKEN_KEY, null)
+        val encoded = context.applicationContext.getSharedPreferences(PREFS, 0).getString(TOKEN_KEY, null)
             ?: return null
         return try {
             val packed = Base64.decode(encoded, Base64.NO_WRAP)
@@ -55,8 +55,8 @@ object SecureTokenStore {
     }
 
     @Synchronized
-    fun clear() {
-        appContext().getSharedPreferences(PREFS, 0).edit().remove(TOKEN_KEY).commit()
+    fun clear(context: Context) {
+        context.applicationContext.getSharedPreferences(PREFS, 0).edit().remove(TOKEN_KEY).commit()
     }
 
     private fun getOrCreateKey(): SecretKey {
@@ -76,6 +76,4 @@ object SecureTokenStore {
         return generator.generateKey()
     }
 
-    private fun appContext(): android.content.Context =
-        com.faheem.habits.app.MomentumApplication.context
 }
