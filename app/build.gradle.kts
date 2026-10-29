@@ -59,8 +59,8 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
-        buildConfigField("String", "SUPABASE_URL", "\"${supabaseUrlValue.get()}\"")
-        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"${supabasePublishableKeyValue.get()}\"")
+        buildConfigField("String", "SUPABASE_URL", "\"\${supabaseUrlValue.get()}\"")
+        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"\${supabasePublishableKeyValue.get()}\"")
     }
 
     signingConfigs {
@@ -103,10 +103,10 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    // Supabase Kotlin client. Keep versions compatible with Kotlin 2.0.20.
+    // Supabase Kotlin SDK 2.6.1 uses gotrue-kt for authentication.
     implementation(platform("io.github.jan-tennert.supabase:bom:2.6.1"))
     implementation("io.github.jan-tennert.supabase:postgrest-kt")
-    implementation("io.github.jan-tennert.supabase:auth-kt")
+    implementation("io.github.jan-tennert.supabase:gotrue-kt")
     implementation("io.ktor:ktor-client-android:2.3.13")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
