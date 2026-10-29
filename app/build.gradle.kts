@@ -59,8 +59,8 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
-        buildConfigField("String", "SUPABASE_URL", "\"\${supabaseUrlValue.get()}\"")
-        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"\${supabasePublishableKeyValue.get()}\"")
+        buildConfigField("String", "SUPABASE_URL", "\"${supabaseUrlValue.get()}\"")
+        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"${supabasePublishableKeyValue.get()}\"")
     }
 
     signingConfigs {
