@@ -90,22 +90,24 @@ fun AuthScreen(onAuthenticated: () -> Unit) {
                         isError = true
                         message = "Enter a valid email and a password with at least 6 characters."
                     } else {
+                        val enteredEmail = email.trim()
+                        val enteredPassword = password
                         scope.launch {
                             busy = true
                             message = null
                             try {
                                 if (isSignUp) {
                                     client.gotrue.signUpWith(Email) {
-                                        this.email = email.trim()
-                                        this.password = password
+                                        this.email = enteredEmail
+                                        this.password = enteredPassword
                                     }
                                     isError = false
                                     message = "Account created. Check your email to confirm it, then sign in."
                                     isSignUp = false
                                 } else {
                                     client.gotrue.loginWith(Email) {
-                                        this.email = email.trim()
-                                        this.password = password
+                                        this.email = enteredEmail
+                                        this.password = enteredPassword
                                     }
                                     onAuthenticated()
                                 }
