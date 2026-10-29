@@ -1,14 +1,12 @@
 package com.faheem.habits.features.vault
-import com.faheem.habits.core.data.*
-import com.faheem.habits.core.notifications.*
-import com.faheem.habits.core.ui.*
-import com.faheem.habits.R
 
-
-import android.util.Base64
-import org.json.JSONObject
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.Mac
 import javax.crypto.SecretKeyFactory
@@ -35,6 +33,18 @@ object VaultCrypto {
     private const val GCM_TAG_BITS = 128
     private const val IV_BYTES = 12
 
+    @Serializable
+    private data class VaultPayload(
+        val title: String,
+        val type: String,
+        val username: String,
+        val password: String,
+        val website: String,
+        val notes: String
+    )
+
+    private val json = Json { ignoreUnknownKeys = true }
+
     fun newSalt(): ByteArray = ByteArray(16).also(SecureRandom()::nextBytes)
 
     fun deriveKey(masterPassword: String, salt: ByteArray): ByteArray {
@@ -52,21 +62,28 @@ object VaultCrypto {
         return mac.doFinal("momentum-vault-master-check-v1".toByteArray(Charsets.UTF_8))
     }
 
-    fun matches(key: ByteArray, expected: ByteArray): Boolean = MessageDigest.isEqual(verifier(key), expected)
+    fun matches(key: ByteArray, expected: ByteArray): Boolean =
+        MessageDigest.isEqual(verifier(key), expected)
 
     fun encrypt(secret: VaultSecret, key: ByteArray): Pair<ByteArray, ByteArray> {
-        val plaintext = JSONObject()
-            .put("title", secret.title)
-            .put("type", secret.type)
-            .put("username", secret.username)
-            .put("password", secret.password)
-            .put("website", secret.website)
-            .put("notes", secret.notes)
-            .toString().toByteArray(Charsets.UTF_8)
+        val plaintext = json.encodeToString(
+            VaultPayload(
+                title = secret.title,
+                type = secret.type,
+                username = secret.username,
+                password = secret.password,
+                website = secret.website,
+                notes = secret.notes
+            )
+        ).toByteArray(Charsets.UTF_8)
         val iv = ByteArray(IV_BYTES).also(SecureRandom()::nextBytes)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
-        return try { iv to cipher.doFinal(plaintext) } finally { plaintext.fill(0) }
+        return try {
+            iv to cipher.doFinal(plaintext)
+        } finally {
+            plaintext.fill(0)
+        }
     }
 
     fun decrypt(iv: ByteArray, ciphertext: ByteArray, key: ByteArray): VaultSecret {
@@ -74,17 +91,21 @@ object VaultCrypto {
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
         val plaintext = cipher.doFinal(ciphertext)
         return try {
-            val json = JSONObject(String(plaintext, Charsets.UTF_8))
+            val payload = json.decodeFromString<VaultPayload>(String(plaintext, Charsets.UTF_8))
             VaultSecret(
-                title = json.optString("title"), type = json.optString("type", "login"),
-                username = json.optString("username"), password = json.optString("password"),
-                website = json.optString("website"), notes = json.optString("notes")
+                title = payload.title,
+                type = payload.type,
+                username = payload.username,
+                password = payload.password,
+                website = payload.website,
+                notes = payload.notes
             )
         } finally {
             plaintext.fill(0)
         }
     }
 
-    fun encode(bytes: ByteArray): String = Base64.encodeToString(bytes, Base64.NO_WRAP)
-    fun decode(value: String): ByteArray = Base64.decode(value, Base64.NO_WRAP)
+    fun encode(bytes: ByteArray): String = Base64.getEncoder().encodeToString(bytes)
+
+    fun decode(value: String): ByteArray = Base64.getDecoder().decode(value)
 }
