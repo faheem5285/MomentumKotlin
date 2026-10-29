@@ -32,10 +32,19 @@ object MomentumBackup {
             .put("contents", "non-secret app records; vault entries and file contents excluded")
         val habits = db.habitDao().getAllForBackup()
         val habitJson = JSONArray()
-        habits.forEach { habitJson.put(JSONObject()
-            .put("id", habit.id).put("name", habit.name).put("description", habit.description)
-            .put("icon", habit.icon).put("colorIndex", habit.colorIndex).put("timeOfDay", habit.timeOfDay)
-            .put("daysMask", habit.daysMask).put("archived", habit.archived).put("createdEpochDay", habit.createdEpochDay)) }
+        for (habit in habits) {
+            val item = JSONObject()
+                .put("id", habit.id)
+                .put("name", habit.name)
+                .put("description", habit.description)
+                .put("icon", habit.icon)
+                .put("colorIndex", habit.colorIndex)
+                .put("timeOfDay", habit.timeOfDay)
+                .put("daysMask", habit.daysMask)
+                .put("archived", habit.archived)
+                .put("createdEpochDay", habit.createdEpochDay)
+            habitJson.put(item)
+        }
         val completions = JSONArray()
         db.habitDao().getCompletionsForBackup().forEach { completions.put(JSONObject().put("habitId", it.habitId).put("epochDay", it.epochDay)) }
         val reminders = JSONArray()
