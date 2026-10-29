@@ -12,13 +12,13 @@ const val ALL_DAYS = 127
 data class Habit(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
-    @ColumnInfo(defaultValue = "''") val description: String = "",     // what to do
-    @ColumnInfo(defaultValue = "'star'") val icon: String = "star",        // key in HabitIcons
-    @ColumnInfo(defaultValue = "0") val colorIndex: Int = 0,          // index in HabitColors
-    @ColumnInfo(defaultValue = "0") val timeOfDay: Int = 0,           // 0 anytime, 1 morning, 2 afternoon, 3 evening
-    @ColumnInfo(defaultValue = "127") val daysMask: Int = 127,          // bit0 = Mon ... bit6 = Sun
-    @ColumnInfo(defaultValue = "0") val archived: Boolean = false,
-    @ColumnInfo(defaultValue = "0") val createdEpochDay: Long = 0
+    val description: String = "",     // what to do
+    val icon: String = "star",        // key in HabitIcons
+    val colorIndex: Int = 0,          // index in HabitIcons colors
+    val timeOfDay: Int = 0,           // 0 anytime, 1 morning, 2 afternoon, 3 evening
+    val daysMask: Int = 127,          // bit0 = Mon ... bit6 = Sun
+    val archived: Boolean = false,
+    val createdEpochDay: Long = 0
 )
 
 @Entity(
@@ -77,7 +77,7 @@ data class Loan(
     val lent: Boolean,          // true = I lent money, false = I borrowed
     val note: String,
     val epochDay: Long,
-    @ColumnInfo(defaultValue = "0") val settled: Boolean = false
+    val settled: Boolean = false
 )
 
 @Entity(tableName = "library_files")
@@ -206,7 +206,7 @@ interface ToDoDao {
 
 @Database(
     entities = [Habit::class, Completion::class, HabitReminder::class, Expense::class, Loan::class, FileItem::class, VaultRecord::class, ToDoItem::class],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -269,6 +269,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Room's identity hash includes entity class names. The architecture
+        // package move changed those names without changing any table columns,
+        // so advance the version and let Room validate the existing schema.
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) = Unit
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -282,6 +289,7 @@ abstract class AppDatabase : RoomDatabase() {
                     .addMigrations(MIGRATION_6_7)
                     .addMigrations(MIGRATION_7_8)
                     .addMigrations(MIGRATION_8_9)
+                    .addMigrations(MIGRATION_9_10)
                     .build().also { instance = it }
             }
     }

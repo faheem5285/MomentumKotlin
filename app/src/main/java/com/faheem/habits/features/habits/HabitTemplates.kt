@@ -25,6 +25,7 @@ val HabitTemplates: List<HabitTemplate> = listOf(
     t("Islamic", "Pray Asr", "Make time for the Asr prayer at its local prayer time.", "prayer", 2, 127),
     t("Islamic", "Pray Maghrib", "Make time for the Maghrib prayer at its local prayer time.", "prayer", 3, 127),
     t("Islamic", "Pray Isha", "Make time for the Isha prayer at its local prayer time.", "prayer", 3, 127),
+    t("Islamic", "Make wudu", "Take a calm moment for wudu before prayer when appropriate.", "wudu", 0, 127),
     t("Islamic", "Read Qur’an", "Read a short passage or a few verses of the Qur’an at a pace that suits you.", "quran", 1, 127),
     t("Islamic", "Morning adhkar", "Set aside a few quiet minutes for the morning adhkar you follow.", "dhikr", 1, 127),
     t("Islamic", "Evening adhkar", "Set aside a few quiet minutes for the evening adhkar you follow.", "dhikr", 3, 127),

@@ -31,6 +31,16 @@ fun scheduleText(mask: Int): String = when (mask) {
 }
 
 val HabitIcons: Map<String, ImageVector> = linkedMapOf(
+    // Dedicated symbols keep the Muslim habit library recognizable in cards,
+    // templates, and the edit form instead of reusing generic icons.
+    "prayer" to Icons.Rounded.SelfImprovement,
+    "quran" to Icons.Rounded.AutoStories,
+    "dhikr" to Icons.Rounded.Toll,
+    "dua" to Icons.Rounded.WavingHand,
+    "charity" to Icons.Rounded.VolunteerActivism,
+    "fast" to Icons.Rounded.NoFood,
+    "mosque" to Icons.Rounded.Mosque,
+    "wudu" to Icons.Rounded.WaterDrop,
     "star" to Icons.Rounded.Star,
     "fitness" to Icons.Rounded.FitnessCenter,
     "run" to Icons.Rounded.DirectionsRun,
@@ -63,14 +73,9 @@ val HabitIcons: Map<String, ImageVector> = linkedMapOf(
     "trophy" to Icons.Rounded.EmojiEvents,
     "idea" to Icons.Rounded.Lightbulb,
     "phone" to Icons.Rounded.PhoneAndroid,
-    "prayer" to Icons.Rounded.AccessTime,
-    "quran" to Icons.Rounded.MenuBook,
-    "dhikr" to Icons.Rounded.SelfImprovement,
-    "dua" to Icons.Rounded.Favorite,
-    "charity" to Icons.Rounded.FavoriteBorder,
-    "fast" to Icons.Rounded.Restaurant,
-    "mosque" to Icons.Rounded.Home
 )
+
+val IslamicHabitIconKeys = listOf("prayer", "quran", "dhikr", "dua", "charity", "fast", "mosque", "wudu")
 
 fun habitIcon(key: String): ImageVector = HabitIcons[key] ?: Icons.Rounded.Star
 

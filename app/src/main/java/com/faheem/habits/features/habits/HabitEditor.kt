@@ -193,9 +193,10 @@ fun HabitEditorSheet(
             }) { Text("Allow precise reminder times") }
         }
 
-        EditorLabel("Icon")
+        EditorLabel("Islamic icons")
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            HabitIcons.forEach { (key, vector) ->
+            IslamicHabitIconKeys.forEach { key ->
+                val vector = habitIcon(key)
                 val sel = key == icon
                 Box(
                     Modifier
@@ -207,9 +208,27 @@ fun HabitEditorSheet(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        vector, null,
+                        vector, key.replaceFirstChar { it.uppercase() },
                         tint = if (sel) accent else MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+        }
+
+        EditorLabel("More icons")
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            HabitIcons.filterKeys { it !in IslamicHabitIconKeys }.forEach { (key, vector) ->
+                val sel = key == icon
+                Box(
+                    Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(if (sel) accent.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant)
+                        .then(if (sel) Modifier.border(2.dp, accent, CircleShape) else Modifier)
+                        .clickable { icon = key },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(vector, key.replaceFirstChar { it.uppercase() }, tint = if (sel) accent else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
