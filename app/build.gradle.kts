@@ -107,6 +107,7 @@ dependencies {
     implementation(platform("io.github.jan-tennert.supabase:bom:2.6.1"))
     implementation("io.github.jan-tennert.supabase:postgrest-kt")
     implementation("io.github.jan-tennert.supabase:gotrue-kt")
+    implementation("io.github.jan-tennert.supabase:gotrue-kt")
     implementation("io.ktor:ktor-client-android:2.3.13")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
