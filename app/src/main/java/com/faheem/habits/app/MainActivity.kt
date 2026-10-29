@@ -22,6 +22,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import com.faheem.habits.core.notifications.MomentumReminderScheduler
 import com.faheem.habits.core.ui.MomentumTheme
 import com.faheem.habits.features.battery.handleAutomaticBatteryPowerEvent
+import com.faheem.habits.features.auth.AuthScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -39,6 +40,7 @@ class MainActivity : ComponentActivity() {
 fun MomentumApp() {
     val context = LocalContext.current
     var destination by remember { mutableStateOf<MomentumDestination>(MomentumDestination.Home) }
+    var isAuthenticated by remember { mutableStateOf(false) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { MomentumReminderScheduler.scheduleAll(context) }
     DisposableEffect(context) {
         val appContext = context.applicationContext
@@ -56,12 +58,16 @@ fun MomentumApp() {
     }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
-        MomentumNavigationHost(
-            destination = destination,
-            onOpenModule = { destination = MomentumDestination.Module(it) },
-            onBack = { destination = MomentumDestination.Home },
-            modifier = Modifier.padding(padding)
-        )
+        if (isAuthenticated) {
+            MomentumNavigationHost(
+                destination = destination,
+                onOpenModule = { destination = MomentumDestination.Module(it) },
+                onBack = { destination = MomentumDestination.Home },
+                modifier = Modifier.padding(padding)
+            )
+        } else {
+            AuthScreen(onAuthenticated = { isAuthenticated = true })
+        }
     }
 }
 
