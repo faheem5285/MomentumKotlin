@@ -6,6 +6,11 @@ import com.faheem.habits.R
 
 
 import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.text.style.TextAlign
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,7 +41,7 @@ fun isModuleVisible(context: Context, module: AppModule): Boolean =
 fun AppSettingsScreen() {
     val context = LocalContext.current
     var version by remember { mutableIntStateOf(0) }
-    var remindersOpen by remember { mutableStateOf(false) }
+    var remindersOpen by remember { mutableStateOf(false) }\n    var backupMessage by remember { mutableStateOf<String?>(null) }\n    var backupBusy by remember { mutableStateOf(false) }\n    val scope = rememberCoroutineScope()\n    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->\n        if (uri != null) scope.launch { backupBusy = true; backupMessage = try { MomentumBackup.export(context, uri); "Backup exported. Vault secrets and file contents are excluded." } catch (e: Exception) { "Export failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } }\n    }\n    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->\n        if (uri != null) scope.launch { backupBusy = true; backupMessage = try { MomentumBackup.restore(context, uri) } catch (e: Exception) { "Restore failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } }\n    }
     val modules = AppModule.entries.filter { it != AppModule.Settings }
     BackHandler(enabled = remindersOpen) { remindersOpen = false }
     if (remindersOpen) {
