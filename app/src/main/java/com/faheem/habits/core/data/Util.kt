@@ -1,4 +1,4 @@
-package com.faheem.habits
+package com.faheem.habits.core.data
 
 import java.time.LocalDate
 import java.util.Locale

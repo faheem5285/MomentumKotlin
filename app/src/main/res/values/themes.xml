@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="instagram_scroll_counter_description">Counts debounced scroll events while Instagram is open. Does not read screen content.</string>
     <style name="Theme.Momentum" parent="android:Theme.Material.Light.NoActionBar" />
 </resources>

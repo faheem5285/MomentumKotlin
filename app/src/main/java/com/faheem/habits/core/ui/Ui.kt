@@ -1,9 +1,11 @@
-package com.faheem.habits
+package com.faheem.habits.core.ui
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,6 +23,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -33,11 +38,36 @@ fun HeroCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() 
             .fillMaxWidth()
             .clip(RoundedCornerShape(28.dp))
             .background(Brush.linearGradient(LocalGradient.current))
-            .padding(20.dp)
     ) {
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .offset(x = 72.dp, y = (-92).dp)
+                .size(220.dp)
+                .background(
+                    Brush.radialGradient(listOf(Color.White.copy(alpha = .19f), Color.White.copy(alpha = 0f))),
+                    CircleShape
+                )
+        )
         CompositionLocalProvider(LocalContentColor provides Color.White) {
-            Column(content = content)
+            Column(Modifier.fillMaxWidth().padding(20.dp), content = content)
         }
+    }
+}
+
+@Composable
+fun HeroRefreshButton(onClick: () -> Unit, description: String = "Refresh") {
+    FilledTonalIconButton(
+        onClick = onClick,
+        // Keep icon-only actions comfortably tappable, including on compact cards.
+        modifier = Modifier.size(48.dp),
+        shape = CircleShape,
+        colors = IconButtonDefaults.filledTonalIconButtonColors(
+            containerColor = Color.White.copy(alpha = 0.18f),
+            contentColor = Color.White
+        )
+    ) {
+        Icon(Icons.Rounded.Refresh, description, Modifier.size(19.dp))
     }
 }
 
@@ -84,7 +114,19 @@ fun ProgressBar(
     height: Dp = 8.dp
 ) {
     val f by animateFloatAsState(fraction.coerceIn(0f, 1f), tween(500), label = "bar")
-    Box(modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(height / 2)).background(track)) {
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(height)
+            .clip(RoundedCornerShape(height / 2))
+            .background(track)
+            .semantics {
+                progressBarRangeInfo = ProgressBarRangeInfo(
+                    fraction.coerceIn(0f, 1f),
+                    0f..1f
+                )
+            }
+    ) {
         Box(Modifier.fillMaxHeight().fillMaxWidth(f).clip(RoundedCornerShape(height / 2)).background(color))
     }
 }
@@ -92,7 +134,17 @@ fun ProgressBar(
 @Composable
 fun ProgressRing(progress: Float, label: String, modifier: Modifier = Modifier) {
     val anim by animateFloatAsState(progress.coerceIn(0f, 1f), tween(700), label = "ring")
-    Box(modifier.size(92.dp), contentAlignment = Alignment.Center) {
+    Box(
+        modifier
+            .size(92.dp)
+            .semantics {
+                progressBarRangeInfo = ProgressBarRangeInfo(
+                    progress.coerceIn(0f, 1f),
+                    0f..1f
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
         Canvas(Modifier.fillMaxSize()) {
             val sw = 10.dp.toPx()
             val arcSize = Size(size.width - sw, size.height - sw)
@@ -125,6 +177,7 @@ fun FormSheet(title: String, onDismiss: () -> Unit, content: @Composable ColumnS
         Column(
             Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp)
                 .navigationBarsPadding()
@@ -166,8 +219,13 @@ val LocalGradient = compositionLocalOf { BrandGradient }
 
 enum class AppModule(val label: String, val icon: ImageVector, val gradient: List<Color>) {
     Habits("Habits", Icons.Rounded.CheckCircle, listOf(Color(0xFF5B5BD6), Color(0xFF8B5CF6))),
+    ToDos("To-dos", Icons.Rounded.CalendarMonth, listOf(Color(0xFF2563EB), Color(0xFF06B6D4))),
     Money("Money", Icons.Rounded.AccountBalanceWallet, listOf(Color(0xFF059669), Color(0xFF14B8A6))),
     Loans("Loans", Icons.Rounded.SwapHoriz, listOf(Color(0xFFEA580C), Color(0xFFF43F5E))),
     Files("Files", Icons.Rounded.Folder, listOf(Color(0xFF2563EB), Color(0xFF06B6D4))),
-    Screen("Screen time", Icons.Rounded.Timer, listOf(Color(0xFF7C3AED), Color(0xFFD946EF)))
+    Screen("Screen time", Icons.Rounded.Timer, listOf(Color(0xFF7C3AED), Color(0xFFD946EF))),
+    Vault("Vault", Icons.Rounded.Lock, listOf(Color(0xFF0F766E), Color(0xFF14B8A6))),
+    Battery("Battery", Icons.Rounded.BatteryChargingFull, listOf(Color(0xFF059669), Color(0xFF84CC16))),
+    Network("Network", Icons.Rounded.Wifi, listOf(Color(0xFF2563EB), Color(0xFF7C3AED))),
+    Settings("Settings", Icons.Rounded.Settings, listOf(Color(0xFF475569), Color(0xFF64748B)))
 }

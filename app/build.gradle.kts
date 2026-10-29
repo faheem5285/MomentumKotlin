@@ -5,6 +5,40 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val releaseStoreFilePath = providers.gradleProperty("RELEASE_STORE_FILE")
+    .orElse(providers.environmentVariable("RELEASE_STORE_FILE"))
+val releaseStorePasswordValue = providers.gradleProperty("RELEASE_STORE_PASSWORD")
+    .orElse(providers.environmentVariable("RELEASE_STORE_PASSWORD"))
+val releaseKeyAliasValue = providers.gradleProperty("RELEASE_KEY_ALIAS")
+    .orElse(providers.environmentVariable("RELEASE_KEY_ALIAS"))
+val releaseKeyPasswordValue = providers.gradleProperty("RELEASE_KEY_PASSWORD")
+    .orElse(providers.environmentVariable("RELEASE_KEY_PASSWORD"))
+
+val verifyReleaseSigning = tasks.register("verifyReleaseSigning") {
+    group = "verification"
+    description = "Ensures release artifacts use the dedicated release key."
+    doLast {
+        val missing = buildList {
+            if (releaseStoreFilePath.orNull.isNullOrBlank()) add("RELEASE_STORE_FILE")
+            if (releaseStorePasswordValue.orNull.isNullOrBlank()) add("RELEASE_STORE_PASSWORD")
+            if (releaseKeyAliasValue.orNull.isNullOrBlank()) add("RELEASE_KEY_ALIAS")
+            if (releaseKeyPasswordValue.orNull.isNullOrBlank()) add("RELEASE_KEY_PASSWORD")
+            if (!releaseStoreFilePath.orNull.isNullOrBlank() &&
+                !rootProject.file(releaseStoreFilePath.get()).isFile
+            ) add("existing keystore at RELEASE_STORE_FILE")
+        }
+        check(missing.isEmpty()) {
+            "Release signing is not configured. Supply: ${missing.joinToString()}"
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name == "preReleaseBuild") {
+        dependsOn(verifyReleaseSigning)
+    }
+}
+
 android {
     namespace = "com.faheem.habits"
     compileSdk = 34
@@ -17,12 +51,22 @@ android {
         versionName = "1.0"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = releaseStoreFilePath.orNull?.let { rootProject.file(it) }
+            storePassword = releaseStorePasswordValue.orNull
+            keyAlias = releaseKeyAliasValue.orNull
+            keyPassword = releaseKeyPasswordValue.orNull
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            // Never sign a distributable build with the publicly known debug key.
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
@@ -47,4 +91,6 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
+
+    testImplementation("junit:junit:4.13.2")
 }

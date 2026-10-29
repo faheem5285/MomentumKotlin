@@ -1,11 +1,18 @@
-package com.faheem.habits
+package com.faheem.habits.features.home
+import com.faheem.habits.core.data.*
+import com.faheem.habits.core.notifications.*
+import com.faheem.habits.core.ui.*
+import com.faheem.habits.R
+import com.faheem.habits.features.settings.isModuleVisible
+import com.faheem.habits.features.habits.isScheduled
+import com.faheem.habits.features.habits.greeting
+import com.faheem.habits.features.screen_time.durationText
+import com.faheem.habits.features.screen_time.todayScreenMinutes
+
 
 import android.app.Application
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,7 +27,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -47,33 +53,46 @@ data class HomeState(
     val monthSpent: Double = 0.0,
     val loanNet: Double = 0.0,
     val openLoans: Int = 0,
-    val fileCount: Int = 0
+    val fileCount: Int = 0,
+    val tasksDueToday: Int = 0,
+    val overdueTasks: Int = 0
 )
 
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private val db = AppDatabase.get(app)
 
-    val state: StateFlow<HomeState> = combine(
+    private val overview = combine(
         db.habitDao().getHabits(),
         db.habitDao().getCompletions(),
         db.expenseDao().getAll(),
         db.loanDao().getAll(),
         db.fileDao().getAll()
     ) { habits, comps, exps, loans, files ->
+        withContext(Dispatchers.Default) {
+            val day = today()
+            val active = habits.filter { !it.archived && isScheduled(it.daysMask, day) }
+            val doneIds = comps.asSequence().filter { it.epochDay == day }.map { it.habitId }.toSet()
+            val month = YearMonth.now()
+            val spent = exps.asSequence()
+                .filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == month }
+                .sumOf { it.amount }
+            val open = loans.filter { !it.settled }
+            HomeState(
+                habitsTotal = active.size,
+                habitsDone = active.count { it.id in doneIds },
+                monthSpent = spent,
+                loanNet = open.filter { it.lent }.sumOf { it.amount } - open.filter { !it.lent }.sumOf { it.amount },
+                openLoans = open.size,
+                fileCount = files.size
+            )
+        }
+    }
+
+    val state: StateFlow<HomeState> = combine(overview, db.toDoDao().getAll()) { base, tasks ->
         val day = today()
-        val doneIds = comps.filter { it.epochDay == day }.map { it.habitId }.toSet()
-        val month = YearMonth.now()
-        val spent = exps
-            .filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == month }
-            .sumOf { it.amount }
-        val open = loans.filter { !it.settled }
-        HomeState(
-            habitsTotal = habits.size,
-            habitsDone = habits.count { it.id in doneIds },
-            monthSpent = spent,
-            loanNet = open.filter { it.lent }.sumOf { it.amount } - open.filter { !it.lent }.sumOf { it.amount },
-            openLoans = open.size,
-            fileCount = files.size
+        base.copy(
+            tasksDueToday = tasks.count { !it.completed && it.dueEpochDay == day },
+            overdueTasks = tasks.count { !it.completed && it.dueEpochDay < day }
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeState())
 }
@@ -106,6 +125,15 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
             AppModule.Habits.icon, AppModule.Habits.gradient, AppModule.Habits
         ),
         TileSpec(
+            "To-dos",
+            when {
+                s.overdueTasks > 0 -> "${s.overdueTasks} overdue · ${s.tasksDueToday} today"
+                s.tasksDueToday > 0 -> "${s.tasksDueToday} task${if (s.tasksDueToday == 1) "" else "s"} due today"
+                else -> "Appointments and tasks by date"
+            },
+            AppModule.ToDos.icon, AppModule.ToDos.gradient, AppModule.ToDos
+        ),
+        TileSpec(
             "Money",
             if (s.monthSpent <= 0.0) "No spending yet" else "${money(s.monthSpent)} this month",
             AppModule.Money.icon, AppModule.Money.gradient, AppModule.Money
@@ -125,8 +153,13 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
             AppModule.Files.icon, AppModule.Files.gradient, AppModule.Files
         ),
         TileSpec("Screen time", screenText, AppModule.Screen.icon, AppModule.Screen.gradient, AppModule.Screen),
-        TileSpec("Vault", "Coming soon", Icons.Rounded.Lock, listOf(Color(0xFF9CA3AF), Color(0xFF6B7280)), null)
-    )
+        TileSpec("Vault", "Private password manager", AppModule.Vault.icon, AppModule.Vault.gradient, AppModule.Vault)
+    ).filter { spec -> spec.module?.let { isModuleVisible(ctx, it) } ?: true }
+    val deviceTools = listOf(
+        TileSpec("Battery", "Live charging animation", AppModule.Battery.icon, AppModule.Battery.gradient, AppModule.Battery),
+        TileSpec("Network", "Wi-Fi and mobile data", AppModule.Network.icon, AppModule.Network.gradient, AppModule.Network)
+    ).filter { spec -> spec.module?.let { isModuleVisible(ctx, it) } ?: true }
+    val settingsTile = TileSpec("Settings", "Manage modules and preferences", AppModule.Settings.icon, AppModule.Settings.gradient, AppModule.Settings)
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -158,6 +191,26 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
                 }
             }
         }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TodaySummaryCard(
+                    title = "Habits",
+                    value = "${s.habitsDone}/${s.habitsTotal}",
+                    detail = if (s.habitsTotal == 0) "Ready to start" else if (s.habitsDone == s.habitsTotal) "All done today" else "Completed today",
+                    icon = AppModule.Habits.icon,
+                    tint = AppModule.Habits.gradient.first(),
+                    modifier = Modifier.weight(1f)
+                )
+                TodaySummaryCard(
+                    title = "To-dos",
+                    value = s.tasksDueToday.toString(),
+                    detail = if (s.overdueTasks > 0) "${s.overdueTasks} overdue" else "Due today",
+                    icon = AppModule.ToDos.icon,
+                    tint = AppModule.ToDos.gradient.first(),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
         item { SectionLabel("Your modules") }
         items(tiles.chunked(2)) { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -167,27 +220,26 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
                 if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
+        item { SectionLabel("Device tools") }
+        items(deviceTools.chunked(2)) { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                row.forEach { spec -> ModuleTile(spec, Modifier.weight(1f)) { spec.module?.let(onOpen) } }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+        item { SectionLabel("Manage app") }
+        item { ModuleTile(settingsTile, Modifier.fillMaxWidth()) { onOpen(AppModule.Settings) } }
     }
 }
 
 @Composable
 private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, label = "press")
-
     Box(
         modifier
-            .height(165.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .height(150.dp)
             .clip(RoundedCornerShape(28.dp))
             .background(Brush.linearGradient(spec.gradient))
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                enabled = spec.module != null,
-                onClick = onClick
-            )
+            .clickable(enabled = spec.module != null, onClick = onClick)
     ) {
         Icon(
             spec.icon, null,
@@ -207,6 +259,26 @@ private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -> Unit) 
             Column {
                 Text(spec.title, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 Text(spec.subtitle, fontSize = 13.sp, color = Color.White.copy(alpha = 0.9f), maxLines = 2)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodaySummaryCard(title: String, value: String, detail: String, icon: ImageVector, tint: Color, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier.height(112.dp),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                IconBubble(icon, tint, 32.dp)
+                Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(detail, modifier = Modifier.padding(bottom = 3.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
         }
     }

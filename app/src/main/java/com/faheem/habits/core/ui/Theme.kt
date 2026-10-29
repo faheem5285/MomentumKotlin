@@ -1,4 +1,4 @@
-package com.faheem.habits
+package com.faheem.habits.core.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
