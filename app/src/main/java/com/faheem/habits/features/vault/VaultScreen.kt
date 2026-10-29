@@ -84,18 +84,34 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
         if (matches) key else { key.fill(0); null }
     }
 
-    suspend fun readAll(key: ByteArray): Pair<List<VaultListItem>, Int> = withContext(Dispatchers.IO) {
-        var unreadable = 0
-        val entries = dao.getAll().mapNotNull { record ->
-            try { VaultListItem(record.id, VaultCrypto.decrypt(record.nonce, record.ciphertext, key), record.updatedAt) }
-            catch (_: Exception) { unreadable++; null }
+    suspend fun readAll(key: ByteArray): Pair<List<VaultListItem>, Int> {
+        // Snapshot the key before switching threads: the UI may clear its session key while this runs.
+        val operationKey = key.copyOf()
+        return try {
+            withContext(Dispatchers.IO) {
+                var unreadable = 0
+                val entries = dao.getAll().mapNotNull { record ->
+                    try { VaultListItem(record.id, VaultCrypto.decrypt(record.nonce, record.ciphertext, operationKey), record.updatedAt) }
+                    catch (_: Exception) { unreadable++; null }
+                }
+                entries to unreadable
+            }
+        } finally {
+            operationKey.fill(0)
         }
-        entries to unreadable
     }
 
-    suspend fun save(id: Int?, secret: VaultSecret, key: ByteArray) = withContext(Dispatchers.IO) {
-        val encrypted = VaultCrypto.encrypt(secret, key)
-        dao.upsert(VaultRecord(id = id ?: 0, nonce = encrypted.first, ciphertext = encrypted.second, updatedAt = System.currentTimeMillis()))
+    suspend fun save(id: Int?, secret: VaultSecret, key: ByteArray) {
+        // Use an operation-scoped copy so locking the vault cannot zero the key mid-encryption.
+        val operationKey = key.copyOf()
+        try {
+            withContext(Dispatchers.IO) {
+                val encrypted = VaultCrypto.encrypt(secret, operationKey)
+                dao.upsert(VaultRecord(id = id ?: 0, nonce = encrypted.first, ciphertext = encrypted.second, updatedAt = System.currentTimeMillis()))
+            }
+        } finally {
+            operationKey.fill(0)
+        }
     }
 
     suspend fun delete(id: Int) = withContext(Dispatchers.IO) { dao.delete(id) }
@@ -113,6 +129,7 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
 
     var configured by remember { mutableStateOf(vm.isConfigured()) }
     var sessionKey by remember { mutableStateOf<ByteArray?>(null) }
+    var sessionEpoch by remember { mutableIntStateOf(0) }
     var items by remember { mutableStateOf<List<VaultListItem>>(emptyList()) }
     var unreadable by remember { mutableIntStateOf(0) }
     var refresh by remember { mutableIntStateOf(0) }
@@ -125,6 +142,7 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
     val scope = rememberCoroutineScope()
 
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        sessionEpoch++
         sessionKey?.fill(0)
         sessionKey = null
         items = emptyList()
@@ -133,12 +151,16 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
         editing = null
         deleteTarget = null
     }
-    LaunchedEffect(sessionKey, refresh) {
+    LaunchedEffect(sessionKey, refresh, sessionEpoch) {
         val key = sessionKey
+        val epoch = sessionEpoch
         if (key != null) {
             val result = vm.readAll(key)
-            items = result.first
-            unreadable = result.second
+            // Ignore results from an earlier session if the vault was locked during the read.
+            if (sessionKey === key && sessionEpoch == epoch) {
+                items = result.first
+                unreadable = result.second
+            }
         }
     }
 
@@ -150,6 +172,7 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
                 val key = if (setup) vm.setup(master) else vm.unlock(master)
                 if (key == null) error = "That master password didn’t unlock the vault. Try again."
                 else {
+                    sessionEpoch++
                     sessionKey = key
                     configured = true
                 }
@@ -167,6 +190,7 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
             items = items,
             unreadable = unreadable,
             onLock = {
+                sessionEpoch++
                 key.fill(0); sessionKey = null; items = emptyList(); selected = null
                 editorOpen = false; editing = null; deleteTarget = null
             },
