@@ -3,7 +3,6 @@ package com.faheem.habits.core.data.supabase
 import com.faheem.habits.BuildConfig
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.createSupabaseClient
-import io.github.jan.supabase.gotrue.GoTrue
 import io.github.jan.supabase.postgrest.Postgrest
 
 /**
@@ -27,7 +26,6 @@ object SupabaseProvider {
             supabaseKey = BuildConfig.SUPABASE_PUBLISHABLE_KEY
         ) {
             install(Postgrest)
-            install(GoTrue)
         }
     }
 
