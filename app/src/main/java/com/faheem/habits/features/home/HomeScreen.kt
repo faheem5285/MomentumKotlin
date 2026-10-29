@@ -29,7 +29,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
@@ -214,9 +218,7 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
         item { SectionLabel("Your modules") }
         items(tiles.chunked(2)) { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                row.forEach { spec ->
-                    ModuleTile(spec, Modifier.weight(1f)) { spec.module?.let(onOpen) }
-                }
+                row.forEach { spec -> ModuleTile(spec, Modifier.weight(1f)) { spec.module?.let(onOpen) } }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
@@ -236,29 +238,37 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
 private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -> Unit) {
     Box(
         modifier
-            .height(150.dp)
-            .clip(RoundedCornerShape(28.dp))
+            .height(156.dp)
+            .clip(RoundedCornerShape(24.dp))
             .background(Brush.linearGradient(spec.gradient))
-            .clickable(enabled = spec.module != null, onClick = onClick)
+            .clickable(
+                enabled = spec.module != null,
+                role = Role.Button,
+                onClickLabel = "Open ${spec.title}",
+                onClick = onClick
+            )
+            .semantics {
+                contentDescription = "${spec.title}. ${spec.subtitle}. Open module."
+            }
     ) {
         Icon(
             spec.icon, null,
-            Modifier.size(120.dp).align(Alignment.BottomEnd).offset(x = 28.dp, y = 28.dp),
+            Modifier.size(112.dp).align(Alignment.BottomEnd).offset(x = 24.dp, y = 24.dp),
             tint = Color.White.copy(alpha = 0.14f)
         )
         Column(
-            Modifier.fillMaxSize().padding(18.dp),
+            Modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Box(
-                Modifier.size(46.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.22f)),
+                Modifier.size(44.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.22f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(spec.icon, null, Modifier.size(26.dp), tint = Color.White)
+                Icon(spec.icon, null, Modifier.size(24.dp), tint = Color.White)
             }
-            Column {
-                Text(spec.title, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                Text(spec.subtitle, fontSize = 13.sp, color = Color.White.copy(alpha = 0.9f), maxLines = 2)
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(spec.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(spec.subtitle, fontSize = 12.sp, color = Color.White.copy(alpha = 0.92f), maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -267,19 +277,20 @@ private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -> Unit) 
 @Composable
 private fun TodaySummaryCard(title: String, value: String, detail: String, icon: ImageVector, tint: Color, modifier: Modifier = Modifier) {
     Card(
-        modifier = modifier.height(112.dp),
+        modifier = modifier.height(124.dp),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.SpaceBetween) {
+        Column(
+            Modifier.fillMaxSize().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 IconBubble(icon, tint, 32.dp)
                 Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text(detail, modifier = Modifier.padding(bottom = 3.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            }
+            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
