@@ -28,13 +28,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.faheem.habits.core.data.supabase.SupabaseProvider
-import io.github.jan.supabase.gotrue.gotrue
-import io.github.jan.supabase.gotrue.providers.builtin.Email
+import com.faheem.habits.core.data.supabase.SupabaseAuthApi
 import kotlinx.coroutines.launch
 
 @Composable
 fun AuthScreen(onAuthenticated: () -> Unit) {
-    val client = remember { SupabaseProvider.createClientOrNull() }
+    val isConfigured = remember { SupabaseProvider.isConfigured }
     val scope = rememberCoroutineScope()
     var isSignUp by remember { mutableStateOf(false) }
     var email by remember { mutableStateOf("") }
@@ -59,7 +58,7 @@ fun AuthScreen(onAuthenticated: () -> Unit) {
         )
         Spacer(Modifier.height(28.dp))
 
-        if (client == null) {
+        if (!isConfigured) {
             Text(
                 "Supabase is not configured. Check SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY in your local Gradle properties.",
                 color = MaterialTheme.colorScheme.error
@@ -98,18 +97,12 @@ fun AuthScreen(onAuthenticated: () -> Unit) {
                             message = null
                             try {
                                 if (isSignUp) {
-                                    client.gotrue.signUpWith(Email) {
-                                        this.email = enteredEmail
-                                        this.password = enteredPassword
-                                    }
+                                    SupabaseAuthApi.signUp(enteredEmail, enteredPassword)
                                     isError = false
                                     message = "Account created. Check your email to confirm it, then sign in."
                                     isSignUp = false
                                 } else {
-                                    client.gotrue.loginWith(Email) {
-                                        this.email = enteredEmail
-                                        this.password = enteredPassword
-                                    }
+                                    SupabaseAuthApi.signIn(enteredEmail, enteredPassword)
                                     onAuthenticated()
                                 }
                             } catch (e: Exception) {
