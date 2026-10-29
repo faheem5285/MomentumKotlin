@@ -83,6 +83,14 @@ fun InsightsScreen(vm: HabitViewModel) {
     val ins = remember(all) { computeInsights(all, today()) }
     val achs = remember(ins) { achievements(ins) }
     val active = all.filter { !it.habit.archived }.sortedByDescending { it.current }
+    // Measure consistency against only the days on which each habit was actually scheduled.
+    // New habits are not penalized for dates before they were created.
+    fun consistency30(ui: HabitUi): Int {
+        val start = maxOf(today() - 29, ui.habit.createdEpochDay)
+        val scheduled = (start..today()).filter { isScheduled(ui.habit.daysMask, it) }
+        if (scheduled.isEmpty()) return 0
+        return (scheduled.count { it in ui.days } * 100) / scheduled.size
+    }
     val primary = MaterialTheme.colorScheme.primary
 
     LazyColumn(
@@ -216,12 +224,17 @@ fun InsightsScreen(vm: HabitViewModel) {
                             "Best ${ui.best} · ${ui.days.size} check-ins",
                             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(7.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("30-day consistency", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${consistency30(ui)}%", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = habitColor(ui.habit.colorIndex))
+                        }
+                        Spacer(Modifier.height(4.dp))
                         ProgressBar(
-                            ui.current.toFloat() / maxOf(ui.best, 1),
+                            consistency30(ui) / 100f,
                             habitColor(ui.habit.colorIndex),
                             MaterialTheme.colorScheme.surfaceVariant,
-                            height = 6.dp
+                            height = 7.dp
                         )
                     }
                     Spacer(Modifier.width(10.dp))
