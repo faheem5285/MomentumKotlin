@@ -33,15 +33,16 @@ import com.faheem.habits.core.data.supabase.SupabaseAuthApi
 import kotlinx.coroutines.launch
 
 @Composable
-fun AuthScreen(onAuthenticated: () -> Unit) {
+fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
+    val context = LocalContext.current
     val isConfigured = remember { SupabaseProvider.isConfigured }
     val scope = rememberCoroutineScope()
     var isSignUp by remember { mutableStateOf(false) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf<String?>(null) }
-    var isError by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(initialMessage) }
+    var isError by remember { mutableStateOf(initialMessage != null) }
 
     Column(
         modifier = Modifier
