@@ -37,7 +37,12 @@ object SupabaseAuthApi {
             "Supabase is not configured. Check your local Gradle properties."
         }
 
-        val response = http.post("${BuildConfig.SUPABASE_URL.trimEnd('/')}/auth/v1/$endpoint") {
+        val baseUrl = BuildConfig.SUPABASE_URL.trim().trimEnd('/')
+            .removeSuffix("/rest/v1")
+            .removeSuffix("/auth/v1")
+            .trimEnd('/')
+
+        val response = http.post("$baseUrl/auth/v1/$endpoint") {
             header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
             contentType(ContentType.Application.Json)
             setBody(json.encodeToString(Credentials(email, password)))
