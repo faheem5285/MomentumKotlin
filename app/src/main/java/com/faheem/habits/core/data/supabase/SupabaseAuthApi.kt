@@ -1,5 +1,6 @@
 package com.faheem.habits.core.data.supabase
 
+import android.content.Context
 import com.faheem.habits.BuildConfig
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
@@ -11,11 +12,14 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 
+enum class SessionRestoreResult { AUTHENTICATED, NO_SESSION, TEMPORARY_FAILURE }
+
 /**
- * Small email/password wrapper around Supabase Auth's public HTTP endpoints.
- * Only the project's publishable key is sent; never use a service-role key here.
+ * Supabase email/password auth. Refresh tokens are encrypted by Android Keystore;
+ * access tokens are not persisted by this app.
  */
 object SupabaseAuthApi {
     private val http = HttpClient(Android)
@@ -24,33 +28,79 @@ object SupabaseAuthApi {
     @Serializable
     private data class Credentials(val email: String, val password: String)
 
+    @Serializable
+    private data class RefreshCredentials(val refresh_token: String)
+
+    @Serializable
+    private data class AuthResponse(
+        val access_token: String? = null,
+        val refresh_token: String? = null,
+        val expires_in: Long? = null,
+        val token_type: String? = null
+    )
+
+    private class AuthHttpException(val status: Int, detail: String) :
+        IllegalStateException("Supabase authentication failed ($status): $detail")
+
     suspend fun signUp(email: String, password: String) {
-        request("signup", email, password)
+        request("signup", json.encodeToString(Credentials(email, password)))
     }
 
-    suspend fun signIn(email: String, password: String) {
-        request("token?grant_type=password", email, password)
+    suspend fun signIn(context: Context, email: String, password: String) {
+        val body = request("token?grant_type=password", json.encodeToString(Credentials(email, password)))
+        val session = json.decodeFromString<AuthResponse>(body)
+        val refreshToken = session.refresh_token
+        check(!refreshToken.isNullOrBlank()) {
+            "Sign-in succeeded but Supabase did not return a refresh token."
+        }
+        SecureTokenStore.saveRefreshToken(context.applicationContext, refreshToken)
     }
 
-    private suspend fun request(endpoint: String, email: String, password: String) {
+    suspend fun restoreSession(context: Context): SessionRestoreResult {
+        val refreshToken = SecureTokenStore.readRefreshToken(context.applicationContext)
+            ?: return SessionRestoreResult.NO_SESSION
+        return try {
+            val body = request(
+                "token?grant_type=refresh_token",
+                json.encodeToString(RefreshCredentials(refreshToken))
+            )
+            val session = json.decodeFromString<AuthResponse>(body)
+            val updatedToken = session.refresh_token
+            check(!updatedToken.isNullOrBlank()) {
+                "Supabase did not return a refreshed session token."
+            }
+            SecureTokenStore.saveRefreshToken(context.applicationContext, updatedToken)
+            SessionRestoreResult.AUTHENTICATED
+        } catch (e: AuthHttpException) {
+            if (e.status in listOf(400, 401, 403)) {
+                SecureTokenStore.clear(context.applicationContext)
+                SessionRestoreResult.NO_SESSION
+            } else {
+                SessionRestoreResult.TEMPORARY_FAILURE
+            }
+        } catch (_: Exception) {
+            // Keep the encrypted token on network errors so an offline start does not destroy it.
+            SessionRestoreResult.TEMPORARY_FAILURE
+        }
+    }
+
+    private suspend fun request(endpoint: String, body: String): String {
         check(SupabaseProvider.isConfigured) {
             "Supabase is not configured. Check your local Gradle properties."
         }
-
         val baseUrl = BuildConfig.SUPABASE_URL.trim().trimEnd('/')
             .removeSuffix("/rest/v1")
             .removeSuffix("/auth/v1")
             .trimEnd('/')
-
         val response = http.post("$baseUrl/auth/v1/$endpoint") {
             header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
             contentType(ContentType.Application.Json)
-            setBody(json.encodeToString(Credentials(email, password)))
+            setBody(body)
         }
-
+        val responseBody = response.bodyAsText()
         if (response.status.value !in 200..299) {
-            val detail = response.bodyAsText().take(500)
-            throw IllegalStateException("Supabase authentication failed (${response.status.value}): $detail")
+            throw AuthHttpException(response.status.value, responseBody.take(500))
         }
+        return responseBody
     }
 }
