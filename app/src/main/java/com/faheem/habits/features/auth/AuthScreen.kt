@@ -23,6 +23,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -102,7 +103,7 @@ fun AuthScreen(onAuthenticated: () -> Unit) {
                                     message = "Account created. Check your email to confirm it, then sign in."
                                     isSignUp = false
                                 } else {
-                                    SupabaseAuthApi.signIn(enteredEmail, enteredPassword)
+                                    SupabaseAuthApi.signIn(context.applicationContext, enteredEmail, enteredPassword)
                                     onAuthenticated()
                                 }
                             } catch (e: Exception) {
