@@ -4,6 +4,7 @@ import com.faheem.habits.BuildConfig
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
+import io.github.jan.supabase.gotrue.GoTrue
 
 /**
  * Central entry point for Supabase.
@@ -26,6 +27,7 @@ object SupabaseProvider {
             supabaseKey = BuildConfig.SUPABASE_PUBLISHABLE_KEY
         ) {
             install(Postgrest)
+            install(GoTrue)
         }
     }
 
