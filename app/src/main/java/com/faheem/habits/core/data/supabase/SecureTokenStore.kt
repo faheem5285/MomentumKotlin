@@ -1,5 +1,6 @@
 package com.faheem.habits.core.data.supabase
 
+import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -23,20 +24,20 @@ object SecureTokenStore {
     private const val TAG_LENGTH_BITS = 128
 
     @Synchronized
-    fun saveRefreshToken(token: String) {
+    fun saveRefreshToken(context: Context, token: String) {
         require(token.isNotBlank()) { "Refresh token is empty." }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
         val encrypted = cipher.doFinal(token.toByteArray(StandardCharsets.UTF_8))
         val packed = cipher.iv + encrypted
-        val saved = appContext().getSharedPreferences(PREFS, 0).edit()
+        val saved = context.applicationContext.getSharedPreferences(PREFS, 0).edit()
             .putString(TOKEN_KEY, Base64.encodeToString(packed, Base64.NO_WRAP))
             .commit()
         check(saved) { "Could not securely save the sign-in session." }
     }
 
     @Synchronized
-    fun readRefreshToken(): String? {
+    fun readRefreshToken(context: Context): String? {
         val encoded = appContext().getSharedPreferences(PREFS, 0).getString(TOKEN_KEY, null)
             ?: return null
         return try {
@@ -48,7 +49,7 @@ object SecureTokenStore {
             cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(TAG_LENGTH_BITS, iv))
             String(cipher.doFinal(encrypted), StandardCharsets.UTF_8).takeIf { it.isNotBlank() }
         } catch (_: Exception) {
-            clear()
+            clear(context)
             null
         }
     }
