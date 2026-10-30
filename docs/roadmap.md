@@ -11,6 +11,9 @@
 - Phase 4 — glass UI foundation: centralized glass tokens, shared glass
   components, light/dark dynamic color support, API-aware blur, and shared
   hero/sheet adoption.
+- Phase 5 — reminder reliability: centralized alarm policy, exact/inexact
+  fallback, boot/time-change rescheduling, notification actions, six-hour
+  safety verification, and reminder health diagnostics.
 
 ## Deferred
 
@@ -24,3 +27,6 @@
 - Phase 4 settings controls, feature-card migration, predictive back, haptic
   feedback, and device/reference-image comparison remain deferred; see
   [phase-4-glass-ui-polish.md](./phase-4-glass-ui-polish.md).
+- Phase 5 per-reminder sound/vibration, evening nudges, vendor-specific
+  settings deep links, and physical-device delivery verification remain
+  deferred; see [phase-5-reminders.md](./phase-5-reminders.md).

@@ -68,4 +68,40 @@ class ReminderTimeCalculatorTest {
         assertNull(ReminderTimeCalculator.nextTodo(completed, now))
         assertNull(ReminderTimeCalculator.nextTodo(missed, now))
     }
+
+    @Test
+    fun weeklyReminderUsesTheCurrentZoneAfterTimezoneChange() {
+        val reminder = HabitReminder(
+            id = 4, habitId = 2, hour = 18, minute = 30, daysMask = 1 shl 2
+        )
+        val beforeTravel = ZonedDateTime.of(2025, 10, 28, 12, 0, 0, 0, ZoneId.of("Asia/Karachi"))
+        val afterTravel = beforeTravel.withZoneSameInstant(ZoneId.of("Europe/London"))
+
+        assertEquals(
+            ZoneId.of("Europe/London"),
+            ReminderTimeCalculator.nextHabit(reminder, afterTravel)?.zone
+        )
+        assertEquals(
+            18,
+            ReminderTimeCalculator.nextHabit(reminder, afterTravel)?.hour
+        )
+    }
+
+    @Test
+    fun oneTimeReminderMovesWithDeviceLocalTimeAfterClockChange() {
+        val reminder = HabitReminder(
+            id = 5,
+            habitId = 2,
+            hour = 9,
+            minute = 0,
+            daysMask = 0,
+            dateEpochDay = LocalDate.of(2025, 11, 1).toEpochDay()
+        )
+        val now = ZonedDateTime.of(2025, 10, 31, 23, 0, 0, 0, zone)
+
+        assertEquals(
+            ZonedDateTime.of(2025, 11, 1, 9, 0, 0, 0, zone),
+            ReminderTimeCalculator.nextHabit(reminder, now)
+        )
+    }
 }

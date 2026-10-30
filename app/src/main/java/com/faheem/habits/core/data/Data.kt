@@ -194,6 +194,8 @@ interface HabitDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertCompletion(completion: Completion)
+    @Query("SELECT * FROM completions WHERE habitId = :habitId AND epochDay = :epochDay LIMIT 1")
+    suspend fun getCompletion(habitId: Int, epochDay: Long): Completion?
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertImportedCompletion(completion: Completion): Long
     @Query("SELECT * FROM completions WHERE uuid = :uuid LIMIT 1") suspend fun getCompletionByUuid(uuid: String): Completion?
 

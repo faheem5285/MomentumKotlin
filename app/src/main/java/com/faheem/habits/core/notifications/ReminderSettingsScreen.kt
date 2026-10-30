@@ -1,3 +1,5 @@
+@file:Suppress("CyclomaticComplexMethod")
+
 package com.faheem.habits.core.notifications
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.ui.*
@@ -20,6 +22,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Alarm
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.NotificationsOff
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.key
@@ -50,6 +53,11 @@ fun ReminderSettingsScreen(onBack: () -> Unit) {
         androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
     val notificationsAllowed = MomentumNotificationSettings.notificationsAllowed(context)
     val master = MomentumNotificationSettings.masterEnabled(context)
+    val quietHours = MomentumNotificationSettings.quietHours(context)
+    var nextReminders by remember { mutableStateOf<List<ScheduledReminderPreview>>(emptyList()) }
+    LaunchedEffect(revision) {
+        nextReminders = MomentumReminderScheduler.nextTen(context)
+    }
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -69,6 +77,83 @@ fun ReminderSettingsScreen(onBack: () -> Unit) {
                         Text("Choose which Momentum reminders you receive and when they arrive.", fontSize = 13.sp, color = Color.White.copy(alpha = .9f))
                     }
                 }
+                item {
+                        GlassCard {
+                            Text("Reminder health check", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Notifications: ${if (notificationsAllowed) "allowed" else "blocked"}\n" +
+                                    "Exact alarms: ${if (MomentumNotificationSettings.canSchedulePrecisely(context)) "allowed" else "fallback mode"}\n" +
+                                    "Battery optimization: ${if (MomentumNotificationSettings.isIgnoringBatteryOptimizations(context)) "ignored" else "active"}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (!MomentumNotificationSettings.isIgnoringBatteryOptimizations(context)) {
+                                OutlinedButton(onClick = {
+                                    runCatching {
+                                        context.startActivity(
+                                            Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                                                .setData(android.net.Uri.parse("package:${context.packageName}"))
+                                        )
+                                    }
+                                }) {
+                                    Icon(Icons.Rounded.Security, null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Allow background delivery")
+                                }
+                            }
+                            Button(onClick = { MomentumReminderScheduler.scheduleTestReminder(context) }) {
+                                Text("Send test reminder in 10 seconds")
+                            }
+                            Text(
+                                "Quiet hours: ${quietHours.first}:00 - ${quietHours.second}:00",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            OutlinedButton(onClick = {
+                                TimePickerDialog(
+                                    context,
+                                    { _, hour, _ ->
+                                        MomentumNotificationSettings.setQuietHours(context, hour, quietHours.second)
+                                        revision++
+                                    },
+                                    quietHours.first,
+                                    0,
+                                    DateFormat.is24HourFormat(context)
+                                ).show()
+                            }) {
+                                Text("Set quiet-hours start")
+                            }
+                            OutlinedButton(onClick = {
+                                TimePickerDialog(
+                                    context,
+                                    { _, hour, _ ->
+                                        MomentumNotificationSettings.setQuietHours(context, quietHours.first, hour)
+                                        revision++
+                                    },
+                                    quietHours.second,
+                                    0,
+                                    DateFormat.is24HourFormat(context)
+                                ).show()
+                            }) {
+                                Text("Set quiet-hours end")
+                            }
+                            Text("Next scheduled reminders", fontWeight = FontWeight.SemiBold)
+                            if (nextReminders.isEmpty()) {
+                                Text("No habit or to-do reminders are currently scheduled.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            } else {
+                                nextReminders.forEach {
+                                    Text(
+                                        "${it.title} · ${java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT, Locale.getDefault()).format(java.util.Date(it.triggerAtMillis))}",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            }
+                            Text(
+                                "On Xiaomi, Oppo, Vivo, Samsung, and Huawei, allow Momentum to start automatically and exclude it from battery cleanup.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 item {
                     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -1,3 +1,5 @@
+@file:Suppress("LongParameterList", "CyclomaticComplexMethod", "ComplexCondition")
+
 package com.faheem.habits.core.notifications
 import com.faheem.habits.app.MainActivity
 import com.faheem.habits.core.data.*
@@ -15,12 +17,18 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.time.ZonedDateTime
 import java.util.Calendar
+import java.util.concurrent.TimeUnit
 
 data class ReminderKind(
     val id: String,
@@ -29,6 +37,8 @@ data class ReminderKind(
     val module: AppModule,
     val weekly: Boolean
 )
+
+data class ScheduledReminderPreview(val title: String, val triggerAtMillis: Long)
 
 val ReminderKinds = listOf(
     ReminderKind("habits", "Habit check-in", "Take a moment to check in with today's habits.", AppModule.Habits, false),
@@ -41,10 +51,33 @@ private const val KEY_MASTER = "notifications_enabled"
 private const val KEY_HOUR = "hour_"
 private const val KEY_MINUTE = "minute_"
 private const val KEY_DAY = "weekday_"
+private const val KEY_QUIET_START = "quiet_start"
+private const val KEY_QUIET_END = "quiet_end"
+private const val SAFETY_NET_WORK = "momentum_reminder_safety_net"
+private const val ACTION_DONE = "com.faheem.habits.REMINDER_ACTION_DONE"
+private const val ACTION_SNOOZE = "com.faheem.habits.REMINDER_ACTION_SNOOZE"
+private const val ACTION_SKIP = "com.faheem.habits.REMINDER_ACTION_SKIP"
+private const val ACTION_TEST = "com.faheem.habits.REMINDER_TEST"
 
 private fun enabledKey(id: String) = "enabled_$id"
 private fun alarmCode(id: String) = 5400 + (ReminderKinds.indexOfFirst { it.id == id }.coerceAtLeast(0))
 private fun channelId(id: String) = "reminder_$id"
+
+private fun actionPendingIntent(
+    context: Context,
+    action: String,
+    requestCode: Int,
+    idKey: String,
+    id: Int,
+    snoozeMinutes: Int? = null
+) = PendingIntent.getBroadcast(
+    context,
+    60_000 + requestCode,
+    Intent(context, MomentumReminderReceiver::class.java).setAction(action)
+        .putExtra(idKey, id)
+        .apply { snoozeMinutes?.let { putExtra("snooze_minutes", it) } },
+    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+)
 
 object MomentumNotificationSettings {
     fun masterEnabled(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_MASTER, false)
@@ -52,6 +85,7 @@ object MomentumNotificationSettings {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_MASTER, enabled).apply()
         MomentumReminderScheduler.scheduleAll(context)
     }
+
     fun isEnabled(context: Context, id: String) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         .getBoolean(enabledKey(id), id == "habits")
     fun setEnabled(context: Context, id: String, enabled: Boolean) {
@@ -81,6 +115,32 @@ object MomentumNotificationSettings {
         val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         return alarms.canScheduleExactAlarms()
     }
+
+    fun quietHours(context: Context): Pair<Int, Int> {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return prefs.getInt(KEY_QUIET_START, 22) to prefs.getInt(KEY_QUIET_END, 7)
+    }
+
+    fun setQuietHours(context: Context, startHour: Int, endHour: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putInt(KEY_QUIET_START, startHour.coerceIn(0, 23))
+            .putInt(KEY_QUIET_END, endHour.coerceIn(0, 23))
+            .apply()
+        MomentumReminderScheduler.scheduleAll(context)
+    }
+
+    fun isQuietHours(context: Context, now: Calendar = Calendar.getInstance()): Boolean {
+        val (start, end) = quietHours(context)
+        if (start == end) return false
+        val hour = now.get(Calendar.HOUR_OF_DAY)
+        return if (start < end) hour >= start && hour < end else hour >= start || hour < end
+    }
+
+    fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+        val power = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        return power.isIgnoringBatteryOptimizations(context.packageName)
+    }
 }
 
 object MomentumReminderScheduler {
@@ -101,6 +161,17 @@ object MomentumReminderScheduler {
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
             }
         )
+        scheduleSafetyNet(context)
+    }
+
+    private fun scheduleSafetyNet(context: Context) {
+        val request = PeriodicWorkRequestBuilder<ReminderVerificationWorker>(6, TimeUnit.HOURS)
+            .build()
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            SAFETY_NET_WORK,
+            ExistingPeriodicWorkPolicy.KEEP,
+            request
+        )
     }
 
     fun scheduleAll(context: Context) {
@@ -108,6 +179,42 @@ object MomentumReminderScheduler {
         ReminderKinds.forEach { schedule(context, it.id) }
         HabitReminderScheduler.rescheduleAll(context)
         ToDoReminderScheduler.rescheduleAll(context)
+    }
+
+    suspend fun rescheduleAllNow(context: Context) {
+        ReminderKinds.forEach { schedule(context, it.id) }
+        HabitReminderScheduler.rescheduleAllNow(context)
+        ToDoReminderScheduler.rescheduleAllNow(context)
+    }
+
+    suspend fun nextTen(context: Context): List<ScheduledReminderPreview> {
+        val now = ZonedDateTime.now()
+        val db = AppDatabase.get(context)
+        val habitDao = db.habitDao()
+        val habits = habitDao.getRemindersForScheduling().mapNotNull { reminder ->
+            val habit = habitDao.getHabit(reminder.habitId) ?: return@mapNotNull null
+            ReminderTimeCalculator.nextHabit(reminder, now)?.let {
+                ScheduledReminderPreview(habit.name, it.toInstant().toEpochMilli())
+            }
+        }
+        val todos = db.toDoDao().getItemsForScheduling().mapNotNull { item ->
+            ReminderTimeCalculator.nextTodo(item, now)?.let {
+                ScheduledReminderPreview(item.title, it.toInstant().toEpochMilli())
+            }
+        }
+        return (habits + todos).sortedBy { it.triggerAtMillis }.take(10)
+    }
+
+    fun scheduleTestReminder(context: Context) {
+        val intent = Intent(context, MomentumReminderReceiver::class.java).setAction(ACTION_TEST)
+        val pending = PendingIntent.getBroadcast(
+            context, 59_999, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        setAlarm(
+            context.getSystemService(Context.ALARM_SERVICE) as AlarmManager,
+            System.currentTimeMillis() + 10_000L,
+            pending
+        )
     }
 
     fun schedule(context: Context, id: String) {
@@ -150,6 +257,7 @@ object MomentumReminderScheduler {
                 .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
                 .setAutoCancel(true)
                 .setContentIntent(openApp)
+                .setGroup("momentum_${kind.id}")
                 .build()
             if (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(
                     context,
@@ -224,7 +332,9 @@ object HabitReminderScheduler {
         val dao = AppDatabase.get(context).habitDao()
         val reminder = dao.getReminder(reminderId) ?: return
         val habit = dao.getHabit(reminder.habitId) ?: return
-        if (!habit.archived && reminder.enabled && MomentumNotificationSettings.masterEnabled(context) &&
+        val completedToday = dao.getCompletion(reminder.habitId, java.time.LocalDate.now().toEpochDay()) != null
+        if (!habit.archived && !completedToday && reminder.enabled && !MomentumNotificationSettings.isQuietHours(context) &&
+            MomentumNotificationSettings.masterEnabled(context) &&
             MomentumNotificationSettings.isEnabled(context, "habits") && MomentumNotificationSettings.notificationsAllowed(context)
         ) {
             MomentumReminderScheduler.createChannels(context)
@@ -240,6 +350,12 @@ object HabitReminderScheduler {
                     context, requestCode(reminderId), Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 ))
+                .setGroup("momentum_habits")
+                .addAction(0, "Done", actionPendingIntent(context, ACTION_DONE, requestCode(reminderId), "reminder_id", reminderId))
+                .addAction(0, "Snooze 5m", actionPendingIntent(context, ACTION_SNOOZE, requestCode(reminderId) + 1, "reminder_id", reminderId, 5))
+                .addAction(0, "Snooze 15m", actionPendingIntent(context, ACTION_SNOOZE, requestCode(reminderId) + 2, "reminder_id", reminderId, 15))
+                .addAction(0, "Snooze 60m", actionPendingIntent(context, ACTION_SNOOZE, requestCode(reminderId) + 3, "reminder_id", reminderId, 60))
+                .addAction(0, "Skip", actionPendingIntent(context, ACTION_SKIP, requestCode(reminderId) + 4, "reminder_id", reminderId))
                 .build()
             runCatching { NotificationManagerCompat.from(context).notify(requestCode(reminderId), notification) }
         }
@@ -254,6 +370,21 @@ object HabitReminderScheduler {
             .setAction(ACTION).putExtra("reminder_id", reminderId),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
+
+    fun snooze(context: Context, reminderId: Int, minutes: Int) {
+        val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        MomentumReminderScheduler.setAlarm(
+            alarms,
+            System.currentTimeMillis() + minutes.coerceIn(5, 60) * 60_000L,
+            pendingIntent(context, reminderId)
+        )
+    }
+
+    suspend fun skip(context: Context, reminderId: Int) {
+        val reminder = AppDatabase.get(context).habitDao().getReminder(reminderId) ?: return
+        cancel(context, reminderId)
+        schedule(context, reminder)
+    }
 }
 
 object ToDoReminderScheduler {
@@ -301,7 +432,8 @@ object ToDoReminderScheduler {
     suspend fun deliver(context: Context, id: Int) {
         val dao = AppDatabase.get(context).toDoDao()
         val item = dao.getById(id) ?: return
-        if (!item.completed && MomentumNotificationSettings.masterEnabled(context) && MomentumNotificationSettings.notificationsAllowed(context)) {
+        if (!item.completed && !MomentumNotificationSettings.isQuietHours(context) &&
+            MomentumNotificationSettings.masterEnabled(context) && MomentumNotificationSettings.notificationsAllowed(context)) {
             MomentumReminderScheduler.createChannels(context)
             val openApp = PendingIntent.getActivity(
                 context, requestCode(id), Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
@@ -316,9 +448,31 @@ object ToDoReminderScheduler {
                 .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
                 .setAutoCancel(true)
                 .setContentIntent(openApp)
+                .setGroup("momentum_todos")
+                .addAction(0, "Done", actionPendingIntent(context, ACTION_DONE, requestCode(id), "todo_id", id))
+                .addAction(0, "Snooze 5m", actionPendingIntent(context, ACTION_SNOOZE, requestCode(id) + 1, "todo_id", id, 5))
+                .addAction(0, "Snooze 15m", actionPendingIntent(context, ACTION_SNOOZE, requestCode(id) + 2, "todo_id", id, 15))
+                .addAction(0, "Snooze 60m", actionPendingIntent(context, ACTION_SNOOZE, requestCode(id) + 3, "todo_id", id, 60))
+                .addAction(0, "Skip", actionPendingIntent(context, ACTION_SKIP, requestCode(id) + 4, "todo_id", id))
                 .build()
             runCatching { NotificationManagerCompat.from(context).notify(requestCode(id), notification) }
         }
+        dao.update(item.copy(reminderHour = null, reminderMinute = null))
+        cancel(context, id)
+    }
+
+    fun snooze(context: Context, id: Int, minutes: Int) {
+        val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        MomentumReminderScheduler.setAlarm(
+            alarms,
+            System.currentTimeMillis() + minutes.coerceIn(5, 60) * 60_000L,
+            pendingIntent(context, id)
+        )
+    }
+
+    suspend fun skip(context: Context, id: Int) {
+        val dao = AppDatabase.get(context).toDoDao()
+        val item = dao.getById(id) ?: return
         dao.update(item.copy(reminderHour = null, reminderMinute = null))
         cancel(context, id)
     }
@@ -327,18 +481,78 @@ object ToDoReminderScheduler {
 class MomentumReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         when (intent?.action) {
+            ACTION_TEST -> {
+                MomentumReminderScheduler.createChannels(context)
+                if (MomentumNotificationSettings.notificationsAllowed(context)) {
+                    NotificationManagerCompat.from(context).notify(
+                        59_999,
+                        NotificationCompat.Builder(context, channelId("habits"))
+                            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                            .setContentTitle("Momentum test reminder")
+                            .setContentText("Reminder delivery is working.")
+                            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                            .setAutoCancel(true)
+                            .build()
+                    )
+                }
+            }
+            ACTION_DONE, ACTION_SNOOZE, ACTION_SKIP -> {
+                val pending = goAsync()
+                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                    try {
+                        val reminderId = intent.getIntExtra("reminder_id", -1)
+                        val todoId = intent.getIntExtra("todo_id", -1)
+                        val minutes = intent.getIntExtra("snooze_minutes", 15)
+                        when {
+                            reminderId >= 0 -> {
+                                NotificationManagerCompat.from(context).cancel(20_000 + reminderId)
+                                when (intent.action) {
+                                    ACTION_DONE -> {
+                                        val dao = AppDatabase.get(context).habitDao()
+                                        val reminder = dao.getReminder(reminderId)
+                                        if (reminder != null) {
+                                            dao.insertCompletion(
+                                                Completion(reminder.habitId, java.time.LocalDate.now().toEpochDay())
+                                            )
+                                            HabitReminderScheduler.schedule(context, reminder)
+                                        }
+                                    }
+
+                                    ACTION_SNOOZE -> HabitReminderScheduler.snooze(context, reminderId, minutes)
+                                    ACTION_SKIP -> HabitReminderScheduler.skip(context, reminderId)
+                                }
+                            }
+                            todoId >= 0 -> {
+                                NotificationManagerCompat.from(context).cancel(40_000 + todoId)
+                                when (intent.action) {
+                                    ACTION_DONE -> {
+                                        val dao = AppDatabase.get(context).toDoDao()
+                                        dao.getById(todoId)?.let {
+                                            dao.update(it.copy(completed = true, reminderHour = null, reminderMinute = null))
+                                        }
+                                        ToDoReminderScheduler.cancel(context, todoId)
+                                    }
+                                    ACTION_SNOOZE -> ToDoReminderScheduler.snooze(context, todoId, minutes)
+                                    ACTION_SKIP -> ToDoReminderScheduler.skip(context, todoId)
+                                }
+                            }
+                        }
+                    } finally {
+                        pending.finish()
+                    }
+                }
+            }
             Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED,
             Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED, Intent.ACTION_DATE_CHANGED -> {
                 val pending = goAsync()
                 CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                     try {
                         MomentumReminderScheduler.createChannels(context)
-                        ReminderKinds.forEach { MomentumReminderScheduler.schedule(context, it.id) }
-                        HabitReminderScheduler.rescheduleAllNow(context)
-                        ToDoReminderScheduler.rescheduleAllNow(context)
+                        MomentumReminderScheduler.rescheduleAllNow(context)
                     } finally { pending.finish() }
                 }
             }
+
             "com.faheem.habits.HABIT_REMINDER" -> {
                 val reminderId = intent.getIntExtra("reminder_id", -1)
                 if (reminderId >= 0) {
@@ -348,6 +562,7 @@ class MomentumReminderReceiver : BroadcastReceiver() {
                         finally { pending.finish() }
                     }
                 }
+
             }
             "com.faheem.habits.TODO_REMINDER" -> {
                 val taskId = intent.getIntExtra("todo_id", -1)
