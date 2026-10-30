@@ -136,7 +136,7 @@ fun PermissionsSetupScreen(onBack: () -> Unit) {
             SetupPermission("Battery optimization", "Excluding Momentum from battery optimization can improve reliability of user-requested background reminders.", "Android or the manufacturer may delay background work. This setting is optional.", if (batteryUnrestricted()) PermissionState.ENABLED else PermissionState.DISABLED) {
                 openSettings(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
             },
-            SetupPermission("Background restrictions", "Review Android's per-app battery and background usage controls.", "Restricted apps may have delayed reminders or background updates.", if (batteryUnrestricted()) PermissionState.ENABLED else PermissionState.DISABLED) {
+            SetupPermission("Background restrictions", "Review Android's per-app battery and background usage controls.", "Restricted apps may have delayed reminders or background updates.", PermissionState.UNAVAILABLE) {
                 openSettings(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
             }
         )
