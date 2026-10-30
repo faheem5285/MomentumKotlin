@@ -23,8 +23,8 @@ Native Android app: Kotlin, Jetpack Compose, Room, ViewModel. Built with Gradle 
 - Theme.kt / Ui.kt     colors (light+dark), shared components (HeroCard, ProgressRing, FormSheet, ...)
 
 ## Known limits / next steps
-- Database uses fallbackToDestructiveMigration: changing the schema WIPES data.
-  Before using real data, replace it with proper Room migrations.
+- Historical note: the old destructive-migration configuration was removed in
+  Phase 1. The current database uses explicit migrations through version 11.
 - Instagram scroll estimate needs the user to enable Momentum's Accessibility service in Android Settings. It counts debounced Instagram scroll events, not verified Reels views; it does not read on-screen content and can include non-Reels scrolling.
 - Vault uses a master-password-derived AES-256-GCM key with PBKDF2-HMAC-SHA256 (310,000 rounds), random salt and per-record nonces. Forgotten master passwords cannot be recovered. Room version 4 -> 5 adds the encrypted vault table through a migration.
 - Vault blocks screenshots while open, locks when the app backgrounds, and clears copied values after 30 seconds when possible. No server sync or biometric unlock is implemented yet.

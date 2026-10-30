@@ -1,7 +1,7 @@
-# Momentum — Phase 1 audit and delivery plan
+# Momentum — Phase 1 audit and delivery record
 
 **Date:** 2026-10-29  
-**Scope:** Read-only product and engineering audit. This document proposes the work and review gates; it does not change application code.
+**Scope:** Phase 1 data-safety audit and implementation record.
 
 ## Executive summary
 
@@ -9,11 +9,11 @@ Momentum already has a broad set of personal productivity modules: habits and re
 
 The highest-priority risks from this audit are:
 
-1. **Data loss risk:** Room has migrations through version 9 but also enables destructive migration fallback. An unhandled schema upgrade can erase the local database.
-2. **Vault backup/key lifecycle needs a decision:** vault entries are encrypted with AES-GCM and a PBKDF2-derived key, while Android Auto Backup is enabled for the app and no backup rules were found. Decide and document whether encrypted vault records should transfer, and how users recover them, before calling the vault production-ready.
-3. **Release is not production-signed:** the release build uses the debug signing config.
-4. **Reliability evidence is missing:** no automated test source set was found. Core scheduling, migrations, calculations, crypto, and permission-denied paths need tests and a device verification checklist.
-5. **Background features depend on special Android access:** exact alarms, usage access, overlay access, accessibility service, and foreground services all need clear user explanations, graceful fallback, and release-policy review.
+1. **Resolved data-loss risk:** destructive Room fallback is absent; the supported v3→v11 chain is explicit and schema JSON is exported.
+2. **Resolved backup exposure:** Android backup remains disabled. JSON export excludes vault records and file contents; vault export is separate and contains only encrypted record payloads.
+3. **Resolved money precision risk:** expenses and loans use `Long` minor units, with HALF_UP conversion during migration and tests.
+4. **Remaining device risk:** exact alarms, usage access, overlay access, accessibility service, and foreground services still need physical-device verification.
+5. **Remaining maintainability risk:** the largest screens are identified below; extraction is deferred until after data safety.
 
 ## Current product and engineering shape
 
@@ -34,11 +34,19 @@ The highest-priority risks from this audit are:
 
 - Kotlin 2.0.20, Android Gradle Plugin 8.5.2, Compose, Room 2.6.1, Java 17; `minSdk 26`, `targetSdk 34`, `compileSdk 34`.
 - One `MainActivity` hosts the Compose application. Source files are physically grouped under `app`, `core`, and `features`, but the inspected Kotlin files still declare the same `com.faheem.habits` package. This gives a useful directory map without enforcing module boundaries.
-- Room database version 9 has explicit migrations from 4→5 through 8→9, and `fallbackToDestructiveMigration()` is also configured.
+- Room database version 11 has explicit migrations from 3→4 through 10→11; no destructive migration fallback is configured.
 - Release minification/resource shrinking are enabled, but release signing points at the debug signing config. `versionCode`/`versionName` are still `1`/`1.0`.
 - The manifest includes usage stats, package visibility (`QUERY_ALL_PACKAGES`), notifications, exact alarms, overlays, foreground services, and an exported accessibility service protected by `BIND_ACCESSIBILITY_SERVICE`.
-- `allowBackup="true"` is set; no backup/data-extraction rule resources were found in the inspected resource tree. Android Auto Backup includes most app data by default, so explicitly decide the database/preferences backup policy, including vault salt/verifier and encrypted records.
-- No automated test source files were found during the project inventory. `NOTES.md` does not match the current source layout/database version and should not be treated as authoritative documentation.
+- `allowBackup="false"` is set, avoiding automatic transfer of the database, vault preferences, and encrypted vault rows until a tested recovery flow exists.
+- Unit and instrumentation test sources now cover money conversion, migration steps/full chain, UUID backfill, and non-vault backup round trips. `NOTES.md` is historical and not authoritative.
+
+## Code audit findings
+
+- Screens over 400 lines: `Data.kt` (456), `BatteryChargeOverlay.kt` (416), `BatteryScreen.kt` (583), `HabitsToday.kt` (422), and `VaultScreen.kt` (506). These are maintainability findings, not data-loss blockers.
+- Main-thread work: Room access is exposed through `Flow`/suspend DAOs; backup and integrity checks are dispatched to `Dispatchers.IO`. Existing UI calculations are in-memory over collected lists.
+- Memory/lifecycle: long-lived services own their coroutine scopes; reminder receiver work uses receiver lifecycle handling. Device/OEM lifecycle testing remains required.
+- Duplicated logic: currency/date helpers are centralized in `core/data/Util.kt`; remaining UI-level amount parsing is intentionally local to each editor.
+- Manifest/signing: backup is disabled; exported components are limited to the launcher and Android accessibility service (protected by `BIND_ACCESSIBILITY_SERVICE`); release signing requires user-supplied release credentials.
 
 ## Prioritized backlog
 
