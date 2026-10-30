@@ -92,6 +92,7 @@ fun NetworkScreen() {
     var granted by remember { mutableStateOf(hasUsageAccess(context)) }
     var report by remember { mutableStateOf<NetworkReport?>(null) }
     var loading by remember { mutableStateOf(false) }
+    var loadError by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableIntStateOf(0) }
     var indicatorEnabled by remember {
         mutableStateOf(context.getSharedPreferences(NetworkIndicatorService.PREFS, Context.MODE_PRIVATE).getBoolean(NetworkIndicatorService.KEY_ENABLED, false))
@@ -104,9 +105,21 @@ fun NetworkScreen() {
         granted = hasUsageAccess(context)
         if (granted) {
             loading = true
-            report = withContext(Dispatchers.IO) { loadNetworkReport(context, period) }
+            loadError = false
+            try {
+                report = withContext(Dispatchers.IO) { loadNetworkReport(context, period) }
+                loadError = report?.wifi == null && report?.mobile == null
+            } catch (_: Exception) {
+                report = null
+                loadError = true
+            } finally {
+                loading = false
+            }
+        } else {
+            report = null
+            loadError = false
             loading = false
-        } else report = null
+        }
     }
     val settings = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
     Column(Modifier.fillMaxSize()) {
@@ -208,6 +221,26 @@ fun NetworkScreen() {
                 }
             }
             if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            if (loadError && !loading) item {
+                Card(
+                    Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Usage data unavailable", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onErrorContainer)
+                            Text("Android could not provide network totals. Check Usage access and try again.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onErrorContainer)
+                        }
+                        TextButton(onClick = { refreshKey++ }) {
+                            Text("Retry", color = MaterialTheme.colorScheme.onErrorContainer)
+                        }
+                    }
+                }
+            }
             item {
                 Text("Totals use decimal MB (1 MB = 1,000,000 bytes). Android may keep recent or carrier-managed usage unavailable on some devices.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
