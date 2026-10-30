@@ -115,11 +115,20 @@ interface HabitDao {
     @Query("SELECT * FROM habits ORDER BY id")
     fun getHabits(): Flow<List<Habit>>
 
+    @Query("SELECT * FROM habits ORDER BY id")
+    suspend fun getAllForBackup(): List<Habit>
+
     @Query("SELECT * FROM completions")
     fun getCompletions(): Flow<List<Completion>>
 
+    @Query("SELECT * FROM completions")
+    suspend fun getCompletionsForBackup(): List<Completion>
+
     @Query("SELECT * FROM habit_reminders ORDER BY hour, minute, id")
     fun getReminders(): Flow<List<HabitReminder>>
+
+    @Query("SELECT * FROM habit_reminders ORDER BY id")
+    suspend fun getRemindersForBackup(): List<HabitReminder>
 
     @Query("SELECT habit_reminders.* FROM habit_reminders INNER JOIN habits ON habits.id = habit_reminders.habitId WHERE habit_reminders.enabled = 1 AND (habit_reminders.daysMask != 0 OR habit_reminders.dateEpochDay IS NOT NULL) AND habits.archived = 0")
     suspend fun getRemindersForScheduling(): List<HabitReminder>
@@ -153,6 +162,9 @@ interface ExpenseDao {
     @Query("SELECT * FROM expenses ORDER BY epochDay DESC, id DESC")
     fun getAll(): Flow<List<Expense>>
 
+    @Query("SELECT * FROM expenses ORDER BY id")
+    suspend fun getAllForBackup(): List<Expense>
+
     @Insert suspend fun insert(expense: Expense)
     @Delete suspend fun delete(expense: Expense)
 }
@@ -161,6 +173,9 @@ interface ExpenseDao {
 interface LoanDao {
     @Query("SELECT * FROM loans ORDER BY settled ASC, epochDay DESC, id DESC")
     fun getAll(): Flow<List<Loan>>
+
+    @Query("SELECT * FROM loans ORDER BY id")
+    suspend fun getAllForBackup(): List<Loan>
 
     @Insert suspend fun insert(loan: Loan)
     @Update suspend fun update(loan: Loan)
@@ -171,6 +186,9 @@ interface LoanDao {
 interface FileDao {
     @Query("SELECT * FROM library_files ORDER BY id DESC")
     fun getAll(): Flow<List<FileItem>>
+
+    @Query("SELECT * FROM library_files ORDER BY id")
+    suspend fun getAllForBackup(): List<FileItem>
 
     @Insert suspend fun insert(file: FileItem)
     @Delete suspend fun delete(file: FileItem)
@@ -192,6 +210,9 @@ interface VaultDao {
 interface ToDoDao {
     @Query("SELECT * FROM todo_items ORDER BY completed ASC, dueEpochDay ASC, id DESC")
     fun getAll(): Flow<List<ToDoItem>>
+
+    @Query("SELECT * FROM todo_items ORDER BY id")
+    suspend fun getAllForBackup(): List<ToDoItem>
 
     @Query("SELECT * FROM todo_items WHERE completed = 0 AND reminderHour IS NOT NULL AND reminderMinute IS NOT NULL")
     suspend fun getItemsForScheduling(): List<ToDoItem>

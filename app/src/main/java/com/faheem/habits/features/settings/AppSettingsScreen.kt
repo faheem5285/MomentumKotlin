@@ -1,11 +1,17 @@
 package com.faheem.habits.features.settings
 import com.faheem.habits.core.data.*
+import com.faheem.habits.core.data.backup.MomentumBackup
 import com.faheem.habits.core.notifications.*
 import com.faheem.habits.core.ui.*
 import com.faheem.habits.R
 
 
 import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.text.style.TextAlign
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
@@ -37,8 +43,24 @@ fun AppSettingsScreen() {
     val context = LocalContext.current
     var version by remember { mutableIntStateOf(0) }
     var remindersOpen by remember { mutableStateOf(false) }
+    var permissionsOpen by remember { mutableStateOf(false) }
+    var backupMessage by remember { mutableStateOf<String?>(null) }
+    var backupBusy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
+        if (uri != null) scope.launch { backupBusy = true; backupMessage = try { MomentumBackup.export(context, uri); "Backup exported. Vault secrets and file contents are excluded." } catch (e: Exception) { "Export failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } }
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) scope.launch { backupBusy = true; backupMessage = try { MomentumBackup.restore(context, uri) } catch (e: Exception) { "Restore failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } }
+    }
     val modules = AppModule.entries.filter { it != AppModule.Settings }
-    BackHandler(enabled = remindersOpen) { remindersOpen = false }
+    BackHandler(enabled = remindersOpen || permissionsOpen) {
+        if (permissionsOpen) permissionsOpen = false else remindersOpen = false
+    }
+    if (permissionsOpen) {
+        PermissionsSetupScreen(onBack = { permissionsOpen = false })
+        return
+    }
     if (remindersOpen) {
         ReminderSettingsScreen(onBack = { remindersOpen = false })
         return
@@ -57,6 +79,27 @@ fun AppSettingsScreen() {
             }
         }
         item {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBubble(Icons.Rounded.Backup, MaterialTheme.colorScheme.primary, 42.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Backup & restore", fontWeight = FontWeight.SemiBold)
+                            Text("Export or merge your app records", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Text("Restores add records without deleting existing data. Password Vault entries and actual file contents are excluded; saved file references may not work on another device.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(enabled = !backupBusy, onClick = { exportLauncher.launch("momentum-backup.json") }, modifier = Modifier.weight(1f)) { Text("Export JSON") }
+                        Button(enabled = !backupBusy, onClick = { importLauncher.launch(arrayOf("application/json", "text/json", "*/*")) }, modifier = Modifier.weight(1f)) { Text("Restore JSON") }
+                    }
+                    if (backupBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    backupMessage?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) }
+                }
+            }
+        }
+        item {
             Card(
                 Modifier.fillMaxWidth().clickable { remindersOpen = true },
                 shape = RoundedCornerShape(18.dp),
@@ -68,6 +111,23 @@ fun AppSettingsScreen() {
                     Column(Modifier.weight(1f)) {
                         Text("Notifications & reminders", fontWeight = FontWeight.SemiBold)
                         Text("Manage schedules, categories and channels", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(Icons.Rounded.ChevronRight, null)
+                }
+            }
+        }
+        item {
+            Card(
+                Modifier.fillMaxWidth().clickable { permissionsOpen = true },
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconBubble(Icons.Rounded.Security, MaterialTheme.colorScheme.primary, 42.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Permissions & background setup", fontWeight = FontWeight.SemiBold)
+                        Text("Review Android access and background settings", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Icon(Icons.Rounded.ChevronRight, null)
                 }
