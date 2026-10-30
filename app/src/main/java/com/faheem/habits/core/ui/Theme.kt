@@ -1,3 +1,5 @@
+@file:Suppress("FunctionNaming")
+
 package com.faheem.habits.core.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -8,6 +10,8 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -98,12 +102,34 @@ private val AppTypography = Typography(
     )
 )
 
+val LocalReduceEffects = compositionLocalOf { false }
+val LocalDynamicAccent = compositionLocalOf { false }
+
 @Composable
-fun MomentumTheme(content: @Composable () -> Unit) {
+fun MomentumTheme(
+    reduceEffects: Boolean = false,
+    dynamicAccent: Boolean = false,
+    content: @Composable () -> Unit
+) {
+    val dark = isSystemInDarkTheme()
+    val scheme = when {
+        dynamicAccent && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S &&
+            dark -> androidx.compose.material3.dynamicDarkColorScheme(androidx.compose.ui.platform.LocalContext.current)
+        dynamicAccent && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S ->
+            androidx.compose.material3.dynamicLightColorScheme(androidx.compose.ui.platform.LocalContext.current)
+        dark -> DarkColors
+        else -> LightColors
+    }
     MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
+        colorScheme = scheme,
         typography = AppTypography,
         shapes = AppShapes,
-        content = content
+        content = {
+            CompositionLocalProvider(
+                LocalReduceEffects provides reduceEffects,
+                LocalDynamicAccent provides dynamicAccent,
+                content = content
+            )
+        }
     )
 }

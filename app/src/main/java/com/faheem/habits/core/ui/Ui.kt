@@ -33,12 +33,16 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun HeroCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Box(
-        modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
-            .background(Brush.linearGradient(LocalGradient.current))
-    ) {
+    Box(modifier.fillMaxWidth()) {
+        GlassCard(
+            modifier = Modifier.fillMaxWidth(),
+            level = GlassLevel.High,
+            shape = RoundedCornerShape(MomentumTokens.radiusLarge)
+        ) {
+            CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+                content()
+            }
+        }
         Box(
             Modifier
                 .align(Alignment.TopEnd)
@@ -49,9 +53,7 @@ fun HeroCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() 
                     CircleShape
                 )
         )
-        CompositionLocalProvider(LocalContentColor provides Color.White) {
-            Column(Modifier.fillMaxWidth().padding(20.dp), content = content)
-        }
+        
     }
 }
 
@@ -63,8 +65,8 @@ fun HeroRefreshButton(onClick: () -> Unit, description: String = "Refresh") {
         modifier = Modifier.size(48.dp),
         shape = CircleShape,
         colors = IconButtonDefaults.filledTonalIconButtonColors(
-            containerColor = Color.White.copy(alpha = 0.18f),
-            contentColor = Color.White
+            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+            contentColor = MaterialTheme.colorScheme.primary
         )
     ) {
         Icon(Icons.Rounded.Refresh, description, Modifier.size(19.dp))
@@ -169,25 +171,7 @@ fun ProgressRing(progress: Float, label: String, modifier: Modifier = Modifier) 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FormSheet(title: String, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.surface
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp)
-                .navigationBarsPadding()
-                .imePadding(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            content()
-        }
-    }
+    GlassSheet(title, onDismiss) { content() }
 }
 
 @Composable
