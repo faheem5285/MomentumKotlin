@@ -88,7 +88,7 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
             Spacer(Modifier.height(18.dp))
             Button(
                 onClick = {
-                    if (email.isBlank() || password.length < 6) {
+                    if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches() || password.length < 6) {
                         isError = true
                         message = "Enter a valid email and a password with at least 6 characters."
                     } else {
