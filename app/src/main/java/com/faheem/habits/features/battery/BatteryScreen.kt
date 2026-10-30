@@ -224,17 +224,21 @@ private fun LazyBatteryContent(
             HeroCard {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Battery studio", Modifier.weight(1f), fontSize = 14.sp, color = Color.White.copy(alpha = .85f))
-                    Text(if (reading.charging) "Charging" else "On battery", fontSize = 12.sp, color = Color.White.copy(alpha = .9f))
+                    Text(when { reading.source == "Battery status unavailable" -> "Unavailable"; reading.charging -> "Charging"; else -> "On battery" }, fontSize = 12.sp, color = Color.White.copy(alpha = .9f))
                 }
                 Spacer(Modifier.height(4.dp))
-                Text(if (reading.charging) "Charging in progress" else "Battery at a glance", fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                Text(when { reading.source == "Battery status unavailable" -> "Battery status unavailable"; reading.charging -> "Charging in progress"; else -> "Battery at a glance" }, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                 Text("Live device status with a calm charging animation", fontSize = 13.sp, color = Color.White.copy(alpha = .88f))
                 Spacer(Modifier.height(18.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                    BatteryOrb(reading.percent, reading.charging, style)
+                    if (reading.source == "Battery status unavailable") {
+                        Icon(Icons.Rounded.BatteryFull, null, Modifier.size(84.dp), tint = Color.White.copy(alpha = .65f))
+                    } else {
+                        BatteryOrb(reading.percent, reading.charging, style)
+                    }
                 }
                 Spacer(Modifier.height(14.dp))
-                Text("${reading.percent}%", fontSize = 38.sp, fontWeight = FontWeight.ExtraBold)
+                Text(if (reading.source == "Battery status unavailable") "—" else "${reading.percent}%", fontSize = 38.sp, fontWeight = FontWeight.ExtraBold)
                 Text(if (reading.charging) "${reading.source} · charging" else reading.source, fontSize = 14.sp, color = Color.White.copy(alpha = .9f))
                 Spacer(Modifier.height(12.dp))
                 FilledTonalButton(onClick = onPreview) { Text("Preview full-screen animation") }
