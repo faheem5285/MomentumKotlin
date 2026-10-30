@@ -83,7 +83,9 @@ fun AppSettingsScreen() {
                 }
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = {
-                    context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE).edit().clear().apply()
+                    context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE).edit().apply {
+                        modules.forEach { putBoolean(modulePref(it), true) }
+                    }.apply()
                     version++
                 }) { Text("Show all") }
             }
