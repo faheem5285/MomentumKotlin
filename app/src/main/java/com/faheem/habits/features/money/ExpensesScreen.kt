@@ -66,6 +66,7 @@ fun ExpensesScreen(vm: ExpenseViewModel = viewModel()) {
 
     val inMonth = expenses.filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == month }
     val spent = inMonth.sumOf { it.amount }
+    val previousMonthSpent = expenses.filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == month.minusMonths(1) }.sumOf { it.amount }
     val byCategory = inMonth.groupBy { it.category }.mapValues { (_, rows) -> rows.sumOf { it.amount } }
     val budgetFraction = if (budget > 0) (spent / budget).toFloat() else 0f
     val filtered = inMonth.filter {
@@ -94,7 +95,7 @@ fun ExpensesScreen(vm: ExpenseViewModel = viewModel()) {
         }
         Box(Modifier.weight(1f)) {
             when (tab) {
-                0 -> OverviewScreen(month, inMonth, spent, budget, budgetFraction, byCategory, vm, onBudget = { showBudget = true }, onDelete = { deleting = it }, onAll = { tab = 1 })
+                0 -> OverviewScreen(month, inMonth, spent, previousMonthSpent, budget, budgetFraction, byCategory, vm, onBudget = { showBudget = true }, onDelete = { deleting = it }, onAll = { tab = 1 })
                 1 -> ActivityScreen(filtered, query, { query = it }, category, { category = it }, onDelete = { deleting = it })
                 else -> BudgetScreen(spent, budget, budgetFraction, byCategory, vm, onBudget = { showBudget = true })
             }
@@ -115,7 +116,7 @@ fun ExpensesScreen(vm: ExpenseViewModel = viewModel()) {
 
 @Composable
 private fun OverviewScreen(
-    month: YearMonth, expenses: List<Expense>, spent: Double, budget: Double, fraction: Float, byCategory: Map<String, Double>,
+    month: YearMonth, expenses: List<Expense>, spent: Double, previousMonthSpent: Double, budget: Double, fraction: Float, byCategory: Map<String, Double>,
     vm: ExpenseViewModel, onBudget: () -> Unit, onDelete: (Expense) -> Unit, onAll: () -> Unit
 ) {
     val today = LocalDate.now()
@@ -142,6 +143,35 @@ private fun OverviewScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MoneyMetric("Daily average", money(average), Modifier.weight(1f))
                 MoneyMetric("Month-end estimate", money(projection), Modifier.weight(1f))
+            }
+        }
+        item {
+            val difference = spent - previousMonthSpent
+            val comparison = when {
+                previousMonthSpent <= 0.0 && spent <= 0.0 -> "No spending in either month"
+                previousMonthSpent <= 0.0 -> "Spending started this month"
+                difference < 0.0 -> "${money(-difference)} less than last month"
+                difference > 0.0 -> "${money(difference)} more than last month"
+                else -> "Same spending as last month"
+            }
+            Card(
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        if (difference <= 0.0) Icons.Rounded.TrendingDown else Icons.Rounded.TrendingUp,
+                        contentDescription = null,
+                        tint = if (difference <= 0.0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Compared with last month", fontWeight = FontWeight.SemiBold)
+                        Text(comparison, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(money(previousMonthSpent), fontWeight = FontWeight.Bold)
+                }
             }
         }
         item { SectionLabel("Spending by category") }

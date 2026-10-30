@@ -171,8 +171,22 @@ private fun LoanLedger(
 ) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            OutlinedTextField(query, onQuery, modifier = Modifier.fillMaxWidth(), singleLine = true,
-                placeholder = { Text("Search people or notes") }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = RoundedCornerShape(16.dp))
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQuery,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text("Search people or notes") },
+                leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                trailingIcon = {
+                    if (query.isNotBlank()) {
+                        IconButton(onClick = { onQuery("") }) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Clear search")
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(16.dp)
+            )
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -181,7 +195,25 @@ private fun LoanLedger(
                 }
             }
         }
-        item { SectionLabel(if (settled) "Settled records · ${loans.size}" else "Open records · ${loans.size}") }
+        item {
+            val total = loans.sumOf { it.amount }
+            Card(
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(if (settled) "Settled records" else "Open records", fontWeight = FontWeight.SemiBold)
+                        Text("${loans.size} records matching your filters", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(money(total), fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
         if (loans.isEmpty()) {
             item {
                 Column {

@@ -31,6 +31,8 @@ fun ManageScreen(vm: HabitViewModel) {
     var query by remember { mutableStateOf("") }
     var showArchived by remember { mutableStateOf(false) }
 
+    val totalActive = all.count { !it.habit.archived }
+    val totalArchived = all.count { it.habit.archived }
     val matching = all.filter { query.isBlank() || it.habit.name.contains(query, ignoreCase = true) || it.habit.description.contains(query, ignoreCase = true) }
     val active = matching.filter { !it.habit.archived }.sortedBy { it.habit.name.lowercase() }
     val archived = matching.filter { it.habit.archived }.sortedBy { it.habit.name.lowercase() }
@@ -81,9 +83,9 @@ fun ManageScreen(vm: HabitViewModel) {
             item {
                 HeroCard {
                     Text("Manage habits", fontSize = 14.sp, color = Color.White.copy(alpha = 0.85f))
-                    Text("${active.size} active", fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                    Text("${totalActive} active", fontSize = 30.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "${archived.size} archived · edit, reschedule or archive any habit",
+                        "${totalArchived} archived · edit, reschedule or archive any habit",
                         fontSize = 13.sp, color = Color.White.copy(alpha = 0.9f)
                     )
                 }
@@ -95,11 +97,18 @@ fun ManageScreen(vm: HabitViewModel) {
                     placeholder = { Text("Find a habit") },
                     leadingIcon = { Icon(Icons.Rounded.Search, null) },
                     singleLine = true,
+                    trailingIcon = {
+                        if (query.isNotBlank()) {
+                            IconButton(onClick = { query = "" }) {
+                                Icon(Icons.Rounded.Close, contentDescription = "Clear search")
+                            }
+                        }
+                    },
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
-            item { SectionLabel("Active") }
+            item { SectionLabel(if (query.isBlank()) "Active · ${active.size}" else "Matching active · ${active.size}") }
             if (active.isEmpty()) {
                 item { EmptyState(Icons.Rounded.Tune, "Nothing to manage", "Add a habit or pick one from the Library") }
             }
@@ -113,7 +122,7 @@ fun ManageScreen(vm: HabitViewModel) {
             if (archived.isNotEmpty()) {
                 item {
                     TextButton(onClick = { showArchived = !showArchived }) {
-                        Text("Archived · ${archived.size}")
+                        Text(if (query.isBlank()) "Archived · ${archived.size}" else "Matching archived · ${archived.size}")
                         Icon(if (showArchived) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null)
                     }
                 }
