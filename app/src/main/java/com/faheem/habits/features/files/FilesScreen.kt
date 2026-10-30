@@ -5,7 +5,6 @@ import com.faheem.habits.core.ui.*
 import com.faheem.habits.R
 
 
-import android.app.Application
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -42,9 +41,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dagger.hilt.android.lifecycle.HiltViewModel
+import com.faheem.habits.features.files.data.FileRepository
+import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -53,13 +57,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.FileNotFoundException
 
-class FileViewModel(app: Application) : AndroidViewModel(app) {
-    private val dao = AppDatabase.get(app).fileDao()
-    val files: StateFlow<List<FileItem>> = dao.getAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+@HiltViewModel
+class FileViewModel @Inject constructor(
+    private val repository: FileRepository
+) : ViewModel() {
+    val files: StateFlow<List<FileItem>> = repository.files.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     fun add(name: String, uri: String, mime: String) {
-        viewModelScope.launch { dao.insert(FileItem(name = name, uri = uri, mime = mime, addedEpochDay = today())) }
+        viewModelScope.launch { repository.add(name, uri, mime) }
     }
-    fun remove(file: FileItem) { viewModelScope.launch { dao.delete(file) } }
+    fun remove(file: FileItem) { viewModelScope.launch { repository.delete(file) } }
 }
 
 private val badgeColors = listOf(Color(0xFFEF4444), Color(0xFF3B82F6), Color(0xFF10B981), Color(0xFFF59E0B), Color(0xFF8B5CF6), Color(0xFFEC4899))
@@ -76,8 +82,8 @@ private fun fileKind(file: FileItem): FileKind {
 }
 
 @Composable
-fun FilesScreen(vm: FileViewModel = viewModel()) {
-    val files by vm.files.collectAsState()
+fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
+    val files by vm.files.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var query by remember { mutableStateOf("") }
     var kind by remember { mutableStateOf(FileKind.All) }

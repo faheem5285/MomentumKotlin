@@ -5,8 +5,6 @@ import com.faheem.habits.core.ui.*
 import com.faheem.habits.R
 
 
-import android.app.Application
-import android.content.Context
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,9 +23,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dagger.hilt.android.lifecycle.HiltViewModel
+import com.faheem.habits.features.money.data.ExpenseRepository
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -37,32 +40,26 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
-class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
-    private val dao = AppDatabase.get(app).expenseDao()
-    private val prefs = app.getSharedPreferences("momentum", Context.MODE_PRIVATE)
-    val expenses: StateFlow<List<Expense>> = dao.getAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    private fun readMinorUnits(key: String): Long {
-        val stored = prefs.getString("${key}_minor_units", null)?.toLongOrNull()
-        if (stored != null) return stored
-        val legacy = prefs.getString(key, "0")?.toDoubleOrNull()?.let { runCatching { it.toMinorUnits() }.getOrNull() } ?: 0L
-        prefs.edit().putString("${key}_minor_units", legacy.toString()).apply()
-        return legacy
-    }
-    private val _budget = MutableStateFlow(readMinorUnits("budget"))
-    val budget: StateFlow<Long> = _budget
-    fun categoryBudget(category: String) = readMinorUnits("money_limit_${category}") / 100.0
-    fun setCategoryBudget(category: String, value: Double) { prefs.edit().putString("money_limit_${category}_minor_units", value.toMinorUnits().toString()).apply() }
-    fun setBudget(value: Double) { val minor = value.toMinorUnits(); prefs.edit().putString("budget_minor_units", minor.toString()).apply(); _budget.value = minor }
+@HiltViewModel
+class ExpenseViewModel @Inject constructor(
+    private val repository: ExpenseRepository
+) : ViewModel() {
+    val expenses: StateFlow<List<Expense>> = repository.expenses.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val budget: StateFlow<Long> = repository.budgetMinorUnits.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+    fun categoryBudget(category: String): StateFlow<Long> = repository.categoryBudgetMinorUnits(category)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+    fun setCategoryBudget(category: String, value: Double) { viewModelScope.launch { repository.setCategoryBudget(category, value) } }
+    fun setBudget(value: Double) { viewModelScope.launch { repository.setBudget(value) } }
     fun add(title: String, amount: Double, category: String) {
-        viewModelScope.launch { dao.insert(Expense(title = title.trim(), amountMinorUnits = amount.toMinorUnits(), category = category, epochDay = today())) }
+        viewModelScope.launch { repository.add(title, amount, category) }
     }
-    fun remove(expense: Expense) { viewModelScope.launch { dao.delete(expense) } }
+    fun remove(expense: Expense) { viewModelScope.launch { repository.delete(expense) } }
 }
 
 @Composable
-fun ExpensesScreen(vm: ExpenseViewModel = viewModel()) {
-    val expenses by vm.expenses.collectAsState()
-    val budgetMinorUnits by vm.budget.collectAsState()
+fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel()) {
+    val expenses by vm.expenses.collectAsStateWithLifecycle()
+    val budgetMinorUnits by vm.budget.collectAsStateWithLifecycle()
     val budget = budgetMinorUnits / 100.0
     var tab by remember { mutableIntStateOf(0) }
     var month by remember { mutableStateOf(YearMonth.now()) }
@@ -196,7 +193,10 @@ private fun OverviewScreen(
         }
         item { SectionLabel("Spending by category") }
         if (byCategory.isEmpty()) item { EmptyState(Icons.Rounded.PieChart, "No spending this month", "Add an expense to see where your money goes") }
-        items(byCategory.entries.sortedByDescending { it.value }, key = { it.key }) { (name, total) -> CategorySpendRow(name, total, vm.categoryBudget(name)) }
+        items(byCategory.entries.sortedByDescending { it.value }, key = { it.key }) { (name, total) ->
+            val limit by vm.categoryBudget(name).collectAsStateWithLifecycle()
+            CategorySpendRow(name, total, limit / 100.0)
+        }
         item { SectionLabel("Recent activity") }
         if (expenses.isEmpty()) item { EmptyState(Icons.Rounded.AccountBalanceWallet, "No expenses yet", "Add your first expense to get started") }
         items(expenses.take(5), key = { it.id }) { ExpenseRow(it) { onDelete(it) } }
@@ -239,7 +239,10 @@ private fun BudgetScreen(spent: Double, budget: Double, fraction: Float, byCateg
             }
         }
         item { SectionLabel("Category limits") }
-        items(categories, key = { it.name }) { c -> CategoryBudgetCard(c.name, byCategory[c.name] ?: 0.0, vm.categoryBudget(c.name)) { vm.setCategoryBudget(c.name, it) } }
+        items(categories, key = { it.name }) { c ->
+            val limit by vm.categoryBudget(c.name).collectAsStateWithLifecycle()
+            CategoryBudgetCard(c.name, byCategory[c.name] ?: 0.0, limit / 100.0) { vm.setCategoryBudget(c.name, it) }
+        }
     }
 }
 

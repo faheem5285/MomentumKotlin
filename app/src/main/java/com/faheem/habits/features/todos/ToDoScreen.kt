@@ -6,7 +6,6 @@ import com.faheem.habits.R
 
 
 import android.Manifest
-import android.app.Application
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.pm.PackageManager
@@ -39,9 +38,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import android.content.Context
+import com.faheem.habits.features.todos.data.ToDoRepository
+import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -53,33 +59,33 @@ import java.util.Calendar
 private val todoCategories = listOf("Personal", "Health", "Work", "Errands", "Family", "Other")
 private val priorityLabels = listOf("Low", "Normal", "High", "Urgent")
 
-class ToDoViewModel(app: Application) : AndroidViewModel(app) {
-    private val dao = AppDatabase.get(app).toDoDao()
-    val items = dao.getAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+@HiltViewModel
+class ToDoViewModel @Inject constructor(
+    private val repository: ToDoRepository,
+    @ApplicationContext private val context: Context
+) : ViewModel() {
+    val items = repository.items.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun save(item: ToDoItem) = viewModelScope.launch {
-        val id = if (item.id == 0) dao.insert(item).toInt() else {
-            dao.update(item)
-            item.id
-        }
-        dao.getById(id)?.let { ToDoReminderScheduler.schedule(getApplication(), it) }
+        val id = repository.save(item)
+        repository.getById(id)?.let { ToDoReminderScheduler.schedule(context, it) }
     }
 
     fun toggle(item: ToDoItem) = viewModelScope.launch {
         val changed = item.copy(completed = !item.completed)
-        dao.update(changed)
-        if (changed.completed) ToDoReminderScheduler.cancel(getApplication(), changed.id)
+        repository.save(changed)
+        if (changed.completed) ToDoReminderScheduler.cancel(context, changed.id)
     }
 
     fun delete(item: ToDoItem) = viewModelScope.launch {
-        ToDoReminderScheduler.cancel(getApplication(), item.id)
-        dao.delete(item)
+        ToDoReminderScheduler.cancel(context, item.id)
+        repository.delete(item)
     }
 }
 
 @Composable
-fun ToDoScreen(vm: ToDoViewModel = viewModel()) {
-    val tasks by vm.items.collectAsState()
+fun ToDoScreen(vm: ToDoViewModel = hiltViewModel()) {
+    val tasks by vm.items.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var editing by remember { mutableStateOf<ToDoItem?>(null) }
     var creating by remember { mutableStateOf(false) }

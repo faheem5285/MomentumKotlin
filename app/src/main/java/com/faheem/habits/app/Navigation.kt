@@ -12,12 +12,19 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import com.faheem.habits.core.ui.*
 import com.faheem.habits.features.battery.BatteryScreen
 import com.faheem.habits.features.files.FilesScreen
@@ -43,17 +50,33 @@ fun MomentumNavigationHost(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    AnimatedContent(
-        targetState = destination,
-        modifier = modifier,
-        transitionSpec = {
-            fadeIn(tween(140)) togetherWith fadeOut(tween(100))
-        },
-        label = "momentum_navigation"
-    ) { current ->
-        when (current) {
-            MomentumDestination.Home -> HomeScreen(onOpen = onOpenModule)
-            is MomentumDestination.Module -> ModuleScreen(current.module, onBack)
+    val navController = rememberNavController()
+    LaunchedEffect(destination) {
+        val route = when (destination) {
+            MomentumDestination.Home -> "home"
+            is MomentumDestination.Module -> "module/${destination.module.name.lowercase()}"
+        }
+        if (navController.currentDestination?.route != route) {
+            navController.navigate(route) {
+                popUpTo("home") { inclusive = false }
+                launchSingleTop = true
+            }
+        }
+    }
+    NavHost(navController, startDestination = "home", modifier = modifier) {
+        composable("home") { HomeScreen(onOpen = onOpenModule) }
+        composable(
+            route = "module/{module}",
+            arguments = listOf(navArgument("module") { type = NavType.StringType }),
+            deepLinks = listOf(navDeepLink { uriPattern = "momentum://module/{module}" })
+        ) { entry ->
+            val module = entry.arguments?.getString("module")
+                ?.let { name -> AppModule.entries.firstOrNull { it.name.equals(name, true) } }
+            if (module == null) {
+                LaunchedEffect(Unit) { navController.popBackStack() }
+            } else {
+                ModuleScreen(module, onBack)
+            }
         }
     }
 }
