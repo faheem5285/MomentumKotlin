@@ -24,6 +24,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.faheem.habits.core.notifications.MomentumReminderScheduler
 import com.faheem.habits.core.ui.MomentumTheme
 import com.faheem.habits.features.battery.handleAutomaticBatteryPowerEvent
@@ -32,6 +34,7 @@ import com.faheem.habits.core.data.supabase.SupabaseAuthApi
 import com.faheem.habits.core.data.supabase.SessionRestoreResult
 import com.faheem.habits.features.settings.PermissionsSetupScreen
 
+@dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,18 +48,14 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MomentumApp() {
+fun MomentumApp(settingsViewModel: com.faheem.habits.features.settings.SettingsViewModel = hiltViewModel()) {
     val context = LocalContext.current
     var destination by remember { mutableStateOf<MomentumDestination>(MomentumDestination.Home) }
     var isAuthenticated by remember { mutableStateOf(false) }
     var isRestoringSession by remember { mutableStateOf(true) }
     var authNotice by remember { mutableStateOf<String?>(null) }
-    var showPermissionSetup by remember {
-        mutableStateOf(
-            !context.getSharedPreferences("momentum_app_settings", android.content.Context.MODE_PRIVATE)
-                .getBoolean("permission_setup_seen", false)
-        )
-    }
+    val permissionSetupSeen by settingsViewModel.permissionSetupSeen.collectAsStateWithLifecycle()
+    val showPermissionSetup = !permissionSetupSeen
     LaunchedEffect(context) {
         when (SupabaseAuthApi.restoreSession(context.applicationContext)) {
             SessionRestoreResult.AUTHENTICATED -> isAuthenticated = true
@@ -86,9 +85,7 @@ fun MomentumApp() {
             if (showPermissionSetup) {
                 PermissionsSetupScreen(
                     onBack = {
-                        context.getSharedPreferences("momentum_app_settings", android.content.Context.MODE_PRIVATE)
-                            .edit().putBoolean("permission_setup_seen", true).apply()
-                        showPermissionSetup = false
+                        settingsViewModel.markPermissionSetupSeen()
                     },
                     modifier = Modifier.padding(padding)
                 )

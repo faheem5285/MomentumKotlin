@@ -1,0 +1,349 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <CurrentIssues>
+    <ID>ComplexCondition:NotificationSystem.kt$HabitReminderScheduler$!MomentumNotificationSettings.masterEnabled(context) || !MomentumNotificationSettings.isEnabled(context, "habits") || !reminder.enabled || (reminder.daysMask == 0 &amp;&amp; reminder.dateEpochDay == null)</ID>
+    <ID>ComplexCondition:NotificationSystem.kt$HabitReminderScheduler$!habit.archived &amp;&amp; reminder.enabled &amp;&amp; MomentumNotificationSettings.masterEnabled(context) &amp;&amp; MomentumNotificationSettings.isEnabled(context, "habits") &amp;&amp; MomentumNotificationSettings.notificationsAllowed(context)</ID>
+    <ID>ComplexCondition:NotificationSystem.kt$ToDoReminderScheduler$item.completed || item.reminderHour == null || item.reminderMinute == null || !MomentumNotificationSettings.masterEnabled(context) || !MomentumNotificationSettings.notificationsAllowed(context)</ID>
+    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$SupabaseAuthApi.AuthResponse$val access_token: String? = null</ID>
+    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$SupabaseAuthApi.AuthResponse$val expires_in: Long? = null</ID>
+    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$SupabaseAuthApi.AuthResponse$val refresh_token: String? = null</ID>
+    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$SupabaseAuthApi.AuthResponse$val token_type: String? = null</ID>
+    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$SupabaseAuthApi.RefreshCredentials$val refresh_token: String</ID>
+    <ID>CyclomaticComplexMethod:AppSettingsScreen.kt$@Composable fun AppSettingsScreen()</ID>
+    <ID>CyclomaticComplexMethod:BatteryScreen.kt$@Composable fun BatteryOrb(percent: Float, charging: Boolean, style: String, modifier: Modifier = Modifier, animate: Boolean = charging)</ID>
+    <ID>CyclomaticComplexMethod:BatteryScreen.kt$@Composable private fun LazyBatteryContent( reading: BatteryReading, style: String, styles: List&lt;String&gt;, autoShow: Boolean, backgroundListener: Boolean, overlayAllowed: Boolean, notificationsAllowed: Boolean, diagnostic: BatteryDiagnostic, onRefreshDiagnostics: () -&gt; Unit, onCopyDiagnostics: () -&gt; Unit, onStyle: (String) -&gt; Unit, onAutoShow: (Boolean) -&gt; Unit, onBackgroundListener: (Boolean) -&gt; Unit, onOverlayPermission: () -&gt; Unit, onNotificationPermission: () -&gt; Unit, onPreview: () -&gt; Unit, onPopupPreview: () -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:BatteryScreen.kt$private fun batteryStyleDescription(style: String): String</ID>
+    <ID>CyclomaticComplexMethod:ExpensesScreen.kt$@Composable fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel())</ID>
+    <ID>CyclomaticComplexMethod:ExpensesScreen.kt$@Composable private fun OverviewScreen( month: YearMonth, expenses: List&lt;Expense&gt;, spent: Double, previousMonthSpent: Double, budget: Double, fraction: Float, byCategory: Map&lt;String, Double&gt;, vm: ExpenseViewModel, onBudget: () -&gt; Unit, onDelete: (Expense) -&gt; Unit, onAll: () -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:FilesScreen.kt$@Composable fun FilesScreen(vm: FileViewModel = hiltViewModel())</ID>
+    <ID>CyclomaticComplexMethod:FilesScreen.kt$@Composable private fun TextFilePreview(file: FileItem, onSaveCopy: (String) -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:HabitEditor.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun HabitEditorSheet( initial: Habit?, onDismiss: () -&gt; Unit, onSave: (Habit, List&lt;HabitReminderDraft&gt;) -&gt; Unit, initialReminders: List&lt;HabitReminder&gt; = emptyList() )</ID>
+    <ID>CyclomaticComplexMethod:HabitLogic.kt$fun computeStreaks(days: Set&lt;Long&gt;, mask: Int, today: Long): StreakInfo</ID>
+    <ID>CyclomaticComplexMethod:HabitReminderManager.kt$@Composable fun HabitReminderManagerSheet( habit: Habit, reminders: List&lt;HabitReminder&gt;, onDismiss: () -&gt; Unit, onAdd: (Int, Int, Int) -&gt; Unit, onUpdate: (HabitReminder) -&gt; Unit, onDelete: (HabitReminder) -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:HabitsInsightsScreen.kt$@Composable fun InsightsScreen(vm: HabitViewModel)</ID>
+    <ID>CyclomaticComplexMethod:HabitsManageScreen.kt$@Composable fun ManageScreen(vm: HabitViewModel)</ID>
+    <ID>CyclomaticComplexMethod:HabitsToday.kt$@Composable fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:HomeScreen.kt$@Composable fun HomeScreen(onOpen: (AppModule) -&gt; Unit, vm: HomeViewModel = viewModel())</ID>
+    <ID>CyclomaticComplexMethod:LoansScreen.kt$@Composable fun LoansScreen(vm: LoanViewModel = viewModel())</ID>
+    <ID>CyclomaticComplexMethod:MomentumBackup.kt$MomentumBackup$private suspend fun restoreRoot(context: Context, root: JSONObject, replace: Boolean, db: AppDatabase): String</ID>
+    <ID>CyclomaticComplexMethod:NetworkScreen.kt$@Composable fun NetworkScreen()</ID>
+    <ID>CyclomaticComplexMethod:PermissionsSetupScreen.kt$@Composable fun PermissionsSetupScreen(onBack: () -&gt; Unit, modifier: Modifier = Modifier)</ID>
+    <ID>CyclomaticComplexMethod:ScreenTimeScreen.kt$@Composable private fun ScreenOverview( usage: List&lt;AppUsage&gt;, granted: Boolean, screenLimit: Int, reelCount: Int, accessibilityOn: Boolean, onUsageSettings: () -&gt; Unit, onSetLimit: () -&gt; Unit, onOpenReels: () -&gt; Unit, onRefresh: () -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:ToDoScreen.kt$@Composable fun ToDoScreen(vm: ToDoViewModel = hiltViewModel())</ID>
+    <ID>CyclomaticComplexMethod:ToDoScreen.kt$@Composable private fun ToDoCard(task: ToDoItem, onClick: () -&gt; Unit, onToggle: () -&gt; Unit, onDelete: () -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:ToDoScreen.kt$@Composable private fun ToDoEditorSheet(initial: ToDoItem?, onDismiss: () -&gt; Unit, onSave: (ToDoItem) -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:VaultScreen.kt$@Composable fun VaultScreen(vm: VaultViewModel = viewModel())</ID>
+    <ID>CyclomaticComplexMethod:VaultScreen.kt$@Composable private fun VaultEntryEditor(initial: VaultListItem?, onDismiss: () -&gt; Unit, onSave: (VaultSecret) -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:VaultScreen.kt$@Composable private fun VaultGate(configured: Boolean, busy: Boolean, error: String?, onSubmit: (String) -&gt; Unit)</ID>
+    <ID>EmptyElseBlock:MomentumBackup.kt$MomentumBackup$if(n&lt;0) break</ID>
+    <ID>ForEachOnRange:HabitsToday.kt$t - 13..t</ID>
+    <ID>ForEachOnRange:HabitsToday.kt$todayDay - 6..todayDay</ID>
+    <ID>ForEachOnRange:ToDoScreen.kt$0 until totalCells step 7</ID>
+    <ID>ForEachOnRange:ToDoScreen.kt$rowStart until rowStart + 7</ID>
+    <ID>FunctionNaming:AppSettingsScreen.kt$@Composable fun AppSettingsScreen()</ID>
+    <ID>FunctionNaming:AuthScreen.kt$@Composable fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:BatteryChargingActivity.kt$@Composable private fun BatteryChargingAnimationScreen(preview: Boolean, onClose: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:BatteryScreen.kt$@Composable fun BatteryOrb(percent: Float, charging: Boolean, style: String, modifier: Modifier = Modifier, animate: Boolean = charging)</ID>
+    <ID>FunctionNaming:BatteryScreen.kt$@Composable fun BatteryScreen()</ID>
+    <ID>FunctionNaming:BatteryScreen.kt$@Composable internal fun AnimatedBatteryPercent( percent: Float, modifier: Modifier = Modifier, fontSize: androidx.compose.ui.unit.TextUnit = 54.sp, fontWeight: FontWeight = FontWeight.Bold, color: Color = Color.White )</ID>
+    <ID>FunctionNaming:BatteryScreen.kt$@Composable private fun LazyBatteryContent( reading: BatteryReading, style: String, styles: List&lt;String&gt;, autoShow: Boolean, backgroundListener: Boolean, overlayAllowed: Boolean, notificationsAllowed: Boolean, diagnostic: BatteryDiagnostic, onRefreshDiagnostics: () -&gt; Unit, onCopyDiagnostics: () -&gt; Unit, onStyle: (String) -&gt; Unit, onAutoShow: (Boolean) -&gt; Unit, onBackgroundListener: (Boolean) -&gt; Unit, onOverlayPermission: () -&gt; Unit, onNotificationPermission: () -&gt; Unit, onPreview: () -&gt; Unit, onPopupPreview: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:ExpensesScreen.kt$@Composable fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel())</ID>
+    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun ActivityScreen( expenses: List&lt;Expense&gt;, query: String, onQuery: (String) -&gt; Unit, category: String, onCategory: (String) -&gt; Unit, onDelete: (Expense) -&gt; Unit )</ID>
+    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun AddExpenseSheet(onDismiss: () -&gt; Unit, onSave: (String, Double, String) -&gt; Unit)</ID>
+    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun BudgetScreen(spent: Double, budget: Double, fraction: Float, byCategory: Map&lt;String, Double&gt;, vm: ExpenseViewModel, onBudget: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun BudgetSheet(value: Double, onDismiss: () -&gt; Unit, onSave: (Double) -&gt; Unit)</ID>
+    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun CategoryBudgetCard(name: String, spent: Double, limit: Double, onSave: (Double) -&gt; Unit)</ID>
+    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun CategorySpendRow(name: String, total: Double, limit: Double)</ID>
+    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun ExpenseRow(expense: Expense, onDelete: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun MoneyMetric(label: String, value: String, modifier: Modifier)</ID>
+    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun OverviewScreen( month: YearMonth, expenses: List&lt;Expense&gt;, spent: Double, previousMonthSpent: Double, budget: Double, fraction: Float, byCategory: Map&lt;String, Double&gt;, vm: ExpenseViewModel, onBudget: () -&gt; Unit, onDelete: (Expense) -&gt; Unit, onAll: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:FilesScreen.kt$@Composable fun FilesScreen(vm: FileViewModel = hiltViewModel())</ID>
+    <ID>FunctionNaming:FilesScreen.kt$@Composable private fun ImageFilePreview(file: FileItem)</ID>
+    <ID>FunctionNaming:FilesScreen.kt$@Composable private fun PdfFilePreview(file: FileItem)</ID>
+    <ID>FunctionNaming:FilesScreen.kt$@Composable private fun PreviewMessage(title: String, message: String)</ID>
+    <ID>FunctionNaming:FilesScreen.kt$@Composable private fun TextFilePreview(file: FileItem, onSaveCopy: (String) -&gt; Unit)</ID>
+    <ID>FunctionNaming:FilesScreen.kt$@Composable private fun UnsupportedFilePreview(file: FileItem)</ID>
+    <ID>FunctionNaming:FilesScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun FilePreviewSheet(file: FileItem, onDismiss: () -&gt; Unit, onSaveCopy: (String) -&gt; Unit)</ID>
+    <ID>FunctionNaming:HabitEditor.kt$@Composable private fun DayToggle(letter: String, selected: Boolean, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:HabitEditor.kt$@Composable private fun EditorLabel(text: String)</ID>
+    <ID>FunctionNaming:HabitEditor.kt$@Composable private fun HabitReminderDraftCard( index: Int, reminder: HabitReminderDraft, onChange: (HabitReminderDraft) -&gt; Unit, onDelete: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:HabitEditor.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun HabitEditorSheet( initial: Habit?, onDismiss: () -&gt; Unit, onSave: (Habit, List&lt;HabitReminderDraft&gt;) -&gt; Unit, initialReminders: List&lt;HabitReminder&gt; = emptyList() )</ID>
+    <ID>FunctionNaming:HabitReminderManager.kt$@Composable fun HabitReminderManagerSheet( habit: Habit, reminders: List&lt;HabitReminder&gt;, onDismiss: () -&gt; Unit, onAdd: (Int, Int, Int) -&gt; Unit, onUpdate: (HabitReminder) -&gt; Unit, onDelete: (HabitReminder) -&gt; Unit )</ID>
+    <ID>FunctionNaming:HabitReminderManager.kt$@Composable private fun ReminderTimeCard( context: Context, reminder: HabitReminder, days: List&lt;Pair&lt;String, Int&gt;&gt;, onUpdate: (HabitReminder) -&gt; Unit, onDelete: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:HabitsInsightsScreen.kt$@Composable fun InsightsScreen(vm: HabitViewModel)</ID>
+    <ID>FunctionNaming:HabitsInsightsScreen.kt$@Composable private fun AchievementCard(a: Achievement, modifier: Modifier)</ID>
+    <ID>FunctionNaming:HabitsInsightsScreen.kt$@Composable private fun StatCard(icon: ImageVector, color: Color, value: String, label: String, modifier: Modifier)</ID>
+    <ID>FunctionNaming:HabitsManageScreen.kt$@Composable fun ManageScreen(vm: HabitViewModel)</ID>
+    <ID>FunctionNaming:HabitsManageScreen.kt$@Composable private fun ManageCard(ui: HabitUi, modifier: Modifier, actions: @Composable RowScope.() -&gt; Unit)</ID>
+    <ID>FunctionNaming:HabitsScreen.kt$@Composable fun HabitScreen(vm: HabitViewModel = viewModel())</ID>
+    <ID>FunctionNaming:HabitsTemplatesScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun TemplatesScreen(vm: HabitViewModel)</ID>
+    <ID>FunctionNaming:HabitsToday.kt$@Composable fun HabitDetailSheet(ui: HabitUi, onDismiss: () -&gt; Unit, onEdit: () -&gt; Unit, onArchive: () -&gt; Unit, onManageReminders: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:HabitsToday.kt$@Composable fun StreakChip(count: Int)</ID>
+    <ID>FunctionNaming:HabitsToday.kt$@Composable fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:HabitsToday.kt$@Composable private fun DayChip(day: Long, selected: Boolean, complete: Boolean, modifier: Modifier, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:HabitsToday.kt$@Composable private fun HabitRow( ui: HabitUi, done: Boolean, onToggle: () -&gt; Unit, onOpen: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>FunctionNaming:HabitsToday.kt$@Composable private fun MiniStat(label: String, value: String, modifier: Modifier)</ID>
+    <ID>FunctionNaming:HomeScreen.kt$@Composable fun HomeScreen(onOpen: (AppModule) -&gt; Unit, vm: HomeViewModel = viewModel())</ID>
+    <ID>FunctionNaming:HomeScreen.kt$@Composable private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:HomeScreen.kt$@Composable private fun TodaySummaryCard(title: String, value: String, detail: String, icon: ImageVector, tint: Color, modifier: Modifier = Modifier)</ID>
+    <ID>FunctionNaming:LoansScreen.kt$@Composable fun LoansScreen(vm: LoanViewModel = viewModel())</ID>
+    <ID>FunctionNaming:LoansScreen.kt$@Composable private fun BalancePill(label: String, value: String, color: Color, modifier: Modifier)</ID>
+    <ID>FunctionNaming:LoansScreen.kt$@Composable private fun LoanDetailLine(label: String, value: String)</ID>
+    <ID>FunctionNaming:LoansScreen.kt$@Composable private fun LoanDetailSheet(loan: Loan, onDismiss: () -&gt; Unit, onSettle: () -&gt; Unit, onEdit: () -&gt; Unit, onDelete: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:LoansScreen.kt$@Composable private fun LoanEditorSheet(initial: Loan?, onDismiss: () -&gt; Unit, onSave: (String, Double, Boolean, String) -&gt; Unit)</ID>
+    <ID>FunctionNaming:LoansScreen.kt$@Composable private fun LoanLedger( loans: List&lt;Loan&gt;, query: String, onQuery: (String) -&gt; Unit, direction: Int, onDirection: (Int) -&gt; Unit, settled: Boolean, onSelect: (Loan) -&gt; Unit, onEmptyAdd: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:LoansScreen.kt$@Composable private fun LoanMetric(label: String, value: String, modifier: Modifier)</ID>
+    <ID>FunctionNaming:LoansScreen.kt$@Composable private fun LoanOverview( openLoans: List&lt;Loan&gt;, settledCount: Int, toReceive: Long, toPay: Long, net: Long, onOpenLedger: () -&gt; Unit, onSelect: (Loan) -&gt; Unit )</ID>
+    <ID>FunctionNaming:LoansScreen.kt$@Composable private fun LoanRow(loan: Loan, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:MainActivity.kt$@Composable fun MomentumApp(settingsViewModel: com.faheem.habits.features.settings.SettingsViewModel = hiltViewModel())</ID>
+    <ID>FunctionNaming:Navigation.kt$@Composable fun MomentumNavigationHost( destination: MomentumDestination, onOpenModule: (AppModule) -&gt; Unit, onBack: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
+    <ID>FunctionNaming:Navigation.kt$@Composable private fun ModuleScreen(module: AppModule, onBack: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:NetworkScreen.kt$@Composable fun NetworkScreen()</ID>
+    <ID>FunctionNaming:NetworkScreen.kt$@Composable private fun NetworkMetricCard(title: String, value: String, detail: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier = Modifier)</ID>
+    <ID>FunctionNaming:NetworkScreen.kt$@Composable private fun NetworkPill(text: String)</ID>
+    <ID>FunctionNaming:PermissionsSetupScreen.kt$@Composable fun PermissionsSetupScreen(onBack: () -&gt; Unit, modifier: Modifier = Modifier)</ID>
+    <ID>FunctionNaming:PermissionsSetupScreen.kt$@Composable private fun PermissionSetupCard(item: SetupPermission)</ID>
+    <ID>FunctionNaming:ReminderSettingsScreen.kt$@Composable fun ReminderSettingsScreen(onBack: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ReminderSettingsScreen.kt$@Composable private fun PermissionCard(text: String, button: String, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ReminderSettingsScreen.kt$@Composable private fun ReminderCard(kind: ReminderKind, context: Context, enabled: Boolean, onChanged: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ScreenTimeScreen.kt$@Composable fun ScreenTimeScreen()</ID>
+    <ID>FunctionNaming:ScreenTimeScreen.kt$@Composable private fun NumberLimitSheet(title: String, current: Int, helper: String, onSave: (Int) -&gt; Unit, onDismiss: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ScreenTimeScreen.kt$@Composable private fun PermissionInfoCard(title: String, description: String, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ScreenTimeScreen.kt$@Composable private fun ReelsCounterScreen(count: Int, limit: Int, enabled: Boolean, onSettings: () -&gt; Unit, onSetLimit: () -&gt; Unit, onRefresh: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ScreenTimeScreen.kt$@Composable private fun ScreenOverview( usage: List&lt;AppUsage&gt;, granted: Boolean, screenLimit: Int, reelCount: Int, accessibilityOn: Boolean, onUsageSettings: () -&gt; Unit, onSetLimit: () -&gt; Unit, onOpenReels: () -&gt; Unit, onRefresh: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:ScreenTimeScreen.kt$@Composable private fun UsageAppsScreen(usage: List&lt;AppUsage&gt;, granted: Boolean, range: UsageRange, onRange: (UsageRange) -&gt; Unit, onUsageSettings: () -&gt; Unit, onRefresh: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ScreenTimeScreen.kt$@Composable private fun UsageRow(app: AppUsage, maxMin: Long)</ID>
+    <ID>FunctionNaming:Theme.kt$@Composable fun MomentumTheme(content: @Composable () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ToDoScreen.kt$@Composable fun ToDoScreen(vm: ToDoViewModel = hiltViewModel())</ID>
+    <ID>FunctionNaming:ToDoScreen.kt$@Composable private fun CalendarAgenda( month: YearMonth, selectedDate: LocalDate, tasks: List&lt;ToDoItem&gt;, onPrevious: () -&gt; Unit, onNext: () -&gt; Unit, onSelect: (LocalDate) -&gt; Unit, onEdit: (ToDoItem) -&gt; Unit, onToggle: (ToDoItem) -&gt; Unit, onDelete: (ToDoItem) -&gt; Unit )</ID>
+    <ID>FunctionNaming:ToDoScreen.kt$@Composable private fun TaskList(tasks: List&lt;ToDoItem&gt;, onEdit: (ToDoItem) -&gt; Unit, onToggle: (ToDoItem) -&gt; Unit, onDelete: (ToDoItem) -&gt; Unit)</ID>
+    <ID>FunctionNaming:ToDoScreen.kt$@Composable private fun ToDoCard(task: ToDoItem, onClick: () -&gt; Unit, onToggle: () -&gt; Unit, onDelete: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ToDoScreen.kt$@Composable private fun ToDoEditorSheet(initial: ToDoItem?, onDismiss: () -&gt; Unit, onSave: (ToDoItem) -&gt; Unit)</ID>
+    <ID>FunctionNaming:Ui.kt$@Composable fun BigButton(text: String, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:Ui.kt$@Composable fun EmptyState(icon: ImageVector, title: String, subtitle: String)</ID>
+    <ID>FunctionNaming:Ui.kt$@Composable fun HeroCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -&gt; Unit)</ID>
+    <ID>FunctionNaming:Ui.kt$@Composable fun HeroRefreshButton(onClick: () -&gt; Unit, description: String = "Refresh")</ID>
+    <ID>FunctionNaming:Ui.kt$@Composable fun IconBubble(icon: ImageVector, color: Color, size: Dp = 44.dp)</ID>
+    <ID>FunctionNaming:Ui.kt$@Composable fun ProgressBar( fraction: Float, color: Color, track: Color, modifier: Modifier = Modifier, height: Dp = 8.dp )</ID>
+    <ID>FunctionNaming:Ui.kt$@Composable fun ProgressRing(progress: Float, label: String, modifier: Modifier = Modifier)</ID>
+    <ID>FunctionNaming:Ui.kt$@Composable fun SectionLabel(text: String)</ID>
+    <ID>FunctionNaming:Ui.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun FormSheet(title: String, onDismiss: () -&gt; Unit, content: @Composable ColumnScope.() -&gt; Unit)</ID>
+    <ID>FunctionNaming:VaultScreen.kt$@Composable fun VaultScreen(vm: VaultViewModel = viewModel())</ID>
+    <ID>FunctionNaming:VaultScreen.kt$@Composable private fun VaultDetailSheet(item: VaultListItem, onDismiss: () -&gt; Unit, onEdit: () -&gt; Unit, onDelete: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:VaultScreen.kt$@Composable private fun VaultEntryEditor(initial: VaultListItem?, onDismiss: () -&gt; Unit, onSave: (VaultSecret) -&gt; Unit)</ID>
+    <ID>FunctionNaming:VaultScreen.kt$@Composable private fun VaultGate(configured: Boolean, busy: Boolean, error: String?, onSubmit: (String) -&gt; Unit)</ID>
+    <ID>FunctionNaming:VaultScreen.kt$@Composable private fun VaultHome(items: List&lt;VaultListItem&gt;, unreadable: Int, onLock: () -&gt; Unit, onAdd: () -&gt; Unit, onSelect: (VaultListItem) -&gt; Unit, onExport: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:VaultScreen.kt$@Composable private fun VaultItemCard(item: VaultListItem, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:VaultScreen.kt$@Composable private fun VaultValue(label: String, value: String, onCopy: () -&gt; Unit)</ID>
+    <ID>FunctionOnlyReturningConstant:NetworkIndicatorService.kt$NetworkIndicatorService.Companion$fun currentSpeed(context: Context): String</ID>
+    <ID>ImplicitDefaultLocale:ToDoScreen.kt$String.format("%02d:%02d", reminderHour, reminderMinute)</ID>
+    <ID>InvalidPackageDeclaration:ReminderTimeCalculatorTest.kt$package com.faheem.habits</ID>
+    <ID>LongParameterList:BatteryScreen.kt$( reading: BatteryReading, style: String, styles: List&lt;String&gt;, autoShow: Boolean, backgroundListener: Boolean, overlayAllowed: Boolean, notificationsAllowed: Boolean, diagnostic: BatteryDiagnostic, onRefreshDiagnostics: () -&gt; Unit, onCopyDiagnostics: () -&gt; Unit, onStyle: (String) -&gt; Unit, onAutoShow: (Boolean) -&gt; Unit, onBackgroundListener: (Boolean) -&gt; Unit, onOverlayPermission: () -&gt; Unit, onNotificationPermission: () -&gt; Unit, onPreview: () -&gt; Unit, onPopupPreview: () -&gt; Unit )</ID>
+    <ID>LongParameterList:ExpensesScreen.kt$( expenses: List&lt;Expense&gt;, query: String, onQuery: (String) -&gt; Unit, category: String, onCategory: (String) -&gt; Unit, onDelete: (Expense) -&gt; Unit )</ID>
+    <ID>LongParameterList:ExpensesScreen.kt$( month: YearMonth, expenses: List&lt;Expense&gt;, spent: Double, previousMonthSpent: Double, budget: Double, fraction: Float, byCategory: Map&lt;String, Double&gt;, vm: ExpenseViewModel, onBudget: () -&gt; Unit, onDelete: (Expense) -&gt; Unit, onAll: () -&gt; Unit )</ID>
+    <ID>LongParameterList:ExpensesScreen.kt$(spent: Double, budget: Double, fraction: Float, byCategory: Map&lt;String, Double&gt;, vm: ExpenseViewModel, onBudget: () -&gt; Unit)</ID>
+    <ID>LongParameterList:HabitReminderManager.kt$( habit: Habit, reminders: List&lt;HabitReminder&gt;, onDismiss: () -&gt; Unit, onAdd: (Int, Int, Int) -&gt; Unit, onUpdate: (HabitReminder) -&gt; Unit, onDelete: (HabitReminder) -&gt; Unit )</ID>
+    <ID>LongParameterList:HabitTemplates.kt$(category: String, name: String, what: String, icon: String, time: Int, days: Int)</ID>
+    <ID>LongParameterList:HomeScreen.kt$(title: String, value: String, detail: String, icon: ImageVector, tint: Color, modifier: Modifier = Modifier)</ID>
+    <ID>LongParameterList:LoansScreen.kt$( loans: List&lt;Loan&gt;, query: String, onQuery: (String) -&gt; Unit, direction: Int, onDirection: (Int) -&gt; Unit, settled: Boolean, onSelect: (Loan) -&gt; Unit, onEmptyAdd: () -&gt; Unit )</ID>
+    <ID>LongParameterList:LoansScreen.kt$( openLoans: List&lt;Loan&gt;, settledCount: Int, toReceive: Long, toPay: Long, net: Long, onOpenLedger: () -&gt; Unit, onSelect: (Loan) -&gt; Unit )</ID>
+    <ID>LongParameterList:ScreenTimeScreen.kt$( usage: List&lt;AppUsage&gt;, granted: Boolean, screenLimit: Int, reelCount: Int, accessibilityOn: Boolean, onUsageSettings: () -&gt; Unit, onSetLimit: () -&gt; Unit, onOpenReels: () -&gt; Unit, onRefresh: () -&gt; Unit )</ID>
+    <ID>LongParameterList:ScreenTimeScreen.kt$(count: Int, limit: Int, enabled: Boolean, onSettings: () -&gt; Unit, onSetLimit: () -&gt; Unit, onRefresh: () -&gt; Unit)</ID>
+    <ID>LongParameterList:ScreenTimeScreen.kt$(usage: List&lt;AppUsage&gt;, granted: Boolean, range: UsageRange, onRange: (UsageRange) -&gt; Unit, onUsageSettings: () -&gt; Unit, onRefresh: () -&gt; Unit)</ID>
+    <ID>LongParameterList:ToDoScreen.kt$( month: YearMonth, selectedDate: LocalDate, tasks: List&lt;ToDoItem&gt;, onPrevious: () -&gt; Unit, onNext: () -&gt; Unit, onSelect: (LocalDate) -&gt; Unit, onEdit: (ToDoItem) -&gt; Unit, onToggle: (ToDoItem) -&gt; Unit, onDelete: (ToDoItem) -&gt; Unit )</ID>
+    <ID>LongParameterList:VaultScreen.kt$(items: List&lt;VaultListItem&gt;, unreadable: Int, onLock: () -&gt; Unit, onAdd: () -&gt; Unit, onSelect: (VaultListItem) -&gt; Unit, onExport: () -&gt; Unit)</ID>
+    <ID>LoopWithTooManyJumpStatements:MomentumBackup.kt$MomentumBackup$for</ID>
+    <ID>LoopWithTooManyJumpStatements:WeeklyBackupWorker.kt$WeeklyBackupWorker$while</ID>
+    <ID>MatchingDeclarationName:ExpensesScreen.kt$ExpenseViewModel : ViewModel</ID>
+    <ID>MatchingDeclarationName:FilesScreen.kt$FileViewModel : ViewModel</ID>
+    <ID>MatchingDeclarationName:HabitTemplates.kt$HabitTemplate</ID>
+    <ID>MatchingDeclarationName:LoansScreen.kt$LoanViewModel : AndroidViewModel</ID>
+    <ID>MatchingDeclarationName:Navigation.kt$MomentumDestination</ID>
+    <ID>MatchingDeclarationName:ScreenTimeScreen.kt$AppUsage</ID>
+    <ID>MatchingDeclarationName:VaultScreen.kt$VaultViewModel : AndroidViewModel</ID>
+    <ID>NestedBlockDepth:Data.kt$AppDatabase.Companion.&lt;no name provided&gt;$override fun migrate(db: SupportSQLiteDatabase)</ID>
+    <ID>NestedBlockDepth:FilesScreen.kt$private fun renderPdfPage(context: android.content.Context, uri: Uri, index: Int): PdfPage?</ID>
+    <ID>PackageNaming:InstagramScrollCounterService.kt$package com.faheem.habits.features.screen_time</ID>
+    <ID>PackageNaming:ScreenTimeScreen.kt$package com.faheem.habits.features.screen_time</ID>
+    <ID>ReturnCount:BatteryChargeOverlay.kt$private fun postChargingNotification(context: Context)</ID>
+    <ID>ReturnCount:FilesScreen.kt$private fun renderPdfPage(context: android.content.Context, uri: Uri, index: Int): PdfPage?</ID>
+    <ID>ReturnCount:HabitLogic.kt$fun computeStreaks(days: Set&lt;Long&gt;, mask: Int, today: Long): StreakInfo</ID>
+    <ID>ReturnCount:InstagramScrollCounterService.kt$InstagramScrollCounterService$override fun onAccessibilityEvent(event: AccessibilityEvent?)</ID>
+    <ID>ReturnCount:NetworkScreen.kt$private fun networkCountry(context: Context): Pair&lt;String, String&gt;</ID>
+    <ID>ReturnCount:ReminderTimeCalculator.kt$ReminderTimeCalculator$fun nextHabit(reminder: HabitReminder, now: ZonedDateTime): ZonedDateTime?</ID>
+    <ID>ReturnCount:ReminderTimeCalculator.kt$ReminderTimeCalculator$fun nextTodo(item: ToDoItem, now: ZonedDateTime): ZonedDateTime?</ID>
+    <ID>SpreadOperator:Data.kt$AppDatabase.Companion.&lt;no name provided&gt;$(UUID.randomUUID().toString(), now, *args)</ID>
+    <ID>TooGenericExceptionCaught:AppSettingsScreen.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:AuthScreen.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:BatteryChargeOverlay.kt$ChargeAnimationOverlay$error: Throwable</ID>
+    <ID>TooGenericExceptionCaught:BatteryChargingMonitorService.kt$BatteryChargingMonitorService$error: Throwable</ID>
+    <ID>TooGenericExceptionCaught:BatteryScreen.kt$error: Throwable</ID>
+    <ID>TooGenericExceptionCaught:FilesScreen.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:VaultScreen.kt$e: Exception</ID>
+    <ID>TooManyFunctions:Data.kt$HabitDao</ID>
+    <ID>TooManyFunctions:MomentumBackup.kt$MomentumBackup</ID>
+    <ID>TooManyFunctions:NotificationSystem.kt$MomentumNotificationSettings</ID>
+    <ID>TooManyFunctions:ScreenTimeScreen.kt$com.faheem.habits.features.screen_time.ScreenTimeScreen.kt</ID>
+    <ID>UnusedParameter:BatteryChargeOverlay.kt$ChargeAnimationOverlay$context: Context</ID>
+    <ID>UnusedParameter:LoansScreen.kt$color: Color</ID>
+    <ID>UnusedParameter:NetworkIndicatorService.kt$NetworkIndicatorService.Companion$context: Context</ID>
+    <ID>UseCheckOrError:FilesScreen.kt$throw IllegalStateException("No output stream")</ID>
+    <ID>UseCheckOrError:FilesScreen.kt$throw IllegalStateException("This editor supports files up to 1 MB.")</ID>
+    <ID>WildcardImport:AppSettingsScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:AppSettingsScreen.kt$import androidx.compose.material.icons.rounded.*</ID>
+    <ID>WildcardImport:AppSettingsScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:AppSettingsScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:AppSettingsScreen.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:AppSettingsScreen.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:AppSettingsScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:BatteryChargeOverlay.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:BatteryChargeOverlay.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:BatteryChargeOverlay.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:BatteryChargingActivity.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:BatteryChargingActivity.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:BatteryChargingActivity.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:BatteryChargingMonitorService.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:BatteryChargingMonitorService.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:BatteryChargingMonitorService.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:BatteryScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:BatteryScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:BatteryScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:BatteryScreen.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:BatteryScreen.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:BatteryScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:Data.kt$import androidx.room.*</ID>
+    <ID>WildcardImport:ExpensesScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:ExpensesScreen.kt$import androidx.compose.material.icons.rounded.*</ID>
+    <ID>WildcardImport:ExpensesScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:ExpensesScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:ExpensesScreen.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:ExpensesScreen.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:ExpensesScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:FilesScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:FilesScreen.kt$import androidx.compose.material.icons.rounded.*</ID>
+    <ID>WildcardImport:FilesScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:FilesScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:FilesScreen.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:FilesScreen.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:FilesScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:HabitEditor.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:HabitEditor.kt$import androidx.compose.material.icons.rounded.*</ID>
+    <ID>WildcardImport:HabitEditor.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:HabitEditor.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:HabitEditor.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:HabitEditor.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:HabitEditor.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:HabitLogic.kt$import androidx.compose.material.icons.rounded.*</ID>
+    <ID>WildcardImport:HabitLogic.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:HabitLogic.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:HabitLogic.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:HabitReminderManager.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:HabitReminderManager.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:HabitReminderManager.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:HabitReminderManager.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:HabitReminderManager.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:HabitReminderManager.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:HabitTemplates.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:HabitTemplates.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:HabitTemplates.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:HabitsInsightsScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:HabitsInsightsScreen.kt$import androidx.compose.material.icons.rounded.*</ID>
+    <ID>WildcardImport:HabitsInsightsScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:HabitsInsightsScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:HabitsInsightsScreen.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:HabitsInsightsScreen.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:HabitsInsightsScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:HabitsManageScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:HabitsManageScreen.kt$import androidx.compose.material.icons.rounded.*</ID>
+    <ID>WildcardImport:HabitsManageScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:HabitsManageScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:HabitsManageScreen.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:HabitsManageScreen.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:HabitsManageScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:HabitsScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:HabitsScreen.kt$import androidx.compose.material.icons.rounded.*</ID>
+    <ID>WildcardImport:HabitsScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:HabitsScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:HabitsScreen.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:HabitsScreen.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:HabitsScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:HabitsTemplatesScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:HabitsTemplatesScreen.kt$import androidx.compose.material.icons.rounded.*</ID>
+    <ID>WildcardImport:HabitsTemplatesScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:HabitsTemplatesScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:HabitsTemplatesScreen.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:HabitsTemplatesScreen.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:HabitsTemplatesScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:HabitsToday.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:HabitsToday.kt$import androidx.compose.material.icons.rounded.*</ID>
+    <ID>WildcardImport:HabitsToday.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:HabitsToday.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:HabitsToday.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:HabitsToday.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:HabitsToday.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:HomeScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:HomeScreen.kt$import androidx.compose.material.icons.rounded.*</ID>
+    <ID>WildcardImport:HomeScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:HomeScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:HomeScreen.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:HomeScreen.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:HomeScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:InstagramScrollCounterService.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:InstagramScrollCounterService.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:InstagramScrollCounterService.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:LoansScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:LoansScreen.kt$import androidx.compose.material.icons.rounded.*</ID>
+    <ID>WildcardImport:LoansScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:LoansScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:LoansScreen.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:LoansScreen.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:LoansScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:MomentumBackup.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:Navigation.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:Navigation.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:Navigation.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:NetworkIndicatorService.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:NetworkIndicatorService.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:NetworkIndicatorService.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:NetworkScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:NetworkScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:NetworkScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:NetworkScreen.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:NetworkScreen.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:NetworkScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:NotificationSystem.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:NotificationSystem.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:ReminderSettingsScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:ReminderSettingsScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:ReminderSettingsScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:ReminderSettingsScreen.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:ReminderSettingsScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:ReminderTimeCalculator.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:ReminderTimeCalculatorTest.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:ScreenTimeScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:ScreenTimeScreen.kt$import androidx.compose.material.icons.rounded.*</ID>
+    <ID>WildcardImport:ScreenTimeScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:ScreenTimeScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:ScreenTimeScreen.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:ScreenTimeScreen.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:ScreenTimeScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:ToDoScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:ToDoScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:ToDoScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:ToDoScreen.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:ToDoScreen.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:ToDoScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:Ui.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:Ui.kt$import androidx.compose.material.icons.rounded.*</ID>
+    <ID>WildcardImport:Ui.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:Ui.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:VaultScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:VaultScreen.kt$import androidx.compose.material.icons.rounded.*</ID>
+    <ID>WildcardImport:VaultScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:VaultScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:VaultScreen.kt$import com.faheem.habits.core.data.*</ID>
+    <ID>WildcardImport:VaultScreen.kt$import com.faheem.habits.core.notifications.*</ID>
+    <ID>WildcardImport:VaultScreen.kt$import com.faheem.habits.core.ui.*</ID>
+  </CurrentIssues>
+</SmellBaseline>
