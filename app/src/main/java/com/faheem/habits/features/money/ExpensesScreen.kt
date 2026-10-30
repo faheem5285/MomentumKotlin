@@ -41,13 +41,20 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = AppDatabase.get(app).expenseDao()
     private val prefs = app.getSharedPreferences("momentum", Context.MODE_PRIVATE)
     val expenses: StateFlow<List<Expense>> = dao.getAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    private val _budget = MutableStateFlow(prefs.getString("budget", "0")?.toDoubleOrNull() ?: 0.0)
-    val budget: StateFlow<Double> = _budget
-    fun categoryBudget(category: String) = prefs.getString("money_limit_${category}", "0")?.toDoubleOrNull() ?: 0.0
-    fun setCategoryBudget(category: String, value: Double) { prefs.edit().putString("money_limit_${category}", value.toString()).apply() }
-    fun setBudget(value: Double) { prefs.edit().putString("budget", value.toString()).apply(); _budget.value = value }
+    private fun readMinorUnits(key: String): Long {
+        val stored = prefs.getString("${key}_minor_units", null)?.toLongOrNull()
+        if (stored != null) return stored
+        val legacy = prefs.getString(key, "0")?.toDoubleOrNull()?.let { runCatching { it.toMinorUnits() }.getOrNull() } ?: 0L
+        prefs.edit().putString("${key}_minor_units", legacy.toString()).apply()
+        return legacy
+    }
+    private val _budget = MutableStateFlow(readMinorUnits("budget"))
+    val budget: StateFlow<Long> = _budget
+    fun categoryBudget(category: String) = readMinorUnits("money_limit_${category}") / 100.0
+    fun setCategoryBudget(category: String, value: Double) { prefs.edit().putString("money_limit_${category}_minor_units", value.toMinorUnits().toString()).apply() }
+    fun setBudget(value: Double) { val minor = value.toMinorUnits(); prefs.edit().putString("budget_minor_units", minor.toString()).apply(); _budget.value = minor }
     fun add(title: String, amount: Double, category: String) {
-        viewModelScope.launch { dao.insert(Expense(title = title.trim(), amount = amount, category = category, epochDay = today())) }
+        viewModelScope.launch { dao.insert(Expense(title = title.trim(), amountMinorUnits = amount.toMinorUnits(), category = category, epochDay = today())) }
     }
     fun remove(expense: Expense) { viewModelScope.launch { dao.delete(expense) } }
 }
@@ -55,7 +62,8 @@ class ExpenseViewModel(app: Application) : AndroidViewModel(app) {
 @Composable
 fun ExpensesScreen(vm: ExpenseViewModel = viewModel()) {
     val expenses by vm.expenses.collectAsState()
-    val budget by vm.budget.collectAsState()
+    val budgetMinorUnits by vm.budget.collectAsState()
+    val budget = budgetMinorUnits / 100.0
     var tab by remember { mutableIntStateOf(0) }
     var month by remember { mutableStateOf(YearMonth.now()) }
     var query by remember { mutableStateOf("") }
@@ -67,15 +75,16 @@ fun ExpensesScreen(vm: ExpenseViewModel = viewModel()) {
     val inMonth = remember(expenses, month) {
         expenses.filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == month }
     }
-    val spent = remember(inMonth) { inMonth.sumOf { it.amount } }
+    val spentMinorUnits = remember(inMonth) { inMonth.sumOf { it.amountMinorUnits } }
+    val byCategory = remember(inMonth) {
+        inMonth.groupBy { it.category }.mapValues { (_, rows) -> rows.sumOf { it.amountMinorUnits } / 100.0 }
+    }
+    val spent = spentMinorUnits / 100.0
     val previousMonthSpent = remember(expenses, month) {
         val previousMonth = month.minusMonths(1)
         expenses.asSequence()
             .filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == previousMonth }
-            .sumOf { it.amount }
-    }
-    val byCategory = remember(inMonth) {
-        inMonth.groupBy { it.category }.mapValues { (_, rows) -> rows.sumOf { it.amount } }
+            .sumOf { it.amountMinorUnits } / 100.0
     }
     val budgetFraction = if (budget > 0) (spent / budget).toFloat() else 0f
     val filtered = remember(inMonth, category, query) {
@@ -90,7 +99,7 @@ fun ExpensesScreen(vm: ExpenseViewModel = viewModel()) {
     deleting?.let { expense ->
         AlertDialog(
             onDismissRequest = { deleting = null }, title = { Text("Delete expense?") },
-            text = { Text("${expense.title} · ${money(expense.amount)} will be removed from your history.") },
+            text = { Text("${expense.title} · ${money(expense.amountMinorUnits)} will be removed from your history.") },
             confirmButton = { TextButton(onClick = { vm.remove(expense); deleting = null }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } }
         )
@@ -210,7 +219,7 @@ private fun ActivityScreen(
                 (listOf("All") + categories.map { it.name }).forEach { name -> FilterChip(category == name, { onCategory(name) }, label = { Text(name) }) }
             }
         }
-        item { SectionLabel("${expenses.size} expenses · ${money(expenses.sumOf { it.amount })}") }
+        item { SectionLabel("${expenses.size} expenses · ${money(expenses.sumOf { it.amountMinorUnits })}") }
         if (expenses.isEmpty()) item { EmptyState(Icons.Rounded.ReceiptLong, "No matching expenses", "Try a different search or category") }
         items(expenses, key = { it.id }) { ExpenseRow(it) { onDelete(it) } }
     }
@@ -303,7 +312,7 @@ private fun ExpenseRow(expense: Expense, onDelete: () -> Unit) {
                 Text(expense.title, fontWeight = FontWeight.SemiBold)
                 Text("${expense.category} · ${dayText(expense.epochDay)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(money(expense.amount), fontWeight = FontWeight.Bold)
+            Text(money(expense.amountMinorUnits), fontWeight = FontWeight.Bold)
             IconButton(onClick = onDelete) { Icon(Icons.Rounded.DeleteOutline, "Delete", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }

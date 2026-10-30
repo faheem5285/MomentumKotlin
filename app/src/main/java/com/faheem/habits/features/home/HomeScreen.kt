@@ -54,8 +54,8 @@ import java.time.format.DateTimeFormatter
 data class HomeState(
     val habitsTotal: Int = 0,
     val habitsDone: Int = 0,
-    val monthSpent: Double = 0.0,
-    val loanNet: Double = 0.0,
+    val monthSpent: Long = 0L,
+    val loanNet: Long = 0L,
     val openLoans: Int = 0,
     val fileCount: Int = 0,
     val tasksDueToday: Int = 0,
@@ -79,13 +79,13 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             val month = YearMonth.now()
             val spent = exps.asSequence()
                 .filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == month }
-                .sumOf { it.amount }
+                .sumOf { it.amountMinorUnits }
             val open = loans.filter { !it.settled }
             HomeState(
                 habitsTotal = active.size,
                 habitsDone = active.count { it.id in doneIds },
                 monthSpent = spent,
-                loanNet = open.filter { it.lent }.sumOf { it.amount } - open.filter { !it.lent }.sumOf { it.amount },
+                loanNet = open.filter { it.lent }.sumOf { it.amountMinorUnits } - open.filter { !it.lent }.sumOf { it.amountMinorUnits },
                 openLoans = open.size,
                 fileCount = files.size
             )
@@ -139,7 +139,7 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
         ),
         TileSpec(
             "Money",
-            if (s.monthSpent <= 0.0) "No spending yet" else "${money(s.monthSpent)} this month",
+            if (s.monthSpent <= 0L) "No spending yet" else "${money(s.monthSpent)} this month",
             AppModule.Money.icon, AppModule.Money.gradient, AppModule.Money
         ),
         TileSpec(

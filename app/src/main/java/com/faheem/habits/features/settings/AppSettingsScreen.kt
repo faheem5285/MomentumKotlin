@@ -1,12 +1,14 @@
 package com.faheem.habits.features.settings
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.data.backup.MomentumBackup
+import com.faheem.habits.core.data.backup.WeeklyBackupSettings
 import com.faheem.habits.core.notifications.*
 import com.faheem.habits.core.ui.*
 import com.faheem.habits.R
 
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -30,6 +32,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.text.DateFormat
 
 private const val PREFS_APP = "momentum_app_settings"
 private fun modulePref(module: AppModule) = "module_enabled_${module.name}"
@@ -46,12 +51,42 @@ fun AppSettingsScreen() {
     var permissionsOpen by remember { mutableStateOf(false) }
     var backupMessage by remember { mutableStateOf<String?>(null) }
     var backupBusy by remember { mutableStateOf(false) }
+    var pendingImport by remember { mutableStateOf<Pair<Uri, MomentumBackup.Preview>?>(null) }
+    var weeklyEnabled by remember { mutableStateOf(WeeklyBackupSettings.enabled(context)) }
+    var weeklyFolder by remember { mutableStateOf(WeeklyBackupSettings.folder(context)) }
+    var lastBackupAt by remember { mutableLongStateOf(WeeklyBackupSettings.lastBackupAt(context)) }
+    var databaseVersion by remember { mutableIntStateOf(0) }
+    var integrityMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
         if (uri != null) scope.launch { backupBusy = true; backupMessage = try { MomentumBackup.export(context, uri); "Backup exported. Vault secrets and file contents are excluded." } catch (e: Exception) { "Export failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } }
     }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        if (uri != null) scope.launch { backupBusy = true; backupMessage = try { MomentumBackup.restore(context, uri) } catch (e: Exception) { "Restore failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } }
+        if (uri != null) scope.launch { backupBusy = true; try { pendingImport = uri to MomentumBackup.preview(context, uri) } catch (e: Exception) { backupMessage = "Import preview failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } }
+    }
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
+                .onSuccess { WeeklyBackupSettings.setFolder(context, uri); weeklyFolder = uri.toString(); if (weeklyEnabled) WeeklyBackupSettings.setEnabled(context, true) }
+                .onFailure { backupMessage = "Could not save folder access: ${it.message ?: "permission unavailable"}" }
+        }
+    }
+    LaunchedEffect(context) {
+        databaseVersion = withContext(Dispatchers.IO) { AppDatabase.get(context).openHelper.readableDatabase.version }
+    }
+    pendingImport?.let { (uri, preview) ->
+        AlertDialog(
+            onDismissRequest = { pendingImport = null },
+            title = { Text("Import preview") },
+            text = { Text("${preview.habits} habits, ${preview.expenses} expenses, ${preview.todos} to-dos, ${preview.loans} loans and ${preview.files} file records will be imported. File contents and Vault entries are excluded.") },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = { pendingImport = null; scope.launch { backupBusy = true; backupMessage = try { MomentumBackup.restore(context, uri, replace = true) } catch (e: Exception) { "Import failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } } }) { Text("Replace records") }
+                    TextButton(onClick = { pendingImport = null; scope.launch { backupBusy = true; backupMessage = try { MomentumBackup.restore(context, uri, replace = false) } catch (e: Exception) { "Import failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } } }) { Text("Merge") }
+                }
+            },
+            dismissButton = { TextButton(onClick = { pendingImport = null }) { Text("Cancel") } }
+        )
     }
     val modules = AppModule.entries.filter { it != AppModule.Settings }
     BackHandler(enabled = remindersOpen || permissionsOpen) {
@@ -76,6 +111,23 @@ fun AppSettingsScreen() {
                 Text("App settings", fontSize = 14.sp, color = Color.White.copy(alpha = .86f))
                 Text("Make Momentum yours", fontSize = 25.sp, fontWeight = FontWeight.Bold)
                 Text("Choose which tools appear on your Home screen. Hiding a module keeps all of its saved data.", fontSize = 13.sp, color = Color.White.copy(alpha = .9f))
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Data & Backup", fontWeight = FontWeight.SemiBold)
+                    Text("Database version: ${if (databaseVersion == 0) "Checking…" else databaseVersion}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (lastBackupAt == 0L) "Last weekly backup: none yet" else "Last weekly backup: ${DateFormat.getDateTimeInstance().format(java.util.Date(lastBackupAt))}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (weeklyFolder == null) "Choose a folder for automatic local copies." else "Weekly backup folder is selected.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedButton(onClick = { folderPicker.launch(null) }, modifier = Modifier.fillMaxWidth()) { Text(if (weeklyFolder == null) "Choose backup folder" else "Change backup folder") }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Automatic weekly backup", Modifier.weight(1f), fontWeight = FontWeight.Medium)
+                        Switch(checked = weeklyEnabled, enabled = weeklyFolder != null, onCheckedChange = { weeklyEnabled = it; WeeklyBackupSettings.setEnabled(context, it) })
+                    }
+                    OutlinedButton(enabled = !backupBusy, onClick = { scope.launch { backupBusy = true; integrityMessage = try { withContext(Dispatchers.IO) { AppDatabase.get(context).openHelper.readableDatabase.query("PRAGMA integrity_check").use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else "No result" } } } catch (e: Exception) { "Integrity check failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } } }, modifier = Modifier.fillMaxWidth()) { Text("Check database integrity") }
+                    integrityMessage?.let { Text(it, fontSize = 12.sp, color = if (it == "ok") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
+                }
             }
         }
         item {

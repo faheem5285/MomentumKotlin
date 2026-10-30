@@ -11,6 +11,7 @@ import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.ContextWrapper
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -29,6 +30,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.StickyNote2
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -55,6 +58,8 @@ import java.security.SecureRandom
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import org.json.JSONArray
+import org.json.JSONObject
 
 class VaultViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = AppDatabase.get(app).vaultDao()
@@ -115,6 +120,23 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     suspend fun delete(id: Int) = withContext(Dispatchers.IO) { dao.delete(id) }
+
+    suspend fun exportEncrypted(destination: Uri) = withContext(Dispatchers.IO) {
+        val salt = prefs.getString(VaultCrypto.SALT_PREF, null) ?: error("Vault is not configured.")
+        val records = dao.getAll()
+        val entries = JSONArray()
+        records.forEach { row ->
+            entries.put(JSONObject().put("id", row.id).put("nonce", VaultCrypto.encode(row.nonce))
+                .put("ciphertext", VaultCrypto.encode(row.ciphertext)).put("updatedAt", row.updatedAt))
+        }
+        val bytes = JSONObject().put("format", "momentum-encrypted-vault")
+            .put("version", 1).put("exportedAt", System.currentTimeMillis())
+            .put("salt", salt).put("entries", entries).toString(2).toByteArray(Charsets.UTF_8)
+        require(bytes.size <= 10 * 1024 * 1024) { "Encrypted vault export exceeds the 10 MB safety limit." }
+        val output = getApplication<android.app.Application>().contentResolver.openOutputStream(destination, "w")
+            ?: error("Could not open the encrypted export destination.")
+        output.use { it.write(bytes) }
+    }
 }
 
 @Composable
@@ -139,7 +161,17 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
     var editing by remember { mutableStateOf<VaultListItem?>(null) }
     var selected by remember { mutableStateOf<VaultListItem?>(null) }
     var deleteTarget by remember { mutableStateOf<VaultListItem?>(null) }
+    var exportMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val vaultExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        val key = sessionKey
+        if (uri != null && key != null) scope.launch {
+            busy = true
+            exportMessage = try { vm.exportEncrypted(uri); "Encrypted vault backup exported. No decrypted vault values were written." }
+            catch (e: Exception) { "Encrypted vault export failed: ${e.message ?: "unknown error"}" }
+            finally { busy = false }
+        }
+    }
 
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         sessionEpoch++
@@ -195,8 +227,10 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
                 editorOpen = false; editing = null; deleteTarget = null
             },
             onAdd = { editing = null; editorOpen = true },
-            onSelect = { selected = it }
+            onSelect = { selected = it },
+            onExport = { vaultExportLauncher.launch("momentum-vault-encrypted.json") }
         )
+        exportMessage?.let { Text(it, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
     }
 
     if (editorOpen && key != null) {
@@ -281,7 +315,7 @@ private fun VaultGate(configured: Boolean, busy: Boolean, error: String?, onSubm
 }
 
 @Composable
-private fun VaultHome(items: List<VaultListItem>, unreadable: Int, onLock: () -> Unit, onAdd: () -> Unit, onSelect: (VaultListItem) -> Unit) {
+private fun VaultHome(items: List<VaultListItem>, unreadable: Int, onLock: () -> Unit, onAdd: () -> Unit, onSelect: (VaultListItem) -> Unit, onExport: () -> Unit) {
     var query by remember { mutableStateOf("") }
     var type by remember { mutableStateOf("All") }
     val filtered = items.filter { item ->
@@ -322,6 +356,7 @@ private fun VaultHome(items: List<VaultListItem>, unreadable: Int, onLock: () ->
             item {
                 Text("Credentials stay encrypted in the database. Copying a value clears the clipboard after 30 seconds when possible.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            item { OutlinedButton(onClick = onExport, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Rounded.Lock, null); Spacer(Modifier.width(8.dp)); Text("Export encrypted vault file") } }
         }
         ExtendedFloatingActionButton(onClick = onAdd, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("Add secure item") },
             containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary,

@@ -39,7 +39,7 @@ class LoanViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = AppDatabase.get(app).loanDao()
     val loans: StateFlow<List<Loan>> = dao.getAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     fun add(person: String, amount: Double, lent: Boolean, note: String) {
-        viewModelScope.launch { dao.insert(Loan(person = person.trim(), amount = amount, lent = lent, note = note.trim(), epochDay = today())) }
+        viewModelScope.launch { dao.insert(Loan(person = person.trim(), amountMinorUnits = amount.toMinorUnits(), lent = lent, note = note.trim(), epochDay = today())) }
     }
     fun update(loan: Loan) { viewModelScope.launch { dao.update(loan) } }
     fun toggleSettled(loan: Loan) { update(loan.copy(settled = !loan.settled)) }
@@ -62,8 +62,8 @@ fun LoansScreen(vm: LoanViewModel = viewModel()) {
 
     val openLoans = remember(loans) { loans.filter { !it.settled } }
     val settledLoans = remember(loans) { loans.filter { it.settled } }
-    val toReceive = remember(openLoans) { openLoans.asSequence().filter { it.lent }.sumOf { it.amount } }
-    val toPay = remember(openLoans) { openLoans.asSequence().filter { !it.lent }.sumOf { it.amount } }
+    val toReceive = remember(openLoans) { openLoans.asSequence().filter { it.lent }.sumOf { it.amountMinorUnits } }
+    val toPay = remember(openLoans) { openLoans.asSequence().filter { !it.lent }.sumOf { it.amountMinorUnits } }
     val net = toReceive - toPay
     val filtered = remember(openLoans, settledLoans, tab, direction, query) {
         (if (tab == 2) settledLoans else openLoans).filter { loan ->
@@ -73,7 +73,7 @@ fun LoansScreen(vm: LoanViewModel = viewModel()) {
     }
 
     if (showAdd) LoanEditorSheet(null, { showAdd = false }) { person, amount, lent, note -> vm.add(person, amount, lent, note); showAdd = false }
-    editing?.let { loan -> LoanEditorSheet(loan, { editing = null }) { person, amount, lent, note -> vm.update(loan.copy(person = person, amount = amount, lent = lent, note = note)); editing = null; selected = null } }
+    editing?.let { loan -> LoanEditorSheet(loan, { editing = null }) { person, amount, lent, note -> vm.update(loan.copy(person = person, amountMinorUnits = amount.toMinorUnits(), lent = lent, note = note)); editing = null; selected = null } }
     selected?.let { loan ->
         LoanDetailSheet(
             loan = loan,
@@ -86,7 +86,7 @@ fun LoansScreen(vm: LoanViewModel = viewModel()) {
     deleting?.let { loan ->
         AlertDialog(
             onDismissRequest = { deleting = null }, title = { Text("Delete this record?") },
-            text = { Text("${loan.person} · ${money(loan.amount)} will be removed from your ledger.") },
+            text = { Text("${loan.person} · ${money(loan.amountMinorUnits)} will be removed from your ledger.") },
             confirmButton = { TextButton(onClick = { vm.remove(loan); deleting = null }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } }
         )
@@ -126,7 +126,7 @@ fun LoansScreen(vm: LoanViewModel = viewModel()) {
 
 @Composable
 private fun LoanOverview(
-    openLoans: List<Loan>, settledCount: Int, toReceive: Double, toPay: Double, net: Double,
+    openLoans: List<Loan>, settledCount: Int, toReceive: Long, toPay: Long, net: Long,
     onOpenLedger: () -> Unit, onSelect: (Loan) -> Unit
 ) {
     val peopleCount = openLoans.map { it.person.trim().lowercase() }.distinct().size
@@ -198,7 +198,7 @@ private fun LoanLedger(
             }
         }
         item {
-            val total = loans.sumOf { it.amount }
+            val total = loans.sumOf { it.amountMinorUnits }
             Card(
                 Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -244,7 +244,7 @@ private fun LoanRow(loan: Loan, onClick: () -> Unit) {
                 Text("${if (loan.settled) "Settled" else if (loan.lent) "Owes you" else "You owe"} · ${dayText(loan.epochDay)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (loan.note.isNotBlank()) Text(loan.note, fontSize = 12.sp, maxLines = 1, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text((if (loan.lent) "+" else "−") + money(loan.amount), color = color, fontWeight = FontWeight.Bold)
+            Text((if (loan.lent) "+" else "−") + money(loan.amountMinorUnits), color = color, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -275,7 +275,7 @@ private fun LoanDetailSheet(loan: Loan, onDismiss: () -> Unit, onSettle: () -> U
             Spacer(Modifier.width(12.dp))
             Column {
                 Text(if (loan.lent) "They owe you" else "You owe them", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(money(loan.amount), fontSize = 25.sp, fontWeight = FontWeight.Bold, color = color)
+                Text(money(loan.amountMinorUnits), fontSize = 25.sp, fontWeight = FontWeight.Bold, color = color)
             }
         }
         LoanDetailLine("Recorded", dayText(loan.epochDay))
@@ -298,7 +298,7 @@ private fun LoanDetailLine(label: String, value: String) {
 @Composable
 private fun LoanEditorSheet(initial: Loan?, onDismiss: () -> Unit, onSave: (String, Double, Boolean, String) -> Unit) {
     var person by remember(initial) { mutableStateOf(initial?.person ?: "") }
-    var amount by remember(initial) { mutableStateOf(initial?.amount?.toString() ?: "") }
+    var amount by remember(initial) { mutableStateOf(initial?.amountMinorUnits?.toString() ?: "") }
     var note by remember(initial) { mutableStateOf(initial?.note ?: "") }
     var lent by remember(initial) { mutableStateOf(initial?.lent ?: true) }
     FormSheet(if (initial == null) "Add loan record" else "Edit loan record", onDismiss) {
