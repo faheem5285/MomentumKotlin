@@ -144,7 +144,7 @@ fun BatteryScreen() {
             .getBoolean(BatteryChargingMonitorService.KEY_BACKGROUND_LISTENER, false)
         notificationsAllowed = MomentumNotificationSettings.notificationsAllowed(context)
     }
-    val styles = listOf("Pulse", "Flow", "Glow")
+    val styles = listOf("Pulse", "Flow", "Glow", "Neon Ring", "Dual Orbit", "Spark", "Wave", "Heartbeat", "Rainbow", "Comet", "Solar Flare", "Ripple", "Segment", "Liquid", "Aurora", "Matrix", "Firefly", "Prism", "Galaxy", "Radar", "Energy Core", "Spiral", "Minimal")
 
     Column(Modifier.fillMaxSize()) {
         LazyBatteryContent(
@@ -264,7 +264,7 @@ private fun LazyBatteryContent(
                             }
                             Text(option, fontWeight = FontWeight.SemiBold, color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
                             Text(
-                                when (option) { "Pulse" -> "Soft breathing"; "Flow" -> "Moving energy"; else -> "Radiant glow" },
+                                batteryStyleDescription(option),
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1
@@ -364,6 +364,32 @@ private fun LazyBatteryContent(
             }
         }
     }
+}
+
+private fun batteryStyleDescription(style: String): String = when (style) {
+    "Pulse" -> "Soft breathing"
+    "Flow" -> "Moving energy"
+    "Glow" -> "Radiant glow"
+    "Neon Ring" -> "Bright neon edge"
+    "Dual Orbit" -> "Two orbiting lights"
+    "Spark" -> "Electric sparks"
+    "Wave" -> "Wave-like motion"
+    "Heartbeat" -> "Heartbeat rhythm"
+    "Rainbow" -> "Color cycling"
+    "Comet" -> "Trailing light"
+    "Solar Flare" -> "Radiant rays"
+    "Ripple" -> "Expanding rings"
+    "Segment" -> "Segmented progress"
+    "Liquid" -> "Fluid energy"
+    "Aurora" -> "Northern lights"
+    "Matrix" -> "Digital pulses"
+    "Firefly" -> "Floating lights"
+    "Prism" -> "Prismatic accents"
+    "Galaxy" -> "Orbiting stars"
+    "Radar" -> "Scanning sweep"
+    "Energy Core" -> "Bright center"
+    "Spiral" -> "Spinning spiral"
+    else -> "Clean minimal ring"
 }
 
 @Composable
