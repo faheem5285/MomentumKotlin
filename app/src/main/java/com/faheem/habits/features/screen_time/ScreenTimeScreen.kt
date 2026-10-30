@@ -181,8 +181,10 @@ private fun ScreenOverview(
 
 @Composable
 private fun UsageAppsScreen(usage: List<AppUsage>, granted: Boolean, range: UsageRange, onRange: (UsageRange) -> Unit, onUsageSettings: () -> Unit, onRefresh: () -> Unit) {
+    var query by remember { mutableStateOf("") }
     val total = usage.sumOf { it.minutes }
-    val maxMin = (usage.maxOfOrNull { it.minutes } ?: 1L).coerceAtLeast(1)
+    val filteredUsage = usage.filter { it.label.contains(query, ignoreCase = true) || it.pkg.contains(query, ignoreCase = true) }
+    val maxMin = (filteredUsage.maxOfOrNull { it.minutes } ?: 1L).coerceAtLeast(1)
     if (!granted) {
         Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             PermissionInfoCard("Unlock app usage", "Allow Usage access in Android settings. Your device decides when you can revoke it.", onUsageSettings)
@@ -205,9 +207,28 @@ private fun UsageAppsScreen(usage: List<AppUsage>, granted: Boolean, range: Usag
                 UsageRange.entries.forEach { FilterChip(selected = range == it, onClick = { onRange(it) }, label = { Text(it.title) }) }
             }
         }
-        item { SectionLabel("Most used · ${usage.size} apps") }
+        item {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text("Search apps") },
+                leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { query = "" }) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Clear app search")
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(16.dp)
+            )
+        }
+        item { SectionLabel("Showing ${filteredUsage.size} of ${usage.size} apps") }
         if (usage.isEmpty()) item { EmptyState(Icons.Rounded.Smartphone, "No usage to show", "Usage may take a short while to appear") }
-        items(usage, key = { it.pkg }) { UsageRow(it, maxMin) }
+        else if (filteredUsage.isEmpty()) item { EmptyState(Icons.Rounded.SearchOff, "No matching apps", "Try another app name or package") }
+        items(filteredUsage, key = { it.pkg }) { UsageRow(it, maxMin) }
     }
 }
 
