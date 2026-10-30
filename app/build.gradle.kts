@@ -132,6 +132,7 @@ dependencies {
     implementation(libs.androidx.hilt.navigation.compose)
     implementation(libs.hilt.android)
     implementation(libs.androidx.profileinstaller)
+    implementation(libs.androidx.biometric)
     debugImplementation(libs.leakcanary.android)
     ksp(libs.androidx.room.compiler)
     ksp(libs.hilt.compiler)

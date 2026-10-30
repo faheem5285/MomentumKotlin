@@ -14,6 +14,9 @@
 - Phase 5 — reminder reliability: centralized alarm policy, exact/inexact
   fallback, boot/time-change rescheduling, notification actions, six-hour
   safety verification, and reminder health diagnostics.
+- Phase 6 — vault security foundation: VMK key wrapping, legacy encrypted
+  migration backup, biometric Keystore unlock, brute-force delay, secure
+  clipboard cleanup, and secure-screen handling.
 
 ## Deferred
 
@@ -30,3 +33,6 @@
 - Phase 5 per-reminder sound/vibration, evening nudges, vendor-specific
   settings deep links, and physical-device delivery verification remain
   deferred; see [phase-5-reminders.md](./phase-5-reminders.md).
+- Phase 6 full encrypted import, configurable lock timeout UI, a complete
+  change-password screen, and rooted-device testing remain deferred; see
+  [vault-security.md](./vault-security.md).

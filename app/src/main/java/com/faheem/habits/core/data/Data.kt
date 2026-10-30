@@ -257,6 +257,9 @@ interface VaultDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(record: VaultRecord)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(records: List<VaultRecord>)
+
     @Query("DELETE FROM vault_entries WHERE id = :id")
     suspend fun delete(id: Int)
 }

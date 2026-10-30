@@ -62,4 +62,46 @@ class VaultCryptoTest {
         assertEquals(true, VaultCrypto.matches(key, verifier))
         assertEquals(false, VaultCrypto.matches(otherKey, verifier))
     }
+
+    @Test
+    fun vmkCanBeRewrappedWithoutChangingIt() {
+        val vmk = VaultCrypto.newVmk()
+        val oldPasswordKey = VaultCrypto.deriveKey("old password", VaultCrypto.newSalt())
+        val newPasswordKey = VaultCrypto.deriveKey("new password", VaultCrypto.newSalt())
+
+        val oldWrapper = VaultCrypto.wrapVmk(vmk, oldPasswordKey)
+        val recovered = VaultCrypto.unwrapVmk(oldWrapper.first, oldWrapper.second, oldPasswordKey)
+        val newWrapper = VaultCrypto.wrapVmk(recovered, newPasswordKey)
+
+        assertEquals(vmk.toList(), VaultCrypto.unwrapVmk(newWrapper.first, newWrapper.second, newPasswordKey).toList())
+        assertThrows(AEADBadTagException::class.java) {
+            VaultCrypto.unwrapVmk(newWrapper.first, newWrapper.second, oldPasswordKey)
+        }
+    }
+
+    @Test
+    fun vmkWrapperRejectsTampering() {
+        val vmk = VaultCrypto.newVmk()
+        val key = VaultCrypto.deriveKey("password", VaultCrypto.newSalt())
+        val wrapped = VaultCrypto.wrapVmk(vmk, key)
+        val tampered = wrapped.second.copyOf().also { it[it.lastIndex] = (it.last().toInt() xor 1).toByte() }
+
+        assertThrows(AEADBadTagException::class.java) {
+            VaultCrypto.unwrapVmk(wrapped.first, tampered, key)
+        }
+    }
+
+    @Test
+    fun legacyRecordCanBeMigratedToVmkEncryption() {
+        val legacyKey = VaultCrypto.deriveKey("legacy password", VaultCrypto.newSalt())
+        val legacy = VaultCrypto.encrypt(secret, legacyKey)
+        val vmk = VaultCrypto.newVmk()
+        val migratedSecret = VaultCrypto.decrypt(legacy.first, legacy.second, legacyKey)
+        val migrated = VaultCrypto.encrypt(migratedSecret, vmk)
+
+        assertEquals(secret, VaultCrypto.decrypt(migrated.first, migrated.second, vmk))
+        assertThrows(AEADBadTagException::class.java) {
+            VaultCrypto.decrypt(migrated.first, migrated.second, legacyKey)
+        }
+    }
 }

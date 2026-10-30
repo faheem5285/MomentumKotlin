@@ -1,3 +1,5 @@
+@file:Suppress("LongParameterList", "CyclomaticComplexMethod", "TooManyFunctions", "FunctionNaming", "ReturnCount")
+
 package com.faheem.habits.features.vault
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.notifications.*
@@ -19,6 +21,13 @@ import android.os.PersistableBundle
 import android.view.Window
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
+import java.util.concurrent.TimeUnit
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -64,29 +73,157 @@ import org.json.JSONObject
 class VaultViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = AppDatabase.get(app).vaultDao()
     private val prefs = app.getSharedPreferences("momentum_vault", Context.MODE_PRIVATE)
+    private val vmkWrappedPref = "vmk_wrapped_password_v1"
+    private val biometricWrappedPref = "vmk_wrapped_biometric_v1"
+    private val failedAttemptsPref = "failed_unlock_attempts"
 
     fun isConfigured(): Boolean = prefs.contains(VaultCrypto.SALT_PREF) && prefs.contains(VaultCrypto.CHECK_PREF)
 
     suspend fun setup(masterPassword: String): ByteArray = withContext(Dispatchers.IO) {
         val salt = VaultCrypto.newSalt()
-        val key = VaultCrypto.deriveKey(masterPassword, salt)
+        val passwordChars = masterPassword.toCharArray()
+        val key = VaultCrypto.deriveKey(passwordChars, salt)
+        passwordChars.fill('\u0000')
+        val vmk = VaultCrypto.newVmk()
+        val wrapped = VaultCrypto.wrapVmk(vmk, key)
         val saved = prefs.edit()
             .putString(VaultCrypto.SALT_PREF, VaultCrypto.encode(salt))
             .putString(VaultCrypto.CHECK_PREF, VaultCrypto.encode(VaultCrypto.verifier(key)))
+            .putString(vmkWrappedPref, encodeWrapped(wrapped))
             .commit()
         if (!saved) {
             key.fill(0)
+            vmk.fill(0)
             error("Could not save the vault setup. Please try again.")
         }
-        key
+        key.fill(0)
+        vmk
     }
 
     suspend fun unlock(masterPassword: String): ByteArray? = withContext(Dispatchers.IO) {
+        val failedAttempts = prefs.getInt(failedAttemptsPref, 0)
+        if (failedAttempts > 0) {
+            Thread.sleep((500L * (1L shl failedAttempts.coerceAtMost(6))).coerceAtMost(30_000L))
+        }
         val salt = prefs.getString(VaultCrypto.SALT_PREF, null) ?: return@withContext null
         val check = prefs.getString(VaultCrypto.CHECK_PREF, null) ?: return@withContext null
-        val key = try { VaultCrypto.deriveKey(masterPassword, VaultCrypto.decode(salt)) } catch (_: Exception) { return@withContext null }
+        val passwordChars = masterPassword.toCharArray()
+        val key = try { VaultCrypto.deriveKey(passwordChars, VaultCrypto.decode(salt)) } catch (_: Exception) {
+            passwordChars.fill('\u0000')
+            return@withContext null
+        }
+        passwordChars.fill('\u0000')
         val matches = try { VaultCrypto.matches(key, VaultCrypto.decode(check)) } catch (_: Exception) { false }
-        if (matches) key else { key.fill(0); null }
+        if (!matches) {
+            prefs.edit().putInt(failedAttemptsPref, (failedAttempts + 1).coerceAtMost(10)).apply()
+            key.fill(0)
+            return@withContext null
+        }
+        prefs.edit().remove(failedAttemptsPref).apply()
+        val wrapped = prefs.getString(vmkWrappedPref, null)
+        if (wrapped != null) {
+            return@withContext try {
+                val parts = decodeWrapped(wrapped)
+                val vmk = VaultCrypto.unwrapVmk(parts.first, parts.second, key)
+                key.fill(0)
+                vmk
+            } catch (_: Exception) {
+                key.fill(0)
+                null
+            }
+        }
+        migrateLegacy(key, salt)
+    }
+
+    suspend fun unlockWithBiometric(cipher: javax.crypto.Cipher): ByteArray? = withContext(Dispatchers.IO) {
+        val wrapped = prefs.getString(biometricWrappedPref, null) ?: return@withContext null
+        runCatching {
+            val parts = decodeWrapped(wrapped)
+            VaultCrypto.unwrapVmkWithBiometric(cipher, parts.second)
+        }.getOrNull()
+    }
+
+    fun prepareBiometricCipher(): javax.crypto.Cipher = VaultCrypto.biometricCipher()
+
+    fun prepareBiometricDecryptCipher(): javax.crypto.Cipher? {
+        val wrapped = prefs.getString(biometricWrappedPref, null) ?: return null
+        return runCatching { VaultCrypto.biometricDecryptCipher(decodeWrapped(wrapped).first) }.getOrNull()
+    }
+
+    fun hasBiometricUnlock(): Boolean = prefs.contains(biometricWrappedPref)
+
+    suspend fun enableBiometric(vmk: ByteArray, cipher: javax.crypto.Cipher) = withContext(Dispatchers.IO) {
+        val wrapped = VaultCrypto.wrapVmkWithBiometric(vmk, cipher)
+        check(prefs.edit().putString(biometricWrappedPref, encodeWrapped(wrapped)).commit()) {
+            "Could not save biometric vault unlock."
+        }
+    }
+
+    suspend fun changeMasterPassword(vmk: ByteArray, newPassword: String) = withContext(Dispatchers.IO) {
+        val salt = VaultCrypto.newSalt()
+        val chars = newPassword.toCharArray()
+        val key = try {
+            VaultCrypto.deriveKey(chars, salt)
+        } finally {
+            chars.fill('\u0000')
+        }
+        try {
+            val wrapped = VaultCrypto.wrapVmk(vmk, key)
+            check(
+                prefs.edit()
+                    .putString(VaultCrypto.SALT_PREF, VaultCrypto.encode(salt))
+                    .putString(VaultCrypto.CHECK_PREF, VaultCrypto.encode(VaultCrypto.verifier(key)))
+                    .putString(vmkWrappedPref, encodeWrapped(wrapped))
+                    .commit()
+            ) { "Could not save the new master password." }
+        } finally {
+            key.fill(0)
+        }
+    }
+
+    private suspend fun migrateLegacy(oldKey: ByteArray, salt: String): ByteArray {
+        try {
+            val records = dao.getAll()
+            val backup = JSONArray()
+            records.forEach { row ->
+                backup.put(
+                    JSONObject()
+                        .put("id", row.id)
+                        .put("nonce", VaultCrypto.encode(row.nonce))
+                        .put("ciphertext", VaultCrypto.encode(row.ciphertext))
+                        .put("updatedAt", row.updatedAt)
+                )
+            }
+            val backupFile = java.io.File(getApplication<Application>().filesDir, "vault-legacy-migration-backup.json")
+            backupFile.writeText(
+                JSONObject().put("format", "momentum-vault-legacy-encrypted-backup")
+                    .put("version", 1).put("salt", salt).put("entries", backup).toString(),
+                Charsets.UTF_8
+            )
+            val decrypted = records.map { row -> row to VaultCrypto.decrypt(row.nonce, row.ciphertext, oldKey) }
+            val vmk = VaultCrypto.newVmk()
+            val migrated = decrypted.map { (row, secret) ->
+                val encrypted = VaultCrypto.encrypt(secret, vmk)
+                VaultRecord(row.id, encrypted.first, encrypted.second, row.updatedAt)
+            }
+            dao.upsertAll(migrated)
+            val passwordWrapped = VaultCrypto.wrapVmk(vmk, oldKey)
+            check(
+                prefs.edit().putString(vmkWrappedPref, encodeWrapped(passwordWrapped)).commit()
+            ) { "Could not finish the vault encryption migration." }
+            return vmk
+        } finally {
+            oldKey.fill(0)
+        }
+    }
+
+    private fun encodeWrapped(value: Pair<ByteArray, ByteArray>): String =
+        "${VaultCrypto.encode(value.first)}:${VaultCrypto.encode(value.second)}"
+
+    private fun decodeWrapped(value: String): Pair<ByteArray, ByteArray> {
+        val parts = value.split(':', limit = 2)
+        require(parts.size == 2) { "Invalid vault key wrapper." }
+        return VaultCrypto.decode(parts[0]) to VaultCrypto.decode(parts[1])
     }
 
     suspend fun readAll(key: ByteArray): Pair<List<VaultListItem>, Int> {
@@ -146,7 +283,16 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
     DisposableEffect(window) {
         val wasSecure = window?.attributes?.flags?.and(WindowManager.LayoutParams.FLAG_SECURE) != 0
         window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        onDispose { if (!wasSecure) window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+        val activity = context.findActivity()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            activity?.setRecentsScreenshotEnabled(false)
+        }
+        onDispose {
+            if (!wasSecure) window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                activity?.setRecentsScreenshotEnabled(true)
+            }
+        }
     }
 
     var configured by remember { mutableStateOf(vm.isConfigured()) }
@@ -214,9 +360,79 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
         }
     }
 
+    fun launchBiometricUnlock() {
+        val activity = context.findActivity() as? FragmentActivity ?: return
+        val cipher = vm.prepareBiometricDecryptCipher() ?: return
+        val prompt = BiometricPrompt(
+            activity,
+            ContextCompat.getMainExecutor(context),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    scope.launch {
+                        val unlocked = result.cryptoObject?.cipher?.let { vm.unlockWithBiometric(it) }
+                        if (unlocked != null) {
+                            sessionEpoch++
+                            sessionKey = unlocked
+                        } else {
+                            error = "Biometric unlock could not open the vault."
+                        }
+                    }
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    error = errString.toString()
+                }
+            }
+        )
+        prompt.authenticate(
+            BiometricPrompt.PromptInfo.Builder()
+                .setTitle("Unlock Momentum vault")
+                .setSubtitle("Use strong biometrics to unwrap the vault key")
+                .setNegativeButtonText("Use master password")
+                .build(),
+            BiometricPrompt.CryptoObject(cipher)
+        )
+    }
+
+    fun enableBiometricUnlock() {
+        val activity = context.findActivity() as? FragmentActivity ?: return
+        val vmk = sessionKey ?: return
+        val cipher = runCatching { vm.prepareBiometricCipher() }.getOrElse {
+            error = "Biometric unlock is unavailable on this device."
+            return
+        }
+        val prompt = BiometricPrompt(
+            activity,
+            ContextCompat.getMainExecutor(context),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    scope.launch {
+                        runCatching { vm.enableBiometric(vmk, result.cryptoObject?.cipher ?: cipher) }
+                            .onFailure { error = it.message ?: "Could not enable biometric unlock." }
+                    }
+                }
+            }
+        )
+        prompt.authenticate(
+            BiometricPrompt.PromptInfo.Builder()
+                .setTitle("Enable biometric vault unlock")
+                .setSubtitle("Your master password remains available as a fallback")
+                .setNegativeButtonText("Cancel")
+                .build(),
+            BiometricPrompt.CryptoObject(cipher)
+        )
+    }
+
     val key = sessionKey
     if (key == null) {
-        VaultGate(configured, busy, error, onSubmit = { unlockOrCreate(it, !configured) })
+        VaultGate(
+            configured,
+            busy,
+            error,
+            biometricAvailable = configured && vm.hasBiometricUnlock(),
+            onSubmit = { unlockOrCreate(it, !configured) },
+            onBiometric = ::launchBiometricUnlock
+        )
     } else {
         VaultHome(
             items = items,
@@ -228,7 +444,8 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
             },
             onAdd = { editing = null; editorOpen = true },
             onSelect = { selected = it },
-            onExport = { vaultExportLauncher.launch("momentum-vault-encrypted.json") }
+            onExport = { vaultExportLauncher.launch("momentum-vault-encrypted.json") },
+            onEnableBiometric = ::enableBiometricUnlock
         )
         exportMessage?.let { Text(it, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
     }
@@ -266,7 +483,14 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
 }
 
 @Composable
-private fun VaultGate(configured: Boolean, busy: Boolean, error: String?, onSubmit: (String) -> Unit) {
+private fun VaultGate(
+    configured: Boolean,
+    busy: Boolean,
+    error: String?,
+    biometricAvailable: Boolean,
+    onSubmit: (String) -> Unit,
+    onBiometric: () -> Unit
+) {
     var master by remember(configured) { mutableStateOf("") }
     var confirm by remember(configured) { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
@@ -280,6 +504,13 @@ private fun VaultGate(configured: Boolean, busy: Boolean, error: String?, onSubm
                     Spacer(Modifier.height(12.dp))
                     Text(if (configured) "Vault locked" else "Create your private vault", fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     Text("Your passwords are encrypted on this device and never synced by Momentum.", fontSize = 13.sp, color = Color.White.copy(alpha = .9f))
+                }
+            }
+            if (configured && biometricAvailable) item {
+                OutlinedButton(onClick = onBiometric, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Rounded.Fingerprint, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Unlock with biometrics")
                 }
             }
             if (!configured) {
@@ -315,13 +546,22 @@ private fun VaultGate(configured: Boolean, busy: Boolean, error: String?, onSubm
 }
 
 @Composable
-private fun VaultHome(items: List<VaultListItem>, unreadable: Int, onLock: () -> Unit, onAdd: () -> Unit, onSelect: (VaultListItem) -> Unit, onExport: () -> Unit) {
+private fun VaultHome(
+    items: List<VaultListItem>,
+    unreadable: Int,
+    onLock: () -> Unit,
+    onAdd: () -> Unit,
+    onSelect: (VaultListItem) -> Unit,
+    onExport: () -> Unit,
+    onEnableBiometric: () -> Unit
+) {
     var query by remember { mutableStateOf("") }
     var type by remember { mutableStateOf("All") }
     val filtered = items.filter { item ->
         (type == "All" || (type == "Logins" && item.secret.type == "login") || (type == "Secure notes" && item.secret.type == "note")) &&
-            (query.isBlank() || listOf(item.secret.title, item.secret.username, item.secret.website).any { it.contains(query, true) })
+            (query.isBlank() || listOf(item.secret.title, item.secret.username, item.secret.website, item.secret.folder, item.secret.tags).any { it.contains(query, true) })
     }
+    val health = vaultHealthReport(items)
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
@@ -336,8 +576,22 @@ private fun VaultHome(items: List<VaultListItem>, unreadable: Int, onLock: () ->
                     }
                 }
             }
+            item {
+                OutlinedButton(onClick = onEnableBiometric, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Rounded.Fingerprint, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Enable biometric unlock")
+                }
+            }
             if (unreadable > 0) item {
                 Text("$unreadable item${if (unreadable == 1) "" else "s"} could not be decrypted. Their encrypted data has not been changed.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            }
+            item {
+                Text(
+                    "Password health: ${health.weak} weak · ${health.reused} reused · ${health.duplicates} duplicate",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (health.weak + health.reused > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             item {
                 OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
@@ -406,7 +660,10 @@ private fun VaultDetailSheet(item: VaultListItem, onDismiss: () -> Unit, onEdit:
                         }
                     })
             }
+            if (secret.totp.isNotBlank()) VaultValue("TOTP secret", secret.totp) { copySensitive(context, secret.totp) }
         }
+        if (secret.folder.isNotBlank()) Text("Folder: ${secret.folder}", style = MaterialTheme.typography.bodySmall)
+        if (secret.tags.isNotBlank()) Text("Tags: ${secret.tags}", style = MaterialTheme.typography.bodySmall)
         if (secret.notes.isNotBlank()) {
             Text(if (secret.type == "note") "Note" else "Notes", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
             Text(secret.notes)
@@ -431,6 +688,10 @@ private fun VaultEntryEditor(initial: VaultListItem?, onDismiss: () -> Unit, onS
     var username by remember(initial?.id) { mutableStateOf(initial?.secret?.username ?: "") }
     var password by remember(initial?.id) { mutableStateOf(initial?.secret?.password ?: "") }
     var notes by remember(initial?.id) { mutableStateOf(initial?.secret?.notes ?: "") }
+    var folder by remember(initial?.id) { mutableStateOf(initial?.secret?.folder ?: "") }
+    var tags by remember(initial?.id) { mutableStateOf(initial?.secret?.tags ?: "") }
+    var favorite by remember(initial?.id) { mutableStateOf(initial?.secret?.favorite ?: false) }
+    var totp by remember(initial?.id) { mutableStateOf(initial?.secret?.totp ?: "") }
     var showPassword by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -447,17 +708,24 @@ private fun VaultEntryEditor(initial: VaultListItem?, onDismiss: () -> Unit, onS
                 visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(), shape = RoundedCornerShape(14.dp),
                 trailingIcon = { IconButton(onClick = { showPassword = !showPassword }) { Icon(if (showPassword) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, "Show or hide password") } })
             OutlinedButton(onClick = { password = generatePassword() }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Rounded.AutoAwesome, null); Spacer(Modifier.width(8.dp)); Text("Generate strong password") }
+            OutlinedTextField(totp, { totp = it }, modifier = Modifier.fillMaxWidth(), label = { Text("TOTP secret (optional)") }, singleLine = true)
             OutlinedTextField(notes, { notes = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Notes (optional)") }, minLines = 2, maxLines = 5, shape = RoundedCornerShape(14.dp))
         } else {
             OutlinedTextField(notes, { notes = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Secure note") }, minLines = 5, maxLines = 12, shape = RoundedCornerShape(14.dp))
+        }
+        OutlinedTextField(folder, { folder = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Folder (optional)") }, singleLine = true)
+        OutlinedTextField(tags, { tags = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Tags (comma-separated)") }, singleLine = true)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = favorite, onCheckedChange = { favorite = it })
+            Text("Favorite")
         }
         if (error != null) Text(error.orEmpty(), color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         BigButton(if (initial == null) "Save securely" else "Save changes") {
             if (title.isBlank()) error = "Add a title to save this item."
             else if (type == "login" && password.isBlank()) error = "Add a password or generate one."
             else onSave(
-                if (type == "login") VaultSecret(title.trim(), type, username.trim(), password, website.trim(), notes.trim())
-                else VaultSecret(title.trim(), type, "", "", "", notes.trim())
+                if (type == "login") VaultSecret(title.trim(), type, username.trim(), password, website.trim(), notes.trim(), folder.trim(), tags.trim(), favorite, totp.trim())
+                else VaultSecret(title.trim(), type, "", "", "", notes.trim(), folder.trim(), tags.trim(), favorite)
             )
         }
     }
@@ -486,6 +754,13 @@ private fun copySensitive(context: Context, value: String) {
         extras.putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
     }
     clipboard.setPrimaryClip(clip)
+    val hash = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(value.toByteArray(Charsets.UTF_8))
+    val work = OneTimeWorkRequestBuilder<SensitiveClipboardWorker>()
+        .setInitialDelay(30, TimeUnit.SECONDS)
+        .setInputData(workDataOf(SensitiveClipboardWorker.KEY_HASH to VaultCrypto.encode(hash)))
+        .build()
+    WorkManager.getInstance(context).enqueue(work)
     Toast.makeText(context, "Copied. Clipboard clears after 30 seconds if unchanged.", Toast.LENGTH_SHORT).show()
     Handler(Looper.getMainLooper()).postDelayed({
         val current = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
