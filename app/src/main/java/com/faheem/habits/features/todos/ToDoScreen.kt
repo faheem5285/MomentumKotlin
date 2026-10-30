@@ -68,7 +68,11 @@ class ToDoViewModel(app: Application) : AndroidViewModel(app) {
     fun toggle(item: ToDoItem) = viewModelScope.launch {
         val changed = item.copy(completed = !item.completed)
         dao.update(changed)
-        if (changed.completed) ToDoReminderScheduler.cancel(getApplication(), changed.id)
+        if (changed.completed) {
+            ToDoReminderScheduler.cancel(getApplication(), changed.id)
+        } else {
+            dao.getById(changed.id)?.let { ToDoReminderScheduler.schedule(getApplication(), it) }
+        }
     }
 
     fun delete(item: ToDoItem) = viewModelScope.launch {
