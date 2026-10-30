@@ -405,9 +405,53 @@ fun BatteryOrb(percent: Int, charging: Boolean, style: String, modifier: Modifie
         Canvas(Modifier.fillMaxSize()) {
             val stroke = 12.dp.toPx()
             val inset = stroke / 2
-            drawArc(Color.White.copy(alpha = .22f), -90f, 360f, false, androidx.compose.ui.geometry.Offset(inset, inset), androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke), style = Stroke(stroke))
-            drawArc(color.copy(alpha = alpha), -90f, 360f * progress, false, androidx.compose.ui.geometry.Offset(inset, inset), androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke), style = Stroke(stroke, cap = StrokeCap.Round))
-            if (charging && style == "Glow") drawCircle(color.copy(alpha = .12f * pulse), radius = size.minDimension * .48f)
+            val center = androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2)
+            val bounds = androidx.compose.ui.geometry.Offset(inset, inset)
+            val arcSize = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke)
+            val track = Color.White.copy(alpha = .22f)
+            val active = color.copy(alpha = alpha)
+            drawArc(track, -90f, 360f, false, bounds, arcSize, style = Stroke(stroke))
+            drawArc(active, -90f, 360f * progress, false, bounds, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+            when (style) {
+                "Segment" -> repeat(24) { i ->
+                    val sweep = 360f / 24f - 4f
+                    drawArc(if (i < (24 * progress).toInt()) active else track, -90f + i * 15f, sweep, false, bounds, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+                }
+                "Dual Orbit", "Galaxy", "Firefly", "Spark", "Matrix", "Comet", "Flow" -> {
+                    val count = when (style) { "Dual Orbit" -> 2; "Galaxy" -> 6; "Firefly" -> 5; "Spark" -> 9; "Matrix" -> 12; else -> 3 }
+                    repeat(count) { i ->
+                        val angle = (pulse * 360f + i * 360f / count) * (Math.PI / 180)
+                        val radius = size.minDimension * if (style == "Galaxy") .30f + (i % 3) * .055f else .46f
+                        val dot = if (style == "Spark") 2.dp.toPx() else 3.5.dp.toPx()
+                        drawCircle(if (style == "Matrix") Color(0xFF86EFAC) else active, dot, androidx.compose.ui.geometry.Offset(center.x + kotlin.math.cos(angle).toFloat() * radius, center.y + kotlin.math.sin(angle).toFloat() * radius))
+                    }
+                }
+                "Glow", "Neon Ring", "Prism", "Energy Core" -> {
+                    drawCircle(active.copy(alpha = if (style == "Energy Core") .22f * pulse else .12f * pulse), size.minDimension * .46f)
+                    if (style == "Neon Ring" || style == "Prism") drawArc(Color(0xFF67E8F9), -90f + pulse * 90f, 100f, false, bounds, arcSize, style = Stroke(3.dp.toPx()))
+                }
+                "Solar Flare" -> repeat(16) { i ->
+                    val angle = i * 22.5 * Math.PI / 180
+                    val r1 = size.minDimension * .39f
+                    val r2 = size.minDimension * (.44f + .025f * pulse)
+                    drawLine(active.copy(alpha = .7f), androidx.compose.ui.geometry.Offset(center.x + kotlin.math.cos(angle).toFloat() * r1, center.y + kotlin.math.sin(angle).toFloat() * r1), androidx.compose.ui.geometry.Offset(center.x + kotlin.math.cos(angle).toFloat() * r2, center.y + kotlin.math.sin(angle).toFloat() * r2), 2.dp.toPx())
+                }
+                "Ripple", "Wave", "Aurora", "Liquid" -> {
+                    repeat(if (style == "Ripple") 3 else 2) { i ->
+                        val radius = size.minDimension * (.25f + i * .10f + .025f * pulse)
+                        drawCircle(active.copy(alpha = .22f - i * .05f), radius, center, style = Stroke(2.dp.toPx()))
+                    }
+                }
+                "Heartbeat" -> drawArc(active, -90f + pulse * 8f, 360f * progress, false, bounds, arcSize, style = Stroke(stroke * (1f + .25f * pulse), cap = StrokeCap.Round))
+                "Rainbow" -> drawArc(Color(0xFF93C5FD), -90f, 360f * progress, false, bounds, arcSize, style = Stroke(stroke * .55f, cap = StrokeCap.Round))
+                "Radar" -> drawArc(Color(0xFF67E8F9).copy(alpha = .8f), pulse * 360f, 70f, false, bounds, arcSize, style = Stroke(5.dp.toPx(), cap = StrokeCap.Round))
+                "Spiral" -> repeat(5) { i ->
+                    val angle = (pulse * 360f + i * 55f) * Math.PI / 180
+                    val radius = size.minDimension * (.12f + i * .065f)
+                    drawCircle(active.copy(alpha = .8f), 3.dp.toPx(), androidx.compose.ui.geometry.Offset(center.x + kotlin.math.cos(angle).toFloat() * radius, center.y + kotlin.math.sin(angle).toFloat() * radius))
+                }
+                "Minimal" -> drawArc(Color.White.copy(alpha = .8f), -90f, 360f * progress, false, bounds, arcSize, style = Stroke(4.dp.toPx(), cap = StrokeCap.Round))
+            }
         }
         Icon(if (charging) Icons.Rounded.Bolt else if (percent >= 80) Icons.Rounded.BatteryFull else Icons.Rounded.Power, null, Modifier.size(58.dp), tint = color.copy(alpha = alpha))
     }
