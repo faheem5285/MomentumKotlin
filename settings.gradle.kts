@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "Momentum"
 include(":app")
+include(":benchmark")

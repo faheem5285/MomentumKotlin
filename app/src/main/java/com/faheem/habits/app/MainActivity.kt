@@ -2,6 +2,7 @@ package com.faheem.habits.app
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.StrictMode
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -28,6 +29,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.faheem.habits.core.notifications.MomentumReminderScheduler
 import com.faheem.habits.core.ui.MomentumTheme
+import com.faheem.habits.BuildConfig
 import com.faheem.habits.features.battery.handleAutomaticBatteryPowerEvent
 import com.faheem.habits.features.auth.AuthScreen
 import com.faheem.habits.core.data.supabase.SupabaseAuthApi
@@ -38,6 +40,23 @@ import com.faheem.habits.features.settings.PermissionsSetupScreen
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (BuildConfig.DEBUG) {
+            StrictMode.setThreadPolicy(
+                StrictMode.ThreadPolicy.Builder()
+                    .detectDiskReads()
+                    .detectDiskWrites()
+                    .detectNetwork()
+                    .penaltyLog()
+                    .build()
+            )
+            StrictMode.setVmPolicy(
+                StrictMode.VmPolicy.Builder()
+                    .detectLeakedClosableObjects()
+                    .detectLeakedRegistrationObjects()
+                    .penaltyLog()
+                    .build()
+            )
+        }
         MomentumReminderScheduler.createChannels(this)
         MomentumReminderScheduler.scheduleAll(this)
         enableEdgeToEdge()

@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
     alias(libs.plugins.detekt)
+    alias(libs.plugins.baselineprofile)
 }
 
 ksp {
@@ -103,6 +104,9 @@ android {
         compose = true
         buildConfig = true
     }
+    composeCompiler {
+        enableStrongSkippingMode = true
+    }
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
 }
 
@@ -127,10 +131,13 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.hilt.navigation.compose)
     implementation(libs.hilt.android)
+    implementation(libs.androidx.profileinstaller)
+    debugImplementation(libs.leakcanary.android)
     ksp(libs.androidx.room.compiler)
     ksp(libs.hilt.compiler)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.junit)
+    baselineProfile(project(":benchmark"))
 }

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +53,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
+@Immutable
 data class HomeState(
     val habitsTotal: Int = 0,
     val habitsDone: Int = 0,
@@ -101,6 +104,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeState())
 }
 
+@Immutable
 private data class TileSpec(
     val title: String,
     val subtitle: String,
@@ -111,7 +115,7 @@ private data class TileSpec(
 
 @Composable
 fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
-    val s by vm.state.collectAsState()
+    val s by vm.state.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     var screenText by remember { mutableStateOf("Tap to set up") }
     var tick by remember { mutableIntStateOf(0) }
@@ -229,14 +233,22 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
             }
         }
         item { SectionLabel("Your modules") }
-        items(tiles.chunked(2)) { row ->
+        items(
+            items = tiles.chunked(2),
+            key = { row -> row.joinToString("|") { it.title } },
+            contentType = { "module-row" }
+        ) { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 row.forEach { spec -> ModuleTile(spec, Modifier.weight(1f)) { spec.module?.let(onOpen) } }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
         item { SectionLabel("Device tools") }
-        items(deviceTools.chunked(2)) { row ->
+        items(
+            items = deviceTools.chunked(2),
+            key = { row -> row.joinToString("|") { it.title } },
+            contentType = { "device-row" }
+        ) { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 row.forEach { spec -> ModuleTile(spec, Modifier.weight(1f)) { spec.module?.let(onOpen) } }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
