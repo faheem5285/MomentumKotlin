@@ -43,6 +43,7 @@ fun AppSettingsScreen() {
     val context = LocalContext.current
     var version by remember { mutableIntStateOf(0) }
     var remindersOpen by remember { mutableStateOf(false) }
+    var permissionsOpen by remember { mutableStateOf(false) }
     var backupMessage by remember { mutableStateOf<String?>(null) }
     var backupBusy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -53,7 +54,13 @@ fun AppSettingsScreen() {
         if (uri != null) scope.launch { backupBusy = true; backupMessage = try { MomentumBackup.restore(context, uri) } catch (e: Exception) { "Restore failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } }
     }
     val modules = AppModule.entries.filter { it != AppModule.Settings }
-    BackHandler(enabled = remindersOpen) { remindersOpen = false }
+    BackHandler(enabled = remindersOpen || permissionsOpen) {
+        if (permissionsOpen) permissionsOpen = false else remindersOpen = false
+    }
+    if (permissionsOpen) {
+        PermissionsSetupScreen(onBack = { permissionsOpen = false })
+        return
+    }
     if (remindersOpen) {
         ReminderSettingsScreen(onBack = { remindersOpen = false })
         return
@@ -104,6 +111,23 @@ fun AppSettingsScreen() {
                     Column(Modifier.weight(1f)) {
                         Text("Notifications & reminders", fontWeight = FontWeight.SemiBold)
                         Text("Manage schedules, categories and channels", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(Icons.Rounded.ChevronRight, null)
+                }
+            }
+        }
+        item {
+            Card(
+                Modifier.fillMaxWidth().clickable { permissionsOpen = true },
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconBubble(Icons.Rounded.Security, MaterialTheme.colorScheme.primary, 42.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Permissions & background setup", fontWeight = FontWeight.SemiBold)
+                        Text("Review Android access and background settings", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Icon(Icons.Rounded.ChevronRight, null)
                 }
