@@ -144,15 +144,51 @@ fun FilesScreen(vm: FileViewModel = viewModel()) {
                 }
             }
             item {
-                OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
-                    placeholder = { Text("Search your files") }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = RoundedCornerShape(16.dp))
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("Search your files") },
+                    leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { query = "" }) {
+                                Icon(Icons.Rounded.Close, contentDescription = "Clear search")
+                            }
+                        }
+                    },
+                    shape = RoundedCornerShape(16.dp)
+                )
             }
             item {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FileKind.entries.forEach { type -> FilterChip(selected = kind == type, onClick = { kind = type }, label = { Text(type.label) }) }
                 }
             }
-            item { SectionLabel("${shown.size} file${if (shown.size == 1) "" else "s"}") }
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        FileKind.Image to "Images",
+                        FileKind.Pdf to "PDFs",
+                        FileKind.Text to "Text",
+                        FileKind.Other to "Other"
+                    ).forEach { (type, label) ->
+                        val count = files.count { fileKind(it) == type }
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Column(Modifier.padding(vertical = 9.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(count.toString(), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text(label, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            }
+            item { SectionLabel("${shown.size} matching file${if (shown.size == 1) "" else "s"}") }
             if (shown.isEmpty()) {
                 item { EmptyState(Icons.Rounded.FolderOpen, if (files.isEmpty()) "Your library is empty" else "No matching files", if (files.isEmpty()) "Add a file to preview and manage it here" else "Try another search or file type") }
             }
