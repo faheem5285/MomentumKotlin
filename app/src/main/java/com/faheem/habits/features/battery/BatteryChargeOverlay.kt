@@ -27,6 +27,7 @@ import android.app.KeyguardManager
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
@@ -35,6 +36,7 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import java.util.Locale
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -133,6 +135,11 @@ private object ChargeAnimationOverlay {
     private val handler = Handler(Looper.getMainLooper())
     private var window: View? = null
     private var manager: WindowManager? = null
+    private var percentView: TextView? = null
+    private var chargingGraphic: ChargingGraphic? = null
+    private var percentEstimator: BatteryPercentEstimator? = null
+    private var percentTicker: Runnable? = null
+    private var batteryReceiver: BroadcastReceiver? = null
     private val dismissTask = Runnable { dismissInternal() }
 
     fun show(context: Context, onComplete: () -> Unit = {}) {
@@ -146,7 +153,9 @@ private object ChargeAnimationOverlay {
                     return@post
                 }
                 val wm = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                val reading = currentBattery(appContext)
+            val reading = currentBattery(appContext)
+            val estimator = BatteryPercentEstimator(reading.first, true, SystemClock.elapsedRealtime())
+            val initialPercent = estimator.estimate(SystemClock.elapsedRealtime())
                 val root = FrameLayout(appContext).apply {
                 setBackgroundColor(AndroidColor.argb(82, 8, 12, 24))
                 isClickable = true
@@ -184,14 +193,17 @@ private object ChargeAnimationOverlay {
                 setOnClickListener { dismissInternal() }
             }, LinearLayout.LayoutParams(dp(appContext, 36), dp(appContext, 36)))
             card.addView(top)
-            card.addView(ChargingGraphic(appContext, reading.first, BatteryAnimationPreferences.style(appContext)), LinearLayout.LayoutParams(dp(appContext, 190), dp(appContext, 174)).apply { gravity = Gravity.CENTER_HORIZONTAL })
-            card.addView(TextView(appContext).apply {
-                text = "${reading.first}%"
+            val graphic = ChargingGraphic(appContext, initialPercent, BatteryAnimationPreferences.style(appContext))
+            card.addView(graphic, LinearLayout.LayoutParams(dp(appContext, 190), dp(appContext, 174)).apply { gravity = Gravity.CENTER_HORIZONTAL })
+            val percentage = TextView(appContext).apply {
+                text = formatEstimatedPercent(initialPercent)
                 textSize = 38f
                 gravity = Gravity.CENTER
                 setTextColor(AndroidColor.WHITE)
                 typeface = Typeface.create("sans-serif", Typeface.BOLD)
-            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(appContext, 48)))
+                contentDescription = "Estimated battery level. Android reports whole percentages."
+            }
+            card.addView(percentage, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(appContext, 48)))
             card.addView(TextView(appContext).apply {
                 text = "${reading.second} · ${BatteryAnimationPreferences.style(appContext)} animation"
                 textSize = 13f
@@ -209,6 +221,32 @@ private object ChargeAnimationOverlay {
                 wm.addView(root, layoutParams)
                 window = root
                 manager = wm
+                percentView = percentage
+                chargingGraphic = graphic
+                percentEstimator = estimator
+                val batteryUpdates = object : BroadcastReceiver() {
+                    override fun onReceive(context: Context?, intent: Intent?) {
+                        val reading = batteryReading(intent)
+                        estimator.update(reading.percent, reading.charging, SystemClock.elapsedRealtime())
+                        renderEstimatedPercent(estimator.estimate(SystemClock.elapsedRealtime()))
+                    }
+                }
+                ContextCompat.registerReceiver(
+                    appContext,
+                    batteryUpdates,
+                    android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED),
+                    ContextCompat.RECEIVER_NOT_EXPORTED
+                )
+                batteryReceiver = batteryUpdates
+                val ticker = object : Runnable {
+                    override fun run() {
+                        val activeEstimator = percentEstimator ?: return
+                        renderEstimatedPercent(activeEstimator.estimate(SystemClock.elapsedRealtime()))
+                        handler.postDelayed(this, 1_000)
+                    }
+                }
+                percentTicker = ticker
+                handler.post(ticker)
                 handler.removeCallbacks(dismissTask)
                 handler.postDelayed(dismissTask, 6_500)
                 BatteryAnimationDiagnostics.record(appContext, "Charging overlay shown", "WindowManager added the ${BatteryAnimationPreferences.style(appContext)} animation. Screen interactive=true, overlay permission=true, battery=${reading.first}%, source=${reading.second}.")
@@ -227,13 +265,27 @@ private object ChargeAnimationOverlay {
 
     private fun dismissInternal() {
         handler.removeCallbacks(dismissTask)
+        percentTicker?.let(handler::removeCallbacks)
+        percentTicker = null
+        batteryReceiver?.let { receiver -> runCatching { window?.context?.unregisterReceiver(receiver) } }
+        batteryReceiver = null
+        percentView = null
+        chargingGraphic = null
+        percentEstimator = null
         window?.let { view -> runCatching { manager?.removeView(view) } }
         window = null
         manager = null
     }
+
+    private fun renderEstimatedPercent(percent: Float) {
+        percentView?.text = formatEstimatedPercent(percent)
+        chargingGraphic?.updatePercent(percent)
+    }
+
+    private fun formatEstimatedPercent(percent: Float) = String.format(Locale.ROOT, "%.2f%%", percent.coerceIn(0f, 100f))
 }
 
-private class ChargingGraphic(context: Context, private val percent: Int, private val style: String) : View(context) {
+private class ChargingGraphic(context: Context, private var percent: Float, private val style: String) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val handler = Handler(Looper.getMainLooper())
     private var phase = 0f
@@ -246,6 +298,11 @@ private class ChargingGraphic(context: Context, private val percent: Int, privat
     }
 
     init { handler.post(frame) }
+
+    fun updatePercent(value: Float) {
+        percent = value.coerceIn(0f, 100f)
+        invalidate()
+    }
 
     override fun onDetachedFromWindow() {
         handler.removeCallbacks(frame)
@@ -271,7 +328,7 @@ private class ChargingGraphic(context: Context, private val percent: Int, privat
         canvas.drawArc(cx - radius, cy - radius, cx + radius, cy + radius, 0f, 360f, false, paint)
         paint.color = AndroidColor.rgb(117, 255, 177)
         if (style == "Pulse") paint.alpha = (176 + pulse * 79).toInt() else paint.alpha = 255
-        canvas.drawArc(cx - radius, cy - radius, cx + radius, cy + radius, -90f, 360f * percent.coerceIn(0, 100) / 100f, false, paint)
+        canvas.drawArc(cx - radius, cy - radius, cx + radius, cy + radius, -90f, 360f * percent / 100f, false, paint)
         if (style == "Flow") {
             paint.style = Paint.Style.FILL
             paint.color = AndroidColor.WHITE

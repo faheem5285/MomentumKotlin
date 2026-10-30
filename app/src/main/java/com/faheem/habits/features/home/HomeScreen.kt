@@ -122,7 +122,7 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
         screenText = if (m == null) "Tap to set up" else "${durationText(m)} today"
     }
 
-    val tiles = listOf(
+    val tiles = remember(s, screenText, ctx) { listOf(
         TileSpec(
             "Habits",
             if (s.habitsTotal == 0) "Start your first habit" else "${s.habitsDone} of ${s.habitsTotal} done today",
@@ -158,11 +158,11 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
         ),
         TileSpec("Screen time", screenText, AppModule.Screen.icon, AppModule.Screen.gradient, AppModule.Screen),
         TileSpec("Vault", "Private password manager", AppModule.Vault.icon, AppModule.Vault.gradient, AppModule.Vault)
-    ).filter { spec -> spec.module?.let { isModuleVisible(ctx, it) } ?: true }
-    val deviceTools = listOf(
+    ).filter { spec -> spec.module?.let { isModuleVisible(ctx, it) } ?: true } }
+    val deviceTools = remember(ctx) { listOf(
         TileSpec("Battery", "Live charging animation", AppModule.Battery.icon, AppModule.Battery.gradient, AppModule.Battery),
         TileSpec("Network", "Wi-Fi and mobile data", AppModule.Network.icon, AppModule.Network.gradient, AppModule.Network)
-    ).filter { spec -> spec.module?.let { isModuleVisible(ctx, it) } ?: true }
+    ).filter { spec -> spec.module?.let { isModuleVisible(ctx, it) } ?: true } }
     val settingsTile = TileSpec("Settings", "Manage modules and preferences", AppModule.Settings.icon, AppModule.Settings.gradient, AppModule.Settings)
 
     LazyColumn(
@@ -187,6 +187,19 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
                             else "${s.habitsTotal - s.habitsDone} habits left today",
                             fontSize = 15.sp, fontWeight = FontWeight.Medium
                         )
+                        if (s.habitsTotal == 0) {
+                            Spacer(Modifier.height(10.dp))
+                            Button(
+                                onClick = { onOpen(AppModule.Habits) },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color.White,
+                                    contentColor = AppModule.Habits.gradient.first()
+                                ),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Text("Create your first habit", fontWeight = FontWeight.SemiBold)
+                            }
+                        }
                     }
                     ProgressRing(
                         if (s.habitsTotal == 0) 0f else s.habitsDone.toFloat() / s.habitsTotal,

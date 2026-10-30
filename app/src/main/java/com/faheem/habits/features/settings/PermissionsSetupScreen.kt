@@ -25,7 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Notifications
@@ -42,6 +42,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -56,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.faheem.habits.core.ui.HeroCard
 
 private enum class PermissionState { ENABLED, DISABLED, UNAVAILABLE }
 
@@ -68,7 +70,7 @@ private data class SetupPermission(
 )
 
 @Composable
-fun PermissionsSetupScreen(onBack: () -> Unit) {
+fun PermissionsSetupScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var refresh by remember { mutableIntStateOf(0) }
     var openingSettings by remember { mutableIntStateOf(0) }
@@ -146,26 +148,34 @@ fun PermissionsSetupScreen(onBack: () -> Unit) {
     val total = applicable.size
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBack, contentDescription = "Back") }
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back") }
                 Column {
-                    Text("Permissions & background", fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                    Text("Set up Android access for Momentum", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    Text("Set up Momentum", fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                    Text("Choose which optional features to enable", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                 }
             }
         }
         item {
-            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("$configured of $total configured", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    LinearProgressIndicator(progress = { if (total == 0) 0f else configured.toFloat() / total }, modifier = Modifier.fillMaxWidth())
-                    Text("Only permissions supported by this Android version are included in progress. Optional access can be left off.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+            HeroCard {
+                Text("Optional access", fontSize = 14.sp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = .86f))
+                Text("$configured of $total enabled", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                LinearProgressIndicator(
+                    progress = { if (total == 0) 0f else configured.toFloat() / total },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = androidx.compose.ui.graphics.Color.White,
+                    trackColor = androidx.compose.ui.graphics.Color.White.copy(alpha = .25f)
+                )
+                Text(
+                    "Grant access only for features you want. You can change these choices later in Settings.",
+                    fontSize = 12.sp,
+                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = .9f)
+                )
             }
         }
         item {
@@ -182,7 +192,15 @@ fun PermissionsSetupScreen(onBack: () -> Unit) {
             PermissionSetupCard(item)
         }
         item {
-            Text("No permission is required to use the basic habit, finance, files or password-vault screens. Grant only the optional access for features you want.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
+            Text("You can continue without enabling anything. Habits, to-dos, money, loans, files and the password vault remain available; related features may be limited until you enable their access.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
+        }
+        item {
+            FilledTonalButton(
+                onClick = onBack,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+            ) {
+                Text("Continue to Momentum")
+            }
         }
         if (openingSettings > 0) item {
             Text("Could not open that settings page. Open Android Settings → Apps → Momentum and locate the setting manually.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)

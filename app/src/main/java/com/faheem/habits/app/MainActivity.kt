@@ -30,6 +30,7 @@ import com.faheem.habits.features.battery.handleAutomaticBatteryPowerEvent
 import com.faheem.habits.features.auth.AuthScreen
 import com.faheem.habits.core.data.supabase.SupabaseAuthApi
 import com.faheem.habits.core.data.supabase.SessionRestoreResult
+import com.faheem.habits.features.settings.PermissionsSetupScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,6 +51,12 @@ fun MomentumApp() {
     var isAuthenticated by remember { mutableStateOf(false) }
     var isRestoringSession by remember { mutableStateOf(true) }
     var authNotice by remember { mutableStateOf<String?>(null) }
+    var showPermissionSetup by remember {
+        mutableStateOf(
+            !context.getSharedPreferences("momentum_app_settings", android.content.Context.MODE_PRIVATE)
+                .getBoolean("permission_setup_seen", false)
+        )
+    }
     LaunchedEffect(context) {
         when (SupabaseAuthApi.restoreSession(context.applicationContext)) {
             SessionRestoreResult.AUTHENTICATED -> isAuthenticated = true
@@ -76,12 +83,23 @@ fun MomentumApp() {
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         if (isAuthenticated) {
-            MomentumNavigationHost(
-                destination = destination,
-                onOpenModule = { destination = MomentumDestination.Module(it) },
-                onBack = { destination = MomentumDestination.Home },
-                modifier = Modifier.padding(padding)
-            )
+            if (showPermissionSetup) {
+                PermissionsSetupScreen(
+                    onBack = {
+                        context.getSharedPreferences("momentum_app_settings", android.content.Context.MODE_PRIVATE)
+                            .edit().putBoolean("permission_setup_seen", true).apply()
+                        showPermissionSetup = false
+                    },
+                    modifier = Modifier.padding(padding)
+                )
+            } else {
+                MomentumNavigationHost(
+                    destination = destination,
+                    onOpenModule = { destination = MomentumDestination.Module(it) },
+                    onBack = { destination = MomentumDestination.Home },
+                    modifier = Modifier.padding(padding)
+                )
+            }
         } else if (isRestoringSession) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
@@ -91,4 +109,3 @@ fun MomentumApp() {
         }
     }
 }
-

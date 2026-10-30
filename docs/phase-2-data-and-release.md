@@ -21,11 +21,12 @@ For local builds, put these in the user-level Gradle properties file rather than
 
 ## Remaining data-safety work
 
-- The v3→v4 migration is derived from the last committed v3 entities plus the current v4-era fields. Add Room migration fixtures and verify representative legacy data before shipping a release.
+- The database is currently schema version 10 with explicit migrations from v3 through v10. The v3→v4 migration is derived from the last committed v3 entities plus the current v4-era fields. Add Room migration fixtures and verify representative legacy data before shipping a release.
 - There is no known schema history for versions earlier than v3. Such a database will now be preserved and rejected by Room instead of being wiped. If pre-v3 installs must be supported, recover their historical schemas and add explicit migrations.
-- Add versioned export/import with validation before re-enabling backup. Decide separately whether encrypted vault data participates and document what happens when a user forgets the master password.
-- Configure a Room schema export location and retain schema JSON for migration review.
+- A versioned JSON export/import exists for non-secret records. Import validates the backup and merges records transactionally; vault entries and file contents are excluded. File references may not work on another device. Export reads all database tables in one Room transaction so edits cannot produce a mixed-time snapshot.
+- Decide how to retain generated Room schema history. `exportSchema` is currently disabled, and no schema fixture directory is configured.
+- The vault master password cannot be reset. Vault content is device-local and excluded from JSON backup; users must keep access to the original installation to access those entries.
 
 ## Verification status
 
-Debug Kotlin compilation passed, and release Kotlin compilation passed before the release-signing gate. With no release credentials configured, `assembleRelease` now stops immediately with the four required property names. Automated migration, domain, and crypto tests remain planned work; they have not been added in this change.
+Debug Kotlin compilation passed, and release Kotlin compilation passed before the release-signing gate. With no release credentials configured, `assembleRelease` now stops immediately with the four required property names. Reminder and vault crypto unit tests exist; Room migration, backup/restore, and broader domain tests remain outstanding.

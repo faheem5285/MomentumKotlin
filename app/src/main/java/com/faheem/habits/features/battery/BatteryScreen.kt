@@ -12,20 +12,20 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
 import android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -41,9 +41,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -216,6 +219,7 @@ private fun LazyBatteryContent(
     onPreview: () -> Unit,
     onPopupPreview: () -> Unit
 ) {
+    val displayPercent = rememberBatteryPercentEstimate(reading.percent, reading.charging)
     androidx.compose.foundation.lazy.LazyColumn(
         Modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp, 12.dp, 18.dp, 28.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -231,10 +235,14 @@ private fun LazyBatteryContent(
                 Text("Live device status with a calm charging animation", fontSize = 13.sp, color = Color.White.copy(alpha = .88f))
                 Spacer(Modifier.height(18.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                    BatteryOrb(reading.percent, reading.charging, style)
+                    BatteryOrb(displayPercent, reading.charging, style)
                 }
                 Spacer(Modifier.height(14.dp))
-                Text("${reading.percent}%", fontSize = 38.sp, fontWeight = FontWeight.ExtraBold)
+                AnimatedBatteryPercent(
+                    displayPercent,
+                    fontSize = 38.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
                 Text(if (reading.charging) "${reading.source} · charging" else reading.source, fontSize = 14.sp, color = Color.White.copy(alpha = .9f))
                 Spacer(Modifier.height(12.dp))
                 FilledTonalButton(onClick = onPreview) { Text("Preview full-screen animation") }
@@ -242,8 +250,12 @@ private fun LazyBatteryContent(
         }
         item { SectionLabel("Animation style") }
         item {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                styles.forEach { option ->
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(styles, key = { it }) { option ->
                     val selected = style == option
                     Card(
                         onClick = { onStyle(option) },
@@ -256,7 +268,7 @@ private fun LazyBatteryContent(
                     ) {
                         Column(Modifier.fillMaxWidth().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Box(Modifier.size(82.dp).clip(CircleShape).background(Color(0xFF12203A)), contentAlignment = Alignment.Center) {
-                                BatteryOrb(72, true, option, Modifier.size(72.dp))
+                                BatteryOrb(72f, true, option, Modifier.size(72.dp), animate = selected)
                             }
                             Text(option, fontWeight = FontWeight.SemiBold, color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
                             Text(
@@ -389,16 +401,23 @@ private fun batteryStyleDescription(style: String): String = when (style) {
 }
 
 @Composable
-fun BatteryOrb(percent: Int, charging: Boolean, style: String, modifier: Modifier = Modifier) {
-    val progress by animateFloatAsState(percent / 100f, tween(650), label = "battery-level")
-    val pulse by rememberInfiniteTransition(label = "battery-pulse").animateFloat(
-        initialValue = .72f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(if (style == "Flow") 850 else 1400), RepeatMode.Reverse), label = "pulse"
-    )
-    val alpha = if (charging && style != "Glow") pulse else .9f
+fun BatteryOrb(percent: Float, charging: Boolean, style: String, modifier: Modifier = Modifier, animate: Boolean = charging) {
+    val progress = percent.coerceIn(0f, 100f) / 100f
+    val pulse = if (animate) {
+        rememberInfiniteTransition(label = "battery-pulse").animateFloat(
+            initialValue = .72f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(if (style == "Flow") 850 else 1400), RepeatMode.Reverse), label = "pulse"
+        )
+    } else {
+        remember { androidx.compose.runtime.mutableFloatStateOf(.86f) }
+    }
     val color = if (charging) Color(0xFFBBF7D0) else Color.White
     Box(modifier.size(154.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
+            // Read animation state in the draw phase so charging frames redraw
+            // the orb without recomposing its surrounding Compose hierarchy.
+            val framePulse = pulse.value
+            val alpha = if (charging && style != "Glow") framePulse else .9f
             val stroke = 12.dp.toPx()
             val inset = stroke / 2
             val center = androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2)
@@ -416,39 +435,149 @@ fun BatteryOrb(percent: Int, charging: Boolean, style: String, modifier: Modifie
                 "Dual Orbit", "Galaxy", "Firefly", "Spark", "Matrix", "Comet", "Flow" -> {
                     val count = when (style) { "Dual Orbit" -> 2; "Galaxy" -> 6; "Firefly" -> 5; "Spark" -> 9; "Matrix" -> 12; else -> 3 }
                     repeat(count) { i ->
-                        val angle = (pulse * 360f + i * 360f / count) * (Math.PI / 180)
+                        val angle = (framePulse * 360f + i * 360f / count) * (Math.PI / 180)
                         val radius = size.minDimension * if (style == "Galaxy") .30f + (i % 3) * .055f else .46f
                         val dot = if (style == "Spark") 2.dp.toPx() else 3.5.dp.toPx()
                         drawCircle(if (style == "Matrix") Color(0xFF86EFAC) else active, dot, androidx.compose.ui.geometry.Offset(center.x + kotlin.math.cos(angle).toFloat() * radius, center.y + kotlin.math.sin(angle).toFloat() * radius))
                     }
                 }
                 "Glow", "Neon Ring", "Prism", "Energy Core" -> {
-                    drawCircle(active.copy(alpha = if (style == "Energy Core") .22f * pulse else .12f * pulse), size.minDimension * .46f)
-                    if (style == "Neon Ring" || style == "Prism") drawArc(Color(0xFF67E8F9), -90f + pulse * 90f, 100f, false, bounds, arcSize, style = Stroke(3.dp.toPx()))
+                    drawCircle(active.copy(alpha = if (style == "Energy Core") .22f * framePulse else .12f * framePulse), size.minDimension * .46f)
+                    if (style == "Neon Ring" || style == "Prism") drawArc(Color(0xFF67E8F9), -90f + framePulse * 90f, 100f, false, bounds, arcSize, style = Stroke(3.dp.toPx()))
                 }
                 "Solar Flare" -> repeat(16) { i ->
                     val angle = i * 22.5 * Math.PI / 180
                     val r1 = size.minDimension * .39f
-                    val r2 = size.minDimension * (.44f + .025f * pulse)
+                    val r2 = size.minDimension * (.44f + .025f * framePulse)
                     drawLine(active.copy(alpha = .7f), androidx.compose.ui.geometry.Offset(center.x + kotlin.math.cos(angle).toFloat() * r1, center.y + kotlin.math.sin(angle).toFloat() * r1), androidx.compose.ui.geometry.Offset(center.x + kotlin.math.cos(angle).toFloat() * r2, center.y + kotlin.math.sin(angle).toFloat() * r2), 2.dp.toPx())
                 }
                 "Ripple", "Wave", "Aurora", "Liquid" -> {
                     repeat(if (style == "Ripple") 3 else 2) { i ->
-                        val radius = size.minDimension * (.25f + i * .10f + .025f * pulse)
+                        val radius = size.minDimension * (.25f + i * .10f + .025f * framePulse)
                         drawCircle(active.copy(alpha = .22f - i * .05f), radius, center, style = Stroke(2.dp.toPx()))
                     }
                 }
-                "Heartbeat" -> drawArc(active, -90f + pulse * 8f, 360f * progress, false, bounds, arcSize, style = Stroke(stroke * (1f + .25f * pulse), cap = StrokeCap.Round))
+                "Heartbeat" -> drawArc(active, -90f + framePulse * 8f, 360f * progress, false, bounds, arcSize, style = Stroke(stroke * (1f + .25f * framePulse), cap = StrokeCap.Round))
                 "Rainbow" -> drawArc(Color(0xFF93C5FD), -90f, 360f * progress, false, bounds, arcSize, style = Stroke(stroke * .55f, cap = StrokeCap.Round))
-                "Radar" -> drawArc(Color(0xFF67E8F9).copy(alpha = .8f), pulse * 360f, 70f, false, bounds, arcSize, style = Stroke(5.dp.toPx(), cap = StrokeCap.Round))
+                "Radar" -> drawArc(Color(0xFF67E8F9).copy(alpha = .8f), framePulse * 360f, 70f, false, bounds, arcSize, style = Stroke(5.dp.toPx(), cap = StrokeCap.Round))
                 "Spiral" -> repeat(5) { i ->
-                    val angle = (pulse * 360f + i * 55f) * Math.PI / 180
+                    val angle = (framePulse * 360f + i * 55f) * Math.PI / 180
                     val radius = size.minDimension * (.12f + i * .065f)
                     drawCircle(active.copy(alpha = .8f), 3.dp.toPx(), androidx.compose.ui.geometry.Offset(center.x + kotlin.math.cos(angle).toFloat() * radius, center.y + kotlin.math.sin(angle).toFloat() * radius))
                 }
                 "Minimal" -> drawArc(Color.White.copy(alpha = .8f), -90f, 360f * progress, false, bounds, arcSize, style = Stroke(4.dp.toPx(), cap = StrokeCap.Round))
             }
         }
-        Icon(if (charging) Icons.Rounded.Bolt else if (percent >= 80) Icons.Rounded.BatteryFull else Icons.Rounded.Power, null, Modifier.size(58.dp), tint = color.copy(alpha = alpha))
+        Icon(
+            if (charging) Icons.Rounded.Bolt else if (percent >= 80f) Icons.Rounded.BatteryFull else Icons.Rounded.Power,
+            null,
+            Modifier.size(58.dp).graphicsLayer {
+                alpha = if (animate && style != "Glow") pulse.value else .9f
+            },
+            tint = color
+        )
     }
+}
+
+@Composable
+internal fun AnimatedBatteryPercent(
+    percent: Float,
+    modifier: Modifier = Modifier,
+    fontSize: androidx.compose.ui.unit.TextUnit = 54.sp,
+    fontWeight: FontWeight = FontWeight.Bold,
+    color: Color = Color.White
+) {
+    Text(
+        text = String.format(java.util.Locale.ROOT, "%.2f%%", percent.coerceIn(0f, 100f)),
+        modifier = modifier.semantics {
+            contentDescription = "Estimated battery level ${String.format(java.util.Locale.ROOT, "%.2f", percent.coerceIn(0f, 100f))} percent. Android reports battery level in whole percentages."
+        },
+        color = color,
+        fontSize = fontSize,
+        fontWeight = fontWeight,
+        maxLines = 1
+    )
+}
+
+@Composable
+internal fun rememberBatteryPercentEstimate(percent: Int, charging: Boolean): Float {
+    var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    val estimator = remember { BatteryPercentEstimator(percent, charging, now) }
+
+    LaunchedEffect(estimator) {
+        while (true) {
+            delay(1_000)
+            now = SystemClock.elapsedRealtime()
+        }
+    }
+    LaunchedEffect(estimator, percent, charging) {
+        estimator.update(percent, charging, SystemClock.elapsedRealtime())
+        now = SystemClock.elapsedRealtime()
+    }
+    return estimator.estimate(now)
+}
+
+internal class BatteryPercentEstimator(initialPercent: Int, initialCharging: Boolean, now: Long) {
+    private var lastReportedPercent = initialPercent.coerceIn(0, 100)
+    private var charging = initialCharging
+    private var anchorPercent = (lastReportedPercent + .5f).coerceIn(0f, 100f)
+    private var anchorTime = now
+    private var lastReportedAt = now
+    private var ratePerSecond = defaultRate(initialCharging)
+
+    fun update(percent: Int, isCharging: Boolean, now: Long) {
+        val reported = percent.coerceIn(0, 100)
+        val currentEstimate = estimate(now)
+
+        // The screen's initial placeholder is replaced by Android's sticky
+        // battery broadcast shortly after composition; treat that as a sync,
+        // not as a real multi-percent battery change.
+        if (now - lastReportedAt < 10_000L && kotlin.math.abs(reported - lastReportedPercent) > 1) {
+            charging = isCharging
+            ratePerSecond = defaultRate(isCharging)
+            anchorPercent = (reported + if (isCharging) .5f else 0f).coerceIn(0f, 100f)
+            anchorTime = now
+            lastReportedPercent = reported
+            lastReportedAt = now
+            return
+        }
+
+        if (isCharging != charging) {
+            charging = isCharging
+            ratePerSecond = defaultRate(isCharging)
+            anchorPercent = currentEstimate.coerceIn(lowerBound(reported, isCharging), upperBound(reported, isCharging))
+            anchorTime = now
+            lastReportedPercent = reported
+            lastReportedAt = now
+            return
+        }
+
+        if (reported != lastReportedPercent) {
+            val elapsedSeconds = (now - lastReportedAt).coerceAtLeast(1L) / 1_000f
+            val observedRate = kotlin.math.abs(reported - lastReportedPercent) / elapsedSeconds
+            if (elapsedSeconds in 15f..3_600f && observedRate.isFinite() && observedRate > 0f) {
+                ratePerSecond = (ratePerSecond * .65f + observedRate * .35f)
+                    .coerceIn(1f / 3_600f, 1f / 20f)
+            }
+            anchorPercent = currentEstimate.coerceIn(lowerBound(reported, charging), upperBound(reported, charging))
+            anchorTime = now
+            lastReportedPercent = reported
+            lastReportedAt = now
+        }
+    }
+
+    fun estimate(now: Long): Float {
+        val elapsedSeconds = (now - anchorTime).coerceAtLeast(0L) / 1_000f
+        val direction = if (charging) 1f else -1f
+        val estimate = anchorPercent + elapsedSeconds * ratePerSecond * direction
+        return estimate.coerceIn(lowerBound(lastReportedPercent, charging), upperBound(lastReportedPercent, charging))
+    }
+
+    private fun lowerBound(reported: Int, isCharging: Boolean) =
+        if (isCharging) reported.toFloat() else (reported - .99f).coerceAtLeast(0f)
+
+    private fun upperBound(reported: Int, isCharging: Boolean) =
+        if (isCharging) (reported + .99f).coerceAtMost(100f) else reported.toFloat()
+
+    private fun defaultRate(isCharging: Boolean) = 1f / if (isCharging) 240f else 360f
 }

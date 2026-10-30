@@ -24,45 +24,44 @@ object MomentumBackup {
 
     suspend fun export(context: Context, destination: Uri) = withContext(Dispatchers.IO) {
         val db = AppDatabase.get(context)
-        val root = JSONObject()
-            .put("format", "momentum-backup")
-            .put("version", VERSION)
-            .put("backupId", UUID.randomUUID().toString())
-            .put("exportedAt", System.currentTimeMillis())
-            .put("contents", "non-secret app records; vault entries and file contents excluded")
-        val habits = db.habitDao().getAllForBackup()
-        val habitJson = JSONArray()
-        for (habit in habits) {
-            val item = JSONObject()
-                .put("id", habit.id)
-                .put("name", habit.name)
-                .put("description", habit.description)
-                .put("icon", habit.icon)
-                .put("colorIndex", habit.colorIndex)
-                .put("timeOfDay", habit.timeOfDay)
-                .put("daysMask", habit.daysMask)
-                .put("archived", habit.archived)
-                .put("createdEpochDay", habit.createdEpochDay)
-            habitJson.put(item)
+        // Read all tables under one Room transaction so concurrent edits cannot
+        // produce a backup containing records from different database states.
+        val root = db.withTransaction {
+            val snapshot = JSONObject()
+                .put("format", "momentum-backup")
+                .put("version", VERSION)
+                .put("backupId", UUID.randomUUID().toString())
+                .put("exportedAt", System.currentTimeMillis())
+                .put("contents", "non-secret app records; vault entries and file contents excluded")
+            val habits = db.habitDao().getAllForBackup()
+            val habitJson = JSONArray()
+            for (habit in habits) {
+                habitJson.put(JSONObject()
+                    .put("id", habit.id).put("name", habit.name).put("description", habit.description)
+                    .put("icon", habit.icon).put("colorIndex", habit.colorIndex).put("timeOfDay", habit.timeOfDay)
+                    .put("daysMask", habit.daysMask).put("archived", habit.archived)
+                    .put("createdEpochDay", habit.createdEpochDay))
+            }
+            val completions = JSONArray()
+            db.habitDao().getCompletionsForBackup().forEach { completions.put(JSONObject().put("habitId", it.habitId).put("epochDay", it.epochDay)) }
+            val reminders = JSONArray()
+            db.habitDao().getRemindersForBackup().forEach { reminders.put(JSONObject()
+                .put("habitId", it.habitId).put("hour", it.hour).put("minute", it.minute).put("daysMask", it.daysMask)
+                .put("enabled", it.enabled).put("dateEpochDay", it.dateEpochDay ?: JSONObject.NULL)) }
+            val expenses = JSONArray()
+            db.expenseDao().getAllForBackup().forEach { expenses.put(JSONObject().put("title", it.title).put("amount", it.amount).put("category", it.category).put("epochDay", it.epochDay)) }
+            val loans = JSONArray()
+            db.loanDao().getAllForBackup().forEach { loans.put(JSONObject().put("person", it.person).put("amount", it.amount).put("lent", it.lent).put("note", it.note).put("epochDay", it.epochDay).put("settled", it.settled)) }
+            val files = JSONArray()
+            db.fileDao().getAllForBackup().forEach { files.put(JSONObject().put("name", it.name).put("uri", it.uri).put("mime", it.mime).put("addedEpochDay", it.addedEpochDay)) }
+            val todos = JSONArray()
+            db.toDoDao().getAllForBackup().forEach { todos.put(JSONObject().put("title", it.title).put("notes", it.notes).put("dueEpochDay", it.dueEpochDay)
+                .put("completed", it.completed).put("category", it.category).put("priority", it.priority)
+                .put("reminderHour", it.reminderHour ?: JSONObject.NULL).put("reminderMinute", it.reminderMinute ?: JSONObject.NULL)) }
+            snapshot.put("habits", habitJson).put("completions", completions).put("reminders", reminders)
+                .put("expenses", expenses).put("loans", loans).put("files", files).put("todos", todos)
+            snapshot
         }
-        val completions = JSONArray()
-        db.habitDao().getCompletionsForBackup().forEach { completions.put(JSONObject().put("habitId", it.habitId).put("epochDay", it.epochDay)) }
-        val reminders = JSONArray()
-        db.habitDao().getRemindersForBackup().forEach { reminders.put(JSONObject()
-            .put("habitId", it.habitId).put("hour", it.hour).put("minute", it.minute).put("daysMask", it.daysMask)
-            .put("enabled", it.enabled).put("dateEpochDay", it.dateEpochDay ?: JSONObject.NULL)) }
-        val expenses = JSONArray()
-        db.expenseDao().getAllForBackup().forEach { expenses.put(JSONObject().put("title", it.title).put("amount", it.amount).put("category", it.category).put("epochDay", it.epochDay)) }
-        val loans = JSONArray()
-        db.loanDao().getAllForBackup().forEach { loans.put(JSONObject().put("person", it.person).put("amount", it.amount).put("lent", it.lent).put("note", it.note).put("epochDay", it.epochDay).put("settled", it.settled)) }
-        val files = JSONArray()
-        db.fileDao().getAllForBackup().forEach { files.put(JSONObject().put("name", it.name).put("uri", it.uri).put("mime", it.mime).put("addedEpochDay", it.addedEpochDay)) }
-        val todos = JSONArray()
-        db.toDoDao().getAllForBackup().forEach { todos.put(JSONObject().put("title", it.title).put("notes", it.notes).put("dueEpochDay", it.dueEpochDay)
-            .put("completed", it.completed).put("category", it.category).put("priority", it.priority)
-            .put("reminderHour", it.reminderHour ?: JSONObject.NULL).put("reminderMinute", it.reminderMinute ?: JSONObject.NULL)) }
-        root.put("habits", habitJson).put("completions", completions).put("reminders", reminders)
-            .put("expenses", expenses).put("loans", loans).put("files", files).put("todos", todos)
         val bytes = root.toString(2).toByteArray(Charsets.UTF_8)
         require(bytes.size <= MAX_BYTES) { "Backup is larger than the 10 MB safety limit." }
         val output = context.contentResolver.openOutputStream(destination, "w")

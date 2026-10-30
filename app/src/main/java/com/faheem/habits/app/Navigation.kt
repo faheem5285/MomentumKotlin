@@ -2,10 +2,9 @@ package com.faheem.habits.app
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -48,13 +47,7 @@ fun MomentumNavigationHost(
         targetState = destination,
         modifier = modifier,
         transitionSpec = {
-            if (targetState is MomentumDestination.Module) {
-                (slideInHorizontally(initialOffsetX = { it / 3 }) + fadeIn()) togetherWith
-                    (slideOutHorizontally(targetOffsetX = { -it / 6 }) + fadeOut())
-            } else {
-                (slideInHorizontally(initialOffsetX = { -it / 6 }) + fadeIn()) togetherWith
-                    (slideOutHorizontally(targetOffsetX = { it / 3 }) + fadeOut())
-            }
+            fadeIn(tween(140)) togetherWith fadeOut(tween(100))
         },
         label = "momentum_navigation"
     ) { current ->

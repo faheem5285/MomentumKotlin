@@ -64,14 +64,25 @@ fun ExpensesScreen(vm: ExpenseViewModel = viewModel()) {
     var showBudget by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<Expense?>(null) }
 
-    val inMonth = expenses.filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == month }
-    val spent = inMonth.sumOf { it.amount }
-    val previousMonthSpent = expenses.filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == month.minusMonths(1) }.sumOf { it.amount }
-    val byCategory = inMonth.groupBy { it.category }.mapValues { (_, rows) -> rows.sumOf { it.amount } }
+    val inMonth = remember(expenses, month) {
+        expenses.filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == month }
+    }
+    val spent = remember(inMonth) { inMonth.sumOf { it.amount } }
+    val previousMonthSpent = remember(expenses, month) {
+        val previousMonth = month.minusMonths(1)
+        expenses.asSequence()
+            .filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == previousMonth }
+            .sumOf { it.amount }
+    }
+    val byCategory = remember(inMonth) {
+        inMonth.groupBy { it.category }.mapValues { (_, rows) -> rows.sumOf { it.amount } }
+    }
     val budgetFraction = if (budget > 0) (spent / budget).toFloat() else 0f
-    val filtered = inMonth.filter {
-        (category == "All" || it.category == category) &&
-            (query.isBlank() || it.title.contains(query, true) || it.category.contains(query, true))
+    val filtered = remember(inMonth, category, query) {
+        inMonth.filter {
+            (category == "All" || it.category == category) &&
+                (query.isBlank() || it.title.contains(query, true) || it.category.contains(query, true))
+        }
     }
 
     if (showBudget) BudgetSheet(budget, { showBudget = false }) { vm.setBudget(it); showBudget = false }

@@ -60,14 +60,16 @@ fun LoansScreen(vm: LoanViewModel = viewModel()) {
     var editing by remember { mutableStateOf<Loan?>(null) }
     var deleting by remember { mutableStateOf<Loan?>(null) }
 
-    val openLoans = loans.filter { !it.settled }
-    val settledLoans = loans.filter { it.settled }
-    val toReceive = openLoans.filter { it.lent }.sumOf { it.amount }
-    val toPay = openLoans.filter { !it.lent }.sumOf { it.amount }
+    val openLoans = remember(loans) { loans.filter { !it.settled } }
+    val settledLoans = remember(loans) { loans.filter { it.settled } }
+    val toReceive = remember(openLoans) { openLoans.asSequence().filter { it.lent }.sumOf { it.amount } }
+    val toPay = remember(openLoans) { openLoans.asSequence().filter { !it.lent }.sumOf { it.amount } }
     val net = toReceive - toPay
-    val filtered = (if (tab == 2) settledLoans else openLoans).filter { loan ->
-        (direction == 0 || (direction == 1 && loan.lent) || (direction == 2 && !loan.lent)) &&
-            (query.isBlank() || loan.person.contains(query, true) || loan.note.contains(query, true))
+    val filtered = remember(openLoans, settledLoans, tab, direction, query) {
+        (if (tab == 2) settledLoans else openLoans).filter { loan ->
+            (direction == 0 || (direction == 1 && loan.lent) || (direction == 2 && !loan.lent)) &&
+                (query.isBlank() || loan.person.contains(query, true) || loan.note.contains(query, true))
+        }
     }
 
     if (showAdd) LoanEditorSheet(null, { showAdd = false }) { person, amount, lent, note -> vm.add(person, amount, lent, note); showAdd = false }

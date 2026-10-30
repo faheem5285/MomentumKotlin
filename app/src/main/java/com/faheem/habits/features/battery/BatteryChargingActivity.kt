@@ -71,6 +71,7 @@ private fun BatteryChargingAnimationScreen(preview: Boolean, onClose: () -> Unit
         onDispose { runCatching { context.unregisterReceiver(receiver) } }
     }
     val style = BatteryAnimationPreferences.style(context)
+    val displayPercent = rememberBatteryPercentEstimate(reading.percent, preview || reading.charging)
     Box(
         Modifier.fillMaxSize().background(
             Brush.verticalGradient(listOf(Color(0xFF101A35), Color(0xFF123C43), Color(0xFF0B1224)))
@@ -86,9 +87,9 @@ private fun BatteryChargingAnimationScreen(preview: Boolean, onClose: () -> Unit
         ) {
             Text(if (preview) "ANIMATION PREVIEW" else "POWER CONNECTED", color = Color(0xFFBDF9D3), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.5.sp)
             Spacer(Modifier.height(32.dp))
-            BatteryOrb(reading.percent, preview || reading.charging, style, Modifier.size(210.dp))
+            BatteryOrb(displayPercent, preview || reading.charging, style, Modifier.size(210.dp))
             Spacer(Modifier.height(22.dp))
-            Text("${reading.percent}%", color = Color.White, fontSize = 54.sp, fontWeight = FontWeight.Bold)
+            AnimatedBatteryPercent(displayPercent)
             Text(reading.source, color = Color.White.copy(alpha = .82f), fontSize = 16.sp)
             Spacer(Modifier.height(28.dp))
             Text("$style animation${if (preview) " · change it in Battery" else ""}", color = Color(0xFFBDF9D3), fontSize = 14.sp)

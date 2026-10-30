@@ -248,16 +248,21 @@ fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -> Unit) {
     var editing by remember { mutableStateOf<HabitUi?>(null) }
     var creating by remember { mutableStateOf(false) }
 
-    val active = all.filter { !it.habit.archived }
-    fun scheduledOn(d: Long): List<HabitUi> =
-        active.filter { isScheduled(it.habit.daysMask, d) && it.habit.createdEpochDay <= d }
-
-    val list = scheduledOn(selected)
+    val active = remember(all) { all.filter { !it.habit.archived } }
+    val weekSchedule = remember(active, todayDay) {
+        (todayDay - 6..todayDay).associateWith { day ->
+            active.filter { isScheduled(it.habit.daysMask, day) && it.habit.createdEpochDay <= day }
+        }
+    }
+    val list = remember(weekSchedule, selected) { weekSchedule[selected].orEmpty() }
     val doneCount = list.count { selected in it.days }
     val progress = if (list.isEmpty()) 0f else doneCount.toFloat() / list.size
     val isToday = selected == todayDay
-    val weekScheduled = (todayDay - 6..todayDay).sumOf { d -> scheduledOn(d).size }
-    val weekDone = (todayDay - 6..todayDay).sumOf { d -> scheduledOn(d).count { d in it.days } }
+    val (weekScheduled, weekDone) = remember(weekSchedule) {
+        weekSchedule.entries.fold(0 to 0) { totals, (day, habits) ->
+            totals.first + habits.size to totals.second + habits.count { day in it.days }
+        }
+    }
 
     detailId?.let { id ->
         all.firstOrNull { it.habit.id == id }?.let { ui ->
@@ -329,7 +334,7 @@ fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -> Unit) {
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     (todayDay - 6..todayDay).forEach { d ->
-                        val sched = scheduledOn(d)
+                        val sched = weekSchedule[d].orEmpty()
                         DayChip(
                             day = d,
                             selected = d == selected,
