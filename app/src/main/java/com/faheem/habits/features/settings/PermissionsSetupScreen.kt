@@ -3,7 +3,7 @@ package com.faheem.habits.features.settings
 import android.Manifest
 import android.app.AppOpsManager
 import android.app.NotificationManager
-import android.app.PowerManager
+import android.os.PowerManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
