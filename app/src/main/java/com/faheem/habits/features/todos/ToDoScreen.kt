@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.rounded.NotificationsActive
@@ -89,6 +90,8 @@ fun ToDoScreen(vm: ToDoViewModel = viewModel()) {
     var month by remember { mutableStateOf(YearMonth.now()) }
     val openTasks = tasks.filterNot { it.completed }
     val today = LocalDate.now()
+    val overdueCount = openTasks.count { LocalDate.ofEpochDay(it.dueEpochDay).isBefore(today) }
+    val dueTodayCount = openTasks.count { LocalDate.ofEpochDay(it.dueEpochDay) == today }
     val filtered = openTasks.filter { task ->
         val date = LocalDate.ofEpochDay(task.dueEpochDay)
         val matchesFilter = when (filter) {
@@ -105,6 +108,18 @@ fun ToDoScreen(vm: ToDoViewModel = viewModel()) {
             Column(Modifier.weight(1f)) {
                 Text("Make room for what matters", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text("${openTasks.size} open · ${tasks.count { it.completed }} completed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (openTasks.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        when {
+                            overdueCount > 0 -> "$overdueCount overdue · $dueTodayCount due today"
+                            dueTodayCount > 0 -> "$dueTodayCount due today · keep your momentum"
+                            else -> "You're up to date · keep your momentum"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (overdueCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                    )
+                }
             }
             FilledTonalButton(onClick = { creating = true }) {
                 Icon(Icons.Rounded.Add, null)
@@ -134,6 +149,13 @@ fun ToDoScreen(vm: ToDoViewModel = viewModel()) {
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     placeholder = { Text("Search tasks, notes, categories") },
                     leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                    trailingIcon = {
+                        if (query.isNotBlank()) {
+                            IconButton(onClick = { query = "" }) {
+                                Icon(Icons.Rounded.Close, contentDescription = "Clear task search")
+                            }
+                        }
+                    },
                     singleLine = true,
                     shape = RoundedCornerShape(16.dp)
                 )
