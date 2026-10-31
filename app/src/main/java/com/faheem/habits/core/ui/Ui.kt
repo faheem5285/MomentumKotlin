@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -24,6 +25,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -140,6 +142,7 @@ fun ProgressRing(progress: Float, label: String, modifier: Modifier = Modifier) 
         modifier
             .size(92.dp)
             .semantics {
+                contentDescription = label
                 progressBarRangeInfo = ProgressBarRangeInfo(
                     progress.coerceIn(0f, 1f),
                     0f..1f
@@ -178,7 +181,7 @@ fun FormSheet(title: String, onDismiss: () -> Unit, content: @Composable ColumnS
 fun BigButton(text: String, onClick: () -> Unit) {
     Button(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().height(52.dp),
+        modifier = Modifier.fillMaxWidth().height(52.dp).testTag("button:$text"),
         shape = RoundedCornerShape(16.dp)
     ) { Text(text, fontWeight = FontWeight.SemiBold) }
 }

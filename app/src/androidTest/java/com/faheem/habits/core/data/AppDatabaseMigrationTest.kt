@@ -54,7 +54,7 @@ class AppDatabaseMigrationTest {
     fun fullMigrationChainFromVersion3Validates() {
         val dbName = "migration_chain"
         helper.createDatabase(dbName, 3).close()
-        helper.runMigrationsAndValidate(dbName, 11, true, *migrations).close()
+        helper.runMigrationsAndValidate(dbName, 13, true, *migrations).close()
     }
 
     @Test
