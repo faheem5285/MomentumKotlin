@@ -138,7 +138,15 @@ data class Loan(
 
 @Entity(
     tableName = "loan_payments",
-    indices = [Index("loanId"), Index("epochDay")]
+    indices = [Index("loanId"), Index("epochDay")],
+    foreignKeys = [
+        ForeignKey(
+            entity = Loan::class,
+            parentColumns = ["id"],
+            childColumns = ["loanId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
 )
 data class LoanPayment(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
@@ -165,7 +173,10 @@ data class FileItem(
     ,@ColumnInfo(defaultValue = "0") val missing: Boolean = false
 )
 
-@Entity(tableName = "vault_entries")
+@Entity(
+    tableName = "vault_entries",
+    indices = [Index(value = ["uuid"], unique = true)]
+)
 data class VaultRecord(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val nonce: ByteArray,

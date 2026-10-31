@@ -14,6 +14,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -319,7 +320,13 @@ object HabitReminderScheduler {
 
     fun rescheduleAll(context: Context) {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            rescheduleAllNow(context)
+            try {
+                rescheduleAllNow(context)
+            } catch (e: IllegalStateException) {
+                Log.e("MomentumReminders", "Habit reminders could not be rescheduled.", e)
+            } catch (e: SecurityException) {
+                Log.e("MomentumReminders", "Habit reminder scheduling is not permitted.", e)
+            }
         }
     }
 
@@ -421,7 +428,13 @@ object ToDoReminderScheduler {
 
     fun rescheduleAll(context: Context) {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            rescheduleAllNow(context)
+            try {
+                rescheduleAllNow(context)
+            } catch (e: IllegalStateException) {
+                Log.e("MomentumReminders", "To-do reminders could not be rescheduled.", e)
+            } catch (e: SecurityException) {
+                Log.e("MomentumReminders", "To-do reminder scheduling is not permitted.", e)
+            }
         }
     }
 

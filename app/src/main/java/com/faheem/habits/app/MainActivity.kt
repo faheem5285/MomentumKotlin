@@ -3,6 +3,7 @@ package com.faheem.habits.app
 import android.content.Intent
 import android.os.Bundle
 import android.os.StrictMode
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -25,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.lifecycleScope
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.faheem.habits.core.notifications.MomentumReminderScheduler
@@ -35,6 +37,8 @@ import com.faheem.habits.features.auth.AuthScreen
 import com.faheem.habits.core.data.supabase.SupabaseAuthApi
 import com.faheem.habits.core.data.supabase.SessionRestoreResult
 import com.faheem.habits.features.settings.PermissionsSetupScreen
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -57,11 +61,22 @@ class MainActivity : ComponentActivity() {
                     .build()
             )
         }
-        MomentumReminderScheduler.createChannels(this)
-        MomentumReminderScheduler.scheduleAll(this)
+        scheduleRemindersSafely()
         enableEdgeToEdge()
         setContent {
             MomentumTheme { MomentumApp() }
+        }
+    }
+
+    private fun scheduleRemindersSafely() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                MomentumReminderScheduler.scheduleAll(applicationContext)
+            } catch (e: IllegalStateException) {
+                Log.e("MomentumStartup", "Reminder scheduling was skipped during startup.", e)
+            } catch (e: SecurityException) {
+                Log.e("MomentumStartup", "Reminder scheduling is not permitted on this device.", e)
+            }
         }
     }
 }
@@ -83,7 +98,17 @@ fun MomentumApp(settingsViewModel: com.faheem.habits.features.settings.SettingsV
         }
         isRestoringSession = false
     }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { MomentumReminderScheduler.scheduleAll(context) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        (context as? ComponentActivity)?.lifecycleScope?.launch(Dispatchers.IO) {
+            try {
+                MomentumReminderScheduler.scheduleAll(context.applicationContext)
+            } catch (e: IllegalStateException) {
+                android.util.Log.e("MomentumStartup", "Reminder rescheduling failed.", e)
+            } catch (e: SecurityException) {
+                android.util.Log.e("MomentumStartup", "Reminder rescheduling is not permitted.", e)
+            }
+        }
+    }
     DisposableEffect(context) {
         val appContext = context.applicationContext
         val powerEvents = object : android.content.BroadcastReceiver() {
