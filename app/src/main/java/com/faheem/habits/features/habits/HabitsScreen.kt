@@ -36,6 +36,7 @@ data class HabitUi(
     val reminders: List<HabitReminder> = emptyList()
 )
 
+@Suppress("TooManyFunctions")
 class HabitViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = AppDatabase.get(app).habitDao()
 
@@ -97,8 +98,24 @@ class HabitViewModel(app: Application) : AndroidViewModel(app) {
     fun toggle(item: HabitUi, day: Long) {
         viewModelScope.launch {
             if (day in item.days) dao.deleteCompletion(item.habit.id, day)
-            else dao.insertCompletion(Completion(item.habit.id, day))
+            else dao.insertCompletion(
+                Completion(
+                    habitId = item.habit.id,
+                    epochDay = day,
+                    quantity = item.habit.targetQuantity,
+                    durationSeconds = item.habit.timerMinutes * 60L,
+                    completedAtEpochMillis = System.currentTimeMillis()
+                )
+            )
         }
+    }
+
+    fun skipDay(habit: Habit, day: Long) {
+        viewModelScope.launch { dao.upsertSkip(HabitSkip(habit.id, day)) }
+    }
+
+    fun unskipDay(habit: Habit, day: Long) {
+        viewModelScope.launch { dao.deleteSkip(habit.id, day) }
     }
 
     fun setArchived(habit: Habit, archived: Boolean) {

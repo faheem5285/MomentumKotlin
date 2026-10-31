@@ -26,6 +26,14 @@ data class Habit(
     @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
     @ColumnInfo(defaultValue = "1") val dirty: Boolean = true
+    ,@ColumnInfo(defaultValue = "'specific_days'") val scheduleType: String = "specific_days"
+    ,@ColumnInfo(defaultValue = "0") val frequencyPerWeek: Int = 0
+    ,@ColumnInfo(defaultValue = "1") val everyNDays: Int = 1
+    ,@ColumnInfo(defaultValue = "1") val targetQuantity: Int = 1
+    ,@ColumnInfo(defaultValue = "''") val quantityUnit: String = ""
+    ,@ColumnInfo(defaultValue = "0") val timerMinutes: Int = 0
+    ,@ColumnInfo(defaultValue = "'General'") val category: String = "General"
+    ,@ColumnInfo(defaultValue = "0") val streakFreezes: Int = 0
 )
 
 @Entity(
@@ -46,6 +54,22 @@ data class Completion(
     @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
     @ColumnInfo(defaultValue = "1") val dirty: Boolean = true
+    ,@ColumnInfo(defaultValue = "''") val note: String = ""
+    ,@ColumnInfo(defaultValue = "1") val quantity: Int = 1
+    ,@ColumnInfo(defaultValue = "0") val durationSeconds: Long = 0
+    ,@ColumnInfo(defaultValue = "0") val completedAtEpochMillis: Long = 0
+)
+
+@Entity(
+    tableName = "habit_skips",
+    primaryKeys = ["habitId", "epochDay"],
+    foreignKeys = [ForeignKey(entity = Habit::class, parentColumns = ["id"], childColumns = ["habitId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("habitId"), Index("epochDay")]
+)
+data class HabitSkip(
+    val habitId: Int,
+    val epochDay: Long,
+    val reason: String = "freeze"
 )
 
 @Entity(
@@ -90,6 +114,10 @@ data class Expense(
     @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
     @ColumnInfo(defaultValue = "1") val dirty: Boolean = true
+    ,@ColumnInfo(defaultValue = "'Cash'") val account: String = "Cash"
+    ,@ColumnInfo(defaultValue = "''") val recurringRule: String = ""
+    ,@ColumnInfo(defaultValue = "''") val categoryIcon: String = ""
+    ,@ColumnInfo(defaultValue = "0") val categoryColor: Int = 0
 )
 
 @Entity(tableName = "loans", indices = [Index("settled"), Index("epochDay"), Index(value = ["uuid"], unique = true)])
@@ -105,6 +133,19 @@ data class Loan(
     @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
     @ColumnInfo(defaultValue = "1") val dirty: Boolean = true
+    ,val dueEpochDay: Long? = null
+)
+
+@Entity(
+    tableName = "loan_payments",
+    indices = [Index("loanId"), Index("epochDay")]
+)
+data class LoanPayment(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val loanId: Int,
+    val amountMinorUnits: Long,
+    val epochDay: Long,
+    val note: String = ""
 )
 
 @Entity(tableName = "library_files", indices = [Index("addedEpochDay"), Index(value = ["uuid"], unique = true)])
@@ -118,6 +159,10 @@ data class FileItem(
     @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
     @ColumnInfo(defaultValue = "1") val dirty: Boolean = true
+    ,@ColumnInfo(defaultValue = "''") val tags: String = ""
+    ,@ColumnInfo(defaultValue = "''") val folder: String = ""
+    ,@ColumnInfo(defaultValue = "0") val lastAccessedEpochDay: Long = 0
+    ,@ColumnInfo(defaultValue = "0") val missing: Boolean = false
 )
 
 @Entity(tableName = "vault_entries")
@@ -143,6 +188,23 @@ data class ToDoItem(
     @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
     @ColumnInfo(defaultValue = "1") val dirty: Boolean = true
+    ,val dueEpochMillis: Long? = null
+    ,@ColumnInfo(defaultValue = "''") val repeatRule: String = ""
+    ,@ColumnInfo(defaultValue = "''") val project: String = ""
+    ,@ColumnInfo(defaultValue = "''") val labels: String = ""
+    ,val parentId: Int? = null
+    ,@ColumnInfo(defaultValue = "0") val sortOrder: Long = 0
+)
+
+@Entity(
+    tableName = "category_budgets",
+    primaryKeys = ["category", "monthKey"],
+    indices = [Index("monthKey")]
+)
+data class CategoryBudget(
+    val category: String,
+    val monthKey: String,
+    val limitMinorUnits: Long
 )
 
 @Dao
@@ -155,6 +217,9 @@ interface HabitDao {
 
     @Query("SELECT * FROM completions")
     fun getCompletions(): Flow<List<Completion>>
+
+    @Query("SELECT * FROM habit_skips")
+    fun getSkips(): Flow<List<HabitSkip>>
 
     @Query("SELECT * FROM completions")
     suspend fun getCompletionsForBackup(): List<Completion>
@@ -201,6 +266,12 @@ interface HabitDao {
 
     @Query("DELETE FROM completions WHERE habitId = :habitId AND epochDay = :epochDay")
     suspend fun deleteCompletion(habitId: Int, epochDay: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSkip(skip: HabitSkip)
+
+    @Query("DELETE FROM habit_skips WHERE habitId = :habitId AND epochDay = :epochDay")
+    suspend fun deleteSkip(habitId: Int, epochDay: Long)
 }
 
 @Dao
@@ -216,9 +287,16 @@ interface ExpenseDao {
     @Query("SELECT * FROM expenses WHERE uuid = :uuid LIMIT 1") suspend fun getByUuid(uuid: String): Expense?
     @Query("DELETE FROM expenses") suspend fun deleteAll()
     @Delete suspend fun delete(expense: Expense)
+
+    @Query("SELECT * FROM category_budgets ORDER BY monthKey DESC, category")
+    fun getBudgets(): Flow<List<CategoryBudget>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertBudget(budget: CategoryBudget)
 }
 
 @Dao
+@Suppress("TooManyFunctions")
 interface LoanDao {
     @Query("SELECT * FROM loans ORDER BY settled ASC, epochDay DESC, id DESC")
     fun getAll(): Flow<List<Loan>>
@@ -232,6 +310,14 @@ interface LoanDao {
     @Query("DELETE FROM loans") suspend fun deleteAll()
     @Update suspend fun update(loan: Loan)
     @Delete suspend fun delete(loan: Loan)
+
+    @Query("SELECT * FROM loan_payments WHERE loanId = :loanId ORDER BY epochDay DESC, id DESC")
+    fun getPayments(loanId: Int): Flow<List<LoanPayment>>
+
+    @Insert suspend fun insertPayment(payment: LoanPayment)
+
+    @Query("SELECT COALESCE(SUM(amountMinorUnits), 0) FROM loan_payments WHERE loanId = :loanId")
+    suspend fun getPaidAmount(loanId: Int): Long
 }
 
 @Dao
@@ -287,8 +373,8 @@ interface ToDoDao {
 }
 
 @Database(
-    entities = [Habit::class, Completion::class, HabitReminder::class, Expense::class, Loan::class, FileItem::class, VaultRecord::class, ToDoItem::class],
-    version = 11,
+    entities = [Habit::class, Completion::class, HabitSkip::class, HabitReminder::class, Expense::class, CategoryBudget::class, Loan::class, LoanPayment::class, FileItem::class, VaultRecord::class, ToDoItem::class],
+    version = 12,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -435,6 +521,63 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val columns = mapOf(
+                    "habits" to listOf(
+                        "scheduleType TEXT NOT NULL DEFAULT 'specific_days'",
+                        "frequencyPerWeek INTEGER NOT NULL DEFAULT 0",
+                        "everyNDays INTEGER NOT NULL DEFAULT 1",
+                        "targetQuantity INTEGER NOT NULL DEFAULT 1",
+                        "quantityUnit TEXT NOT NULL DEFAULT ''",
+                        "timerMinutes INTEGER NOT NULL DEFAULT 0",
+                        "category TEXT NOT NULL DEFAULT 'General'",
+                        "streakFreezes INTEGER NOT NULL DEFAULT 0"
+                    ),
+                    "completions" to listOf(
+                        "note TEXT NOT NULL DEFAULT ''",
+                        "quantity INTEGER NOT NULL DEFAULT 1",
+                        "durationSeconds INTEGER NOT NULL DEFAULT 0",
+                        "completedAtEpochMillis INTEGER NOT NULL DEFAULT 0"
+                    ),
+                    "expenses" to listOf(
+                        "account TEXT NOT NULL DEFAULT 'Cash'",
+                        "recurringRule TEXT NOT NULL DEFAULT ''",
+                        "categoryIcon TEXT NOT NULL DEFAULT ''",
+                        "categoryColor INTEGER NOT NULL DEFAULT 0"
+                    ),
+                    "loans" to listOf("dueEpochDay INTEGER"),
+                    "library_files" to listOf(
+                        "tags TEXT NOT NULL DEFAULT ''",
+                        "folder TEXT NOT NULL DEFAULT ''",
+                        "lastAccessedEpochDay INTEGER NOT NULL DEFAULT 0",
+                        "missing INTEGER NOT NULL DEFAULT 0"
+                    ),
+                    "todo_items" to listOf(
+                        "dueEpochMillis INTEGER",
+                        "repeatRule TEXT NOT NULL DEFAULT ''",
+                        "project TEXT NOT NULL DEFAULT ''",
+                        "labels TEXT NOT NULL DEFAULT ''",
+                        "parentId INTEGER",
+                        "sortOrder INTEGER NOT NULL DEFAULT 0"
+                    )
+                )
+                columns.forEach { (table, definitions) ->
+                    definitions.forEach { definition ->
+                        db.execSQL("ALTER TABLE `$table` ADD COLUMN $definition")
+                    }
+                }
+                db.execSQL("CREATE TABLE IF NOT EXISTS `habit_skips` (`habitId` INTEGER NOT NULL, `epochDay` INTEGER NOT NULL, `reason` TEXT NOT NULL, PRIMARY KEY(`habitId`, `epochDay`), FOREIGN KEY(`habitId`) REFERENCES `habits`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_habit_skips_habitId` ON `habit_skips` (`habitId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_habit_skips_epochDay` ON `habit_skips` (`epochDay`)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `category_budgets` (`category` TEXT NOT NULL, `monthKey` TEXT NOT NULL, `limitMinorUnits` INTEGER NOT NULL, PRIMARY KEY(`category`, `monthKey`))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_category_budgets_monthKey` ON `category_budgets` (`monthKey`)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `loan_payments` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `loanId` INTEGER NOT NULL, `amountMinorUnits` INTEGER NOT NULL, `epochDay` INTEGER NOT NULL, `note` TEXT NOT NULL, FOREIGN KEY(`loanId`) REFERENCES `loans`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_loan_payments_loanId` ON `loan_payments` (`loanId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_loan_payments_epochDay` ON `loan_payments` (`epochDay`)")
+            }
+        }
+
         private fun Double.toMinorUnitsForMigration(): Long {
             require(isFinite()) { "A stored money value is not finite; database migration was stopped to protect data." }
             return BigDecimal.valueOf(this).setScale(2, RoundingMode.HALF_UP).movePointRight(2).longValueExact()
@@ -455,6 +598,7 @@ abstract class AppDatabase : RoomDatabase() {
                     .addMigrations(MIGRATION_8_9)
                     .addMigrations(MIGRATION_9_10)
                     .addMigrations(MIGRATION_10_11)
+                    .addMigrations(MIGRATION_11_12)
                     .build().also { instance = it }
             }
     }

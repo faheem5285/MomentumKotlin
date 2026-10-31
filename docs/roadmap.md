@@ -17,6 +17,11 @@
 - Phase 6 — vault security foundation: VMK key wrapping, legacy encrypted
   migration backup, biometric Keystore unlock, brute-force delay, secure
   clipboard cleanup, and secure-screen handling.
+- Phase 7 — feature data foundation: Room v12 fields and migrations for
+  flexible habits, completion notes/quantities/timers, to-do scheduling,
+  accounts and recurring money, loan due dates/payments, file metadata, and
+  category budgets; shared domain logic covers quick-add, insights, budgets,
+  and loan balances.
 
 ## Deferred
 
@@ -36,3 +41,8 @@
 - Phase 6 full encrypted import, configurable lock timeout UI, a complete
   change-password screen, and rooted-device testing remain deferred; see
   [vault-security.md](./vault-security.md).
+- Phase 7 UI wiring remains deferred for the next slice: habit freeze controls,
+  Glance widget, to-do drag/repeating/subtask UI, money charts/export/accounts,
+  loan reminder actions, file thumbnail/tag management, screen-time limit
+  notifications, global search, app-wide biometric lock, and About/settings
+  localization.
