@@ -15,7 +15,7 @@ fun money(v: Double): String {
 
 fun money(minorUnits: Long): String {
     val absolute = java.math.BigInteger.valueOf(minorUnits).abs()
-    val major = absolute.divide(java.math.BigInteger.valueOf(100)).longValueExact()
+    val major = absolute.divide(java.math.BigInteger.valueOf(100)).toString().toLong()
     val cents = absolute.remainder(java.math.BigInteger.valueOf(100)).toInt()
     val sign = if (minorUnits < 0) "-" else ""
     return CURRENCY + sign + String.format(Locale.US, "%,d.%02d", major, cents)

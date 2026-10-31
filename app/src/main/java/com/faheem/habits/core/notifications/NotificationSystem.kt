@@ -483,7 +483,13 @@ class MomentumReminderReceiver : BroadcastReceiver() {
         when (intent?.action) {
             ACTION_TEST -> {
                 MomentumReminderScheduler.createChannels(context)
-                if (MomentumNotificationSettings.notificationsAllowed(context)) {
+                if (MomentumNotificationSettings.notificationsAllowed(context) &&
+                    (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                        ContextCompat.checkSelfPermission(
+                            context,
+                            "android.permission.POST_NOTIFICATIONS"
+                        ) == PackageManager.PERMISSION_GRANTED)
+                ) {
                     NotificationManagerCompat.from(context).notify(
                         59_999,
                         NotificationCompat.Builder(context, channelId("habits"))

@@ -13,3 +13,6 @@
 
 # Vault crypto entry points must remain available to the app.
 -keep class com.faheem.habits.features.vault.VaultCrypto { *; }
+
+# The client-side Supabase stack uses the optional SLF4J binding lookup.
+-dontwarn org.slf4j.impl.StaticLoggerBinder
