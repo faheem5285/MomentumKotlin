@@ -1,31 +1,45 @@
-# Momentum project notes
+# Momentum current state
 
-Native Android app: Kotlin, Jetpack Compose, Room, ViewModel. Built with Gradle from VS Code.
+This note reflects the repository at Phase 9. The app is a native Android
+single-module project built from VS Code with Kotlin, Compose, Room, Hilt,
+ViewModel, WorkManager, DataStore, and Supabase Auth/PostgREST.
 
-## Run on phone
-    gradlew.bat installDebug      (phone connected by USB, USB debugging and Install via USB on)
+## Database and data safety
 
-## Structure (app/src/main/java/com/faheem/habits)
-- MainActivity.kt      app shell: Home (module tiles) -> opens a module screen; ModuleHost applies per-module accent colour
-- HomeScreen.kt        dashboard with live summary per module
-- Data.kt              Room entities, DAOs, database (version 3)
-- HabitsScreen.kt      Habits module shell (4 tabs: Today, Library, Insights, Manage) + HabitViewModel
-- HabitsToday.kt / HabitsTemplatesScreen.kt / HabitsInsightsScreen.kt / HabitsManageScreen.kt / HabitEditor.kt  the four Habit screens + create/edit sheet
-- HabitLogic.kt        schedule (daysMask), streak + insights maths, icons, colours, achievements
-- HabitTemplates.kt    100 ready-made habit templates (generated list)
-- ExpensesScreen.kt    expenses, monthly budget (budget saved in SharedPreferences)
-- LoansScreen.kt       loan ledger (lent / borrowed, settle)
-- FilesScreen.kt       file library (links to files via document picker)
-- ScreenTimeScreen.kt  screen time overview, today/7-day app usage, daily goals, and Instagram scroll estimate
-- InstagramScrollCounterService.kt  opt-in Accessibility service, scoped to Instagram scroll events (not a verified Reels view count)
-- VaultScreen.kt / VaultCrypto.kt  offline master-password vault with encrypted logins and secure notes
-- Util.kt              currency label (CURRENCY), date helpers
-- Theme.kt / Ui.kt     colors (light+dark), shared components (HeroCard, ProgressRing, FormSheet, ...)
+- Room schema version: **13**.
+- Explicit migrations cover versions 3 through 13.
+- Migration JSON files are exported under `app/schemas/`.
+- Destructive migration fallback is not used.
+- Local Room data remains the source of truth.
+- Versioned local backup/export exists; vault plaintext is excluded.
 
-## Known limits / next steps
-- Historical note: the old destructive-migration configuration was removed in
-  Phase 1. The current database uses explicit migrations through version 11.
-- Instagram scroll estimate needs the user to enable Momentum's Accessibility service in Android Settings. It counts debounced Instagram scroll events, not verified Reels views; it does not read on-screen content and can include non-Reels scrolling.
-- Vault uses a master-password-derived AES-256-GCM key with PBKDF2-HMAC-SHA256 (310,000 rounds), random salt and per-record nonces. Forgotten master passwords cannot be recovered. Room version 4 -> 5 adds the encrypted vault table through a migration.
-- Vault blocks screenshots while open, locks when the app backgrounds, and clears copied values after 30 seconds when possible. No server sync or biometric unlock is implemented yet.
-- Release build for speed testing: gradlew.bat installRelease (R8 on, signed with debug key).
+## Modules
+
+Habits, to-dos, money/expenses, loans, files, vault, screen time, home,
+settings, auth, network indicator, and battery charging overlay are present.
+Reminder scheduling and notification actions are implemented with exact-alarm
+fallbacks and WorkManager verification.
+
+## Vault
+
+The vault uses PBKDF2-HMAC-SHA256 with 310,000 rounds and AES-256-GCM.
+Records use a random VMK; the VMK is wrapped by the master-password key and
+an Android Keystore biometric key. Screenshots are blocked while open,
+background locking is enabled, and copied secrets are cleared on a timer.
+Lost master passwords cannot be recovered.
+
+## Sync
+
+Supabase sync is opt-in. The design and RLS SQL are in
+[docs/sync-design.md](docs/sync-design.md) and
+[docs/supabase-schema.sql](docs/supabase-schema.sql). The current engine
+contains sync state, WorkManager scheduling, first-sync local backup,
+conflict ordering, and the ciphertext-only vault transport. Non-vault
+adapters and the Settings sync UI remain deferred.
+
+## Verification
+
+Use `.\gradlew.bat :app:testDebugUnitTest`, `.\gradlew.bat detekt`, and
+`.\gradlew.bat :app:assembleDebug`. Physical device checks are still required
+for biometric behavior, alarms, migrations, SAF permissions, and Supabase
+end-to-end sync.

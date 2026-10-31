@@ -26,6 +26,9 @@
   design, Keystore-backed session access tokens, Room sync state, deterministic
   conflict ordering, first-sync backup, WorkManager retry scheduling, and
   ciphertext-only vault sync path.
+- Phase 9 — quality and repository foundations: CI checks, Dependabot,
+  current project documentation, Compose UI smoke-test scaffolding, and
+  migration validation through Room v13.
 
 ## Deferred
 
@@ -53,3 +56,6 @@
 - Phase 8 non-vault adapters, sync Settings UI, local-change debounce, merge
   result UI, configured-project integration tests, and complete cloud deletion
   remain deferred; see [phase-8-supabase-sync.md](./phase-8-supabase-sync.md).
+- Phase 9 physical-device UI/accessibility verification, full isolated
+  end-to-end Compose assertions, and repository metadata updates remain
+  deferred; see [phase-9-quality-ci-repo.md](./phase-9-quality-ci-repo.md).
