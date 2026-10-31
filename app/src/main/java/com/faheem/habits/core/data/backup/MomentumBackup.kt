@@ -30,12 +30,12 @@ object MomentumBackup {
         output.use { it.write(bytes) }
     }
 
-    internal suspend fun exportBytes(context: Context, db: AppDatabase = AppDatabase.get(context)): ByteArray = withContext(Dispatchers.IO) {
+    suspend fun exportBytes(context: Context, db: AppDatabase = AppDatabase.get(context)): ByteArray = withContext(Dispatchers.IO) {
         val root = db.withTransaction {
             val result = JSONObject()
                 .put("format", "momentum-backup")
                 .put("formatVersion", VERSION)
-                .put("schemaVersion", 11)
+                .put("schemaVersion", 13)
                 .put("exportedAt", System.currentTimeMillis())
                 .put("backupId", UUID.randomUUID().toString())
             fun meta(uuid: String, updatedAt: Long, deleted: Boolean, dirty: Boolean) = JSONObject()

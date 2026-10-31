@@ -39,6 +39,9 @@ object SupabaseAuthApi {
         val token_type: String? = null
     )
 
+    @Volatile
+    private var accessToken: String? = null
+
     private class AuthHttpException(val status: Int, detail: String) :
         IllegalStateException("Supabase authentication failed ($status): $detail")
 
@@ -49,6 +52,7 @@ object SupabaseAuthApi {
     suspend fun signIn(context: Context, email: String, password: String) {
         val body = request("token?grant_type=password", json.encodeToString(Credentials(email, password)))
         val session = json.decodeFromString<AuthResponse>(body)
+        accessToken = session.access_token
         val refreshToken = session.refresh_token
         check(!refreshToken.isNullOrBlank()) {
             "Sign-in succeeded but Supabase did not return a refresh token."
@@ -65,6 +69,7 @@ object SupabaseAuthApi {
                 json.encodeToString(RefreshCredentials(refreshToken))
             )
             val session = json.decodeFromString<AuthResponse>(body)
+            accessToken = session.access_token
             val updatedToken = session.refresh_token
             check(!updatedToken.isNullOrBlank()) {
                 "Supabase did not return a refreshed session token."
@@ -74,6 +79,7 @@ object SupabaseAuthApi {
         } catch (e: AuthHttpException) {
             if (e.status in listOf(400, 401, 403)) {
                 SecureTokenStore.clear(context.applicationContext)
+                accessToken = null
                 SessionRestoreResult.NO_SESSION
             } else {
                 SessionRestoreResult.TEMPORARY_FAILURE
@@ -82,6 +88,18 @@ object SupabaseAuthApi {
             // Keep the encrypted token on network errors so an offline start does not destroy it.
             SessionRestoreResult.TEMPORARY_FAILURE
         }
+    }
+
+    suspend fun getAccessToken(context: Context): String? {
+        accessToken?.let { return it }
+        return when (restoreSession(context.applicationContext)) {
+            SessionRestoreResult.AUTHENTICATED -> accessToken
+            else -> null
+        }
+    }
+
+    fun clearInMemorySession() {
+        accessToken = null
     }
 
     private suspend fun request(endpoint: String, body: String): String {

@@ -22,6 +22,10 @@
   accounts and recurring money, loan due dates/payments, file metadata, and
   category budgets; shared domain logic covers quick-add, insights, budgets,
   and loan balances.
+- Phase 8 — sync design and safety substrate: Supabase RLS schema, offline-first
+  design, Keystore-backed session access tokens, Room sync state, deterministic
+  conflict ordering, first-sync backup, WorkManager retry scheduling, and
+  ciphertext-only vault sync path.
 
 ## Deferred
 
@@ -46,3 +50,6 @@
   loan reminder actions, file thumbnail/tag management, screen-time limit
   notifications, global search, app-wide biometric lock, and About/settings
   localization.
+- Phase 8 non-vault adapters, sync Settings UI, local-change debounce, merge
+  result UI, configured-project integration tests, and complete cloud deletion
+  remain deferred; see [phase-8-supabase-sync.md](./phase-8-supabase-sync.md).

@@ -29,13 +29,14 @@ class AppDatabaseMigrationTest {
         AppDatabase.MIGRATION_8_9,
         AppDatabase.MIGRATION_9_10,
         AppDatabase.MIGRATION_10_11,
-        AppDatabase.MIGRATION_11_12
+        AppDatabase.MIGRATION_11_12,
+        AppDatabase.MIGRATION_12_13
     )
 
     @Test
     fun everyMigrationStepValidatesIndependently() {
         val steps = listOf(
-            3 to 4, 4 to 5, 5 to 6, 6 to 7, 7 to 8, 8 to 9, 9 to 10, 10 to 11, 11 to 12
+            3 to 4, 4 to 5, 5 to 6, 6 to 7, 7 to 8, 8 to 9, 9 to 10, 10 to 11, 11 to 12, 12 to 13
         )
         steps.forEach { (from, to) ->
             val dbName = "migration_step_${from}_$to"
@@ -67,7 +68,7 @@ class AppDatabaseMigrationTest {
             close()
         }
 
-        val db = helper.runMigrationsAndValidate(dbName, 12, true, *migrations)
+        val db = helper.runMigrationsAndValidate(dbName, 13, true, *migrations)
         db.query("SELECT id, name FROM habits WHERE id = 7").use { cursor ->
             assertTrue(cursor.moveToFirst())
             assertEquals("Keep me", cursor.getString(1))
@@ -102,7 +103,7 @@ class AppDatabaseMigrationTest {
             execSQL("INSERT INTO todo_items (id,title,notes,dueEpochDay,completed,category,priority,reminderHour,reminderMinute) VALUES (6,'Task','',20000,0,'Personal',1,NULL,NULL)")
             close()
         }
-        val db = helper.runMigrationsAndValidate(dbName, 12, true, *migrations)
+        val db = helper.runMigrationsAndValidate(dbName, 13, true, *migrations)
         listOf("habits", "completions", "habit_reminders", "expenses", "loans", "library_files", "todo_items").forEach { table ->
             db.query("SELECT uuid,updatedAt FROM `$table`").use { cursor ->
                 assertTrue("Expected backfilled row in $table", cursor.moveToFirst())

@@ -170,7 +170,11 @@ data class VaultRecord(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val nonce: ByteArray,
     val ciphertext: ByteArray,
-    val updatedAt: Long
+    val updatedAt: Long,
+    @ColumnInfo(defaultValue = "''") val uuid: String = UUID.randomUUID().toString(),
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    @ColumnInfo(defaultValue = "1") val dirty: Boolean = true,
+    @ColumnInfo(defaultValue = "''") val deviceId: String = ""
 )
 
 @Entity(tableName = "todo_items", indices = [Index("dueEpochDay"), Index("completed"), Index("reminderHour", "reminderMinute"), Index(value = ["uuid"], unique = true)])
@@ -205,6 +209,17 @@ data class CategoryBudget(
     val category: String,
     val monthKey: String,
     val limitMinorUnits: Long
+)
+
+@Entity(tableName = "sync_state")
+data class SyncState(
+    @PrimaryKey val tableName: String,
+    val cursor: String = "",
+    val pendingCount: Int = 0,
+    val conflictCount: Int = 0,
+    val lastSyncEpochMillis: Long = 0,
+    val lastError: String? = null,
+    val paused: Boolean = false
 )
 
 @Dao
@@ -340,6 +355,12 @@ interface VaultDao {
     @Query("SELECT * FROM vault_entries ORDER BY updatedAt DESC")
     suspend fun getAll(): List<VaultRecord>
 
+    @Query("SELECT * FROM vault_entries WHERE uuid = :uuid LIMIT 1")
+    suspend fun getByUuid(uuid: String): VaultRecord?
+
+    @Query("UPDATE vault_entries SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markClean(uuids: List<String>)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(record: VaultRecord)
 
@@ -372,9 +393,21 @@ interface ToDoDao {
     @Delete suspend fun delete(item: ToDoItem)
 }
 
+@Dao
+interface SyncStateDao {
+    @Query("SELECT * FROM sync_state ORDER BY tableName")
+    fun observeAll(): Flow<List<SyncState>>
+
+    @Query("SELECT * FROM sync_state WHERE tableName = :tableName LIMIT 1")
+    suspend fun get(tableName: String): SyncState?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(state: SyncState)
+}
+
 @Database(
-    entities = [Habit::class, Completion::class, HabitSkip::class, HabitReminder::class, Expense::class, CategoryBudget::class, Loan::class, LoanPayment::class, FileItem::class, VaultRecord::class, ToDoItem::class],
-    version = 12,
+    entities = [Habit::class, Completion::class, HabitSkip::class, HabitReminder::class, Expense::class, CategoryBudget::class, Loan::class, LoanPayment::class, FileItem::class, VaultRecord::class, ToDoItem::class, SyncState::class],
+    version = 13,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -384,6 +417,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun fileDao(): FileDao
     abstract fun vaultDao(): VaultDao
     abstract fun toDoDao(): ToDoDao
+    abstract fun syncStateDao(): SyncStateDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null
@@ -566,6 +600,7 @@ abstract class AppDatabase : RoomDatabase() {
                     definitions.forEach { definition ->
                         db.execSQL("ALTER TABLE `$table` ADD COLUMN $definition")
                     }
+
                 }
                 db.execSQL("CREATE TABLE IF NOT EXISTS `habit_skips` (`habitId` INTEGER NOT NULL, `epochDay` INTEGER NOT NULL, `reason` TEXT NOT NULL, PRIMARY KEY(`habitId`, `epochDay`), FOREIGN KEY(`habitId`) REFERENCES `habits`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_habit_skips_habitId` ON `habit_skips` (`habitId`)")
@@ -575,6 +610,23 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS `loan_payments` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `loanId` INTEGER NOT NULL, `amountMinorUnits` INTEGER NOT NULL, `epochDay` INTEGER NOT NULL, `note` TEXT NOT NULL, FOREIGN KEY(`loanId`) REFERENCES `loans`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_loan_payments_loanId` ON `loan_payments` (`loanId`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_loan_payments_epochDay` ON `loan_payments` (`epochDay`)")
+            }
+
+        }
+
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `vault_entries` ADD COLUMN `uuid` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `vault_entries` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `vault_entries` ADD COLUMN `dirty` INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE `vault_entries` ADD COLUMN `deviceId` TEXT NOT NULL DEFAULT ''")
+                db.query("SELECT id FROM `vault_entries`").use { cursor ->
+                    while (cursor.moveToNext()) {
+                        db.execSQL("UPDATE `vault_entries` SET uuid = ? WHERE id = ?", arrayOf(UUID.randomUUID().toString(), cursor.getInt(0)))
+                    }
+                }
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_vault_entries_uuid` ON `vault_entries` (`uuid`)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `sync_state` (`tableName` TEXT NOT NULL, `cursor` TEXT NOT NULL, `pendingCount` INTEGER NOT NULL, `conflictCount` INTEGER NOT NULL, `lastSyncEpochMillis` INTEGER NOT NULL, `lastError` TEXT, `paused` INTEGER NOT NULL, PRIMARY KEY(`tableName`))")
             }
         }
 
@@ -599,6 +651,7 @@ abstract class AppDatabase : RoomDatabase() {
                     .addMigrations(MIGRATION_9_10)
                     .addMigrations(MIGRATION_10_11)
                     .addMigrations(MIGRATION_11_12)
+                    .addMigrations(MIGRATION_12_13)
                     .build().also { instance = it }
             }
     }
