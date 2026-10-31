@@ -1,6 +1,8 @@
 # Supabase setup for Momentum
 
-This repository is prepared to use Supabase, but it does not upload or synchronize any app data yet. Room remains the existing local database.
+This repository is prepared to use Supabase. Room remains the source of truth
+and sync is opt-in. Read [sync-design.md](./sync-design.md) before applying
+the paste-ready schema in [supabase-schema.sql](./supabase-schema.sql).
 
 ## 1. Add credentials locally (never commit them)
 
@@ -33,4 +35,6 @@ Never put a service-role/secret key in an Android app. A publishable key is not 
 - Supabase Auth and PostgREST client dependencies are included.
 - The app has Internet permission.
 - A central client provider is included.
-- No app records are migrated, uploaded, or deleted yet. Data sync must be implemented per module with ownership rules and retry/conflict handling, after authentication and database policies are tested.
+- The sync contract, RLS schema, and vault ciphertext-only table are documented.
+- App records are not uploaded until sync is enabled and the schema/policies
+  have been applied and tested.
