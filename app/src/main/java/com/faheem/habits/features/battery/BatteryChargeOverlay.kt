@@ -465,7 +465,7 @@ private class ChargingGraphic(context: Context, private var percent: Float, priv
 
 private fun postChargingNotification(context: Context) {
     if (!MomentumNotificationSettings.notificationsAllowed(context)) {
-        BatteryAnimationDiagnostics.record(context, "Fallback notification not allowed", "Android notification permission is denied or notifications are disabled for Momentum.")
+        BatteryAnimationDiagnostics.record(context, "Fallback notification not allowed", "Android notification permission is denied or notifications are disabled for Zylo.")
         return
     }
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

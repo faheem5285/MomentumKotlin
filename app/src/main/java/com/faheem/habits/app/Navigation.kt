@@ -89,7 +89,7 @@ private fun ModuleScreen(module: AppModule, onBack: () -> Unit) {
                 Column(Modifier.fillMaxSize()) {
                     ModuleHeader(
                         title = module.label,
-                        eyebrow = "Momentum",
+                        eyebrow = "Zylo",
                         icon = module.icon,
                         gradient = module.gradient,
                         onBack = onBack

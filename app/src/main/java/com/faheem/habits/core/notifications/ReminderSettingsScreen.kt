@@ -85,7 +85,7 @@ fun ReminderSettingsScreen(onBack: () -> Unit) {
                         Spacer(Modifier.height(8.dp))
                         Text("Stay on track", fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
                         Text(
-                            "Choose which Momentum reminders you receive and when they arrive.",
+                            "Choose which Zylo reminders you receive and when they arrive.",
                             fontSize = 13.sp, color = Color.White.copy(alpha = .9f)
                         )
                     }
@@ -202,13 +202,13 @@ fun ReminderSettingsScreen(onBack: () -> Unit) {
                 }
                 if (master && !permissionGranted) item {
                     PermissionCard(
-                        text = "Android needs notification permission before Momentum can post reminders.",
+                        text = "Android needs notification permission before Zylo can post reminders.",
                         button = "Allow notifications",
                         onClick = { requestPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS) }
                     )
                 } else if (master && !notificationsAllowed) item {
                     PermissionCard(
-                        text = "Notifications are blocked in Android settings. Allow Momentum notifications to receive reminders.",
+                        text = "Notifications are blocked in Android settings. Allow Zylo notifications to receive reminders.",
                         button = "Open notification settings",
                         onClick = { openAppNotificationSettings(context) }
                     )

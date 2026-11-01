@@ -3,6 +3,26 @@
 
 create extension if not exists pgcrypto;
 
+-- Private bucket for file contents. File metadata remains in momentum_files;
+-- object ownership is enforced by Supabase Storage RLS.
+insert into storage.buckets (id, name, public)
+values ('momentum-files', 'momentum-files', false)
+on conflict (id) do update set public = false;
+
+drop policy if exists momentum_files_read on storage.objects;
+drop policy if exists momentum_files_insert on storage.objects;
+drop policy if exists momentum_files_update on storage.objects;
+drop policy if exists momentum_files_delete on storage.objects;
+create policy momentum_files_read on storage.objects for select
+  using (bucket_id = 'momentum-files' and owner_id = auth.uid()::text);
+create policy momentum_files_insert on storage.objects for insert
+  with check (bucket_id = 'momentum-files' and owner_id = auth.uid()::text);
+create policy momentum_files_update on storage.objects for update
+  using (bucket_id = 'momentum-files' and owner_id = auth.uid()::text)
+  with check (bucket_id = 'momentum-files' and owner_id = auth.uid()::text);
+create policy momentum_files_delete on storage.objects for delete
+  using (bucket_id = 'momentum-files' and owner_id = auth.uid()::text);
+
 create table if not exists public.momentum_habits (
   id uuid primary key,
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,

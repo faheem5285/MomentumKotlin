@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.faheem.habits.core.data.supabase.SupabaseAuthApi
 import com.faheem.habits.core.data.supabase.SupabaseProvider
+import com.faheem.habits.core.data.sync.SupabaseSyncScheduler
 import com.faheem.habits.core.ui.BrandGradient
 import com.faheem.habits.core.ui.InfoBanner
 import com.faheem.habits.core.ui.MomentumTokens
@@ -94,7 +95,7 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
             }
             Spacer(Modifier.height(20.dp))
             Text(
-                "Momentum",
+                "Zylo",
                 fontSize = 34.sp,
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = (-0.9).sp,
@@ -167,6 +168,7 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
                                             isSignUp = false
                                         } else {
                                             SupabaseAuthApi.signIn(context.applicationContext, enteredEmail, enteredPassword)
+                                            SupabaseSyncScheduler.enqueue(context.applicationContext)
                                             onAuthenticated()
                                         }
                                     } catch (e: Exception) {
@@ -191,7 +193,7 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
                         enabled = !busy,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(if (isSignUp) "Already have an account? Sign in" else "New to Momentum? Create account")
+                        Text(if (isSignUp) "Already have an account? Sign in" else "New to Zylo? Create account")
                     }
                     message?.let {
                         Spacer(Modifier.height(10.dp))

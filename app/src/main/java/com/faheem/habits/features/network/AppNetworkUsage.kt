@@ -3,9 +3,10 @@ package com.faheem.habits.features.network
 import android.app.usage.NetworkStats
 import android.app.usage.NetworkStatsManager
 import android.content.Context
-import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.os.Build
+import androidx.compose.ui.graphics.ImageBitmap
+import com.faheem.habits.core.ui.installedAppIdentity
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Locale
@@ -15,6 +16,7 @@ internal data class AppNetworkUsage(
     val packageName: String,
     val label: String,
     val uid: Int,
+    val icon: ImageBitmap?,
     val wifiBytes: Long,
     val mobileBytes: Long
 ) {
@@ -84,20 +86,15 @@ private fun deviceBytes(context: Context, networkType: Int, start: Long, end: Lo
     }
 }
 
-private fun appLabel(context: Context, uid: Int): Pair<String, String> {
-    val pm = context.packageManager
+private fun appInfo(context: Context, uid: Int): Triple<String, String, ImageBitmap?> {
     val packages = try {
-        pm.getPackagesForUid(uid)
+        context.packageManager.getPackagesForUid(uid)
     } catch (_: Exception) {
         null
     }
-    val packageName = packages?.firstOrNull() ?: return "System service" to "uid $uid"
-    val label = try {
-        pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
-    } catch (_: Exception) {
-        packageName
-    }
-    return packageName to label
+    val packageName = packages?.firstOrNull() ?: return Triple("uid:$uid", "System service", null)
+    val identity = installedAppIdentity(context, packageName)
+    return Triple(packageName, identity.label, identity.icon)
 }
 
 internal fun loadAppNetworkReport(context: Context, periodDays: Int = 7): AppNetworkReport {
@@ -108,11 +105,12 @@ internal fun loadAppNetworkReport(context: Context, periodDays: Int = 7): AppNet
     val mobileByUid = bytesByUid(context, ConnectivityManager.TYPE_MOBILE, start, end)
     val uids = (wifiByUid.keys + mobileByUid.keys).filter { it > 0 }
     val apps = uids.map { uid ->
-        val (packageName, label) = appLabel(context, uid)
+        val (packageName, label, icon) = appInfo(context, uid)
         AppNetworkUsage(
             packageName = packageName,
             label = label,
             uid = uid,
+            icon = icon,
             wifiBytes = wifiByUid[uid] ?: 0L,
             mobileBytes = mobileByUid[uid] ?: 0L
         )

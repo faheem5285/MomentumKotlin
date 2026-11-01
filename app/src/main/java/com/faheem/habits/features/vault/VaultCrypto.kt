@@ -31,7 +31,8 @@ data class VaultSecret(
     val folder: String = "",
     val tags: String = "",
     val favorite: Boolean = false,
-    val totp: String = ""
+    val totp: String = "",
+    val category: String = "Other"
 )
 
 data class VaultListItem(val id: Int, val secret: VaultSecret, val updatedAt: Long)
@@ -46,6 +47,31 @@ fun vaultHealthReport(items: List<VaultListItem>): VaultHealthReport {
         reused = counts.count { it.value > 1 },
         duplicates = passwords.size - counts.size
     )
+}
+
+fun needsVaultAttention(item: VaultListItem, allItems: List<VaultListItem>): Boolean {
+    val password = item.secret.password
+    val duplicate = password.isNotBlank() &&
+        allItems.count { it.secret.password == password } > 1
+    val weak = password.isNotBlank() &&
+        (password.length < 12 || password.none(Char::isUpperCase) || password.none(Char::isDigit))
+    return weak || duplicate
+}
+
+val vaultCategories = listOf("All", "Google", "Social", "Banking", "Work", "Shopping", "Other")
+
+fun inferredVaultCategory(secret: VaultSecret): String {
+    if (secret.type == "note") return "Other"
+    if (secret.category != "Other") return secret.category
+    val text = "${secret.title} ${secret.website}".lowercase()
+    return when {
+        listOf("google", "gmail", "youtube", "android").any(text::contains) -> "Google"
+        listOf("facebook", "instagram", "twitter", "x.com", "tiktok", "linkedin", "snapchat").any(text::contains) -> "Social"
+        listOf("bank", "paypal", "stripe", "finance", "wallet", "credit").any(text::contains) -> "Banking"
+        listOf("office", "slack", "teams", "work", "notion", "jira", "github").any(text::contains) -> "Work"
+        listOf("amazon", "ebay", "shop", "store", "walmart").any(text::contains) -> "Shopping"
+        else -> "Other"
+    }
 }
 
 object VaultCrypto {
@@ -69,7 +95,8 @@ object VaultCrypto {
         val folder: String = "",
         val tags: String = "",
         val favorite: Boolean = false,
-        val totp: String = ""
+        val totp: String = "",
+        val category: String = "Other"
     )
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -160,7 +187,8 @@ object VaultCrypto {
                 folder = secret.folder,
                 tags = secret.tags,
                 favorite = secret.favorite,
-                totp = secret.totp
+                totp = secret.totp,
+                category = secret.category
             )
         ).toByteArray(Charsets.UTF_8)
         return try {
@@ -184,7 +212,8 @@ object VaultCrypto {
                 folder = payload.folder,
                 tags = payload.tags,
                 favorite = payload.favorite,
-                totp = payload.totp
+                totp = payload.totp,
+                category = payload.category
             )
         } finally {
             plaintext.fill(0)

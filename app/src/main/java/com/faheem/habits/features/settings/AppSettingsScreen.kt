@@ -116,7 +116,7 @@ fun AppSettingsScreen() {
             item {
                 HeroCard {
                     Text("App settings", fontSize = 13.sp, color = Color.White.copy(alpha = .84f))
-                    Text("Make Momentum yours", fontSize = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp)
+                    Text("Make Zylo yours", fontSize = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp)
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "Choose which tools appear on your Home screen. Hiding a module keeps all of its saved data.",
@@ -215,7 +215,7 @@ fun AppSettingsScreen() {
                         Column(Modifier.weight(1f)) {
                             Text("Theme", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                             Text(
-                                "Match the system or lock Momentum to light or dark",
+                                "Match the system or lock Zylo to light or dark",
                                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }

@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 fun HeroCard(
     modifier: Modifier = Modifier,
     gradient: List<Color> = LocalGradient.current,
+    contentPadding: Dp = 22.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val colors = gradient.ifEmpty { BrandGradient }
@@ -140,7 +141,7 @@ fun HeroCard(
         )
         CompositionLocalProvider(LocalContentColor provides Color.White) {
             Column(
-                Modifier.fillMaxWidth().padding(22.dp),
+                Modifier.fillMaxWidth().padding(contentPadding),
                 content = content
             )
         }

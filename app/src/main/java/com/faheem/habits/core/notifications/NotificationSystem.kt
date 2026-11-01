@@ -151,14 +151,14 @@ object MomentumReminderScheduler {
         ReminderKinds.forEach { kind ->
             manager.createNotificationChannel(
                 NotificationChannel(channelId(kind.id), kind.title, NotificationManager.IMPORTANCE_DEFAULT).apply {
-                    description = "Scheduled ${kind.title.lowercase()} notifications from Momentum."
+                    description = "Scheduled ${kind.title.lowercase()} notifications from Zylo."
                     lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
                 }
             )
         }
         manager.createNotificationChannel(
             NotificationChannel("todo_reminders", "To-do reminders", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Reminders for tasks scheduled in Momentum."
+                description = "Reminders for tasks scheduled in Zylo."
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
             }
         )
@@ -507,7 +507,7 @@ class MomentumReminderReceiver : BroadcastReceiver() {
                         59_999,
                         NotificationCompat.Builder(context, channelId("habits"))
                             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                            .setContentTitle("Momentum test reminder")
+                            .setContentTitle("Zylo test reminder")
                             .setContentText("Reminder delivery is working.")
                             .setCategory(NotificationCompat.CATEGORY_REMINDER)
                             .setAutoCancel(true)

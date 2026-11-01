@@ -236,7 +236,7 @@ private fun HomeHero(s: HomeState, onOpen: (AppModule) -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(greeting(), fontSize = 14.sp, color = Color.White.copy(alpha = 0.82f))
-                Text("Momentum", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp)
+                Text("Zylo", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp)
                 Spacer(Modifier.height(2.dp))
                 Text(
                     LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM")),

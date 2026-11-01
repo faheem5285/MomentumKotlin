@@ -3,6 +3,7 @@
 This repository is prepared to use Supabase. Room remains the source of truth
 and sync is opt-in. Read [sync-design.md](./sync-design.md) before applying
 the paste-ready schema in [supabase-schema.sql](./supabase-schema.sql).
+The schema also creates a private `momentum-files` Storage bucket for file contents.
 
 ## 1. Add credentials locally (never commit them)
 
@@ -30,11 +31,20 @@ Do not create permissive public policies. First configure Supabase Auth, then cr
 
 Never put a service-role/secret key in an Android app. A publishable key is not a substitute for RLS.
 
+## 4. Apply the schema
+
+Open the Supabase SQL Editor, paste the complete contents of
+`docs/supabase-schema.sql`, and run it while signed in as the project owner.
+This creates the tables, RLS policies, and private Storage policies. Do not
+make the bucket public.
+
 ## Current scope
 
 - Supabase Auth and PostgREST client dependencies are included.
 - The app has Internet permission.
 - A central client provider is included.
 - The sync contract, RLS schema, and vault ciphertext-only table are documented.
-- App records are not uploaded until sync is enabled and the schema/policies
-  have been applied and tested.
+- All Room records are synchronized after authentication. File metadata is
+  stored in Postgres and file bytes are stored in the private Storage bucket.
+- App records are not uploaded successfully until the schema/policies have
+  been applied and tested.

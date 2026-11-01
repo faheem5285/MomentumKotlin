@@ -131,7 +131,7 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
     removeTarget?.let { file ->
         AlertDialog(
             onDismissRequest = { removeTarget = null }, title = { Text("Remove from library?") },
-            text = { Text("${file.name} will be removed from Momentum. The original file will stay on your device.") },
+            text = { Text("${file.name} will be removed from Zylo. The original file will stay on your device.") },
             confirmButton = { TextButton(onClick = { vm.remove(file); removeTarget = null }) { Text("Remove", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { removeTarget = null }) { Text("Cancel") } }
         )

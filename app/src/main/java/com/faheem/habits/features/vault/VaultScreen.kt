@@ -65,10 +65,10 @@ import androidx.lifecycle.AndroidViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.security.SecureRandom
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -276,6 +276,127 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
             ?: error("Could not open the encrypted export destination.")
         output.use { it.write(bytes) }
     }
+
+    suspend fun importEncrypted(source: Uri, key: ByteArray): Int = withContext(Dispatchers.IO) {
+        val resolver = getApplication<android.app.Application>().contentResolver
+        val bytes = resolver.openInputStream(source)?.use { input ->
+            input.readBytes().also {
+                require(it.size <= 10 * 1024 * 1024) { "Encrypted vault import exceeds the 10 MB safety limit." }
+            }
+        } ?: error("Could not open the selected vault file.")
+        val document = JSONObject(String(bytes, Charsets.UTF_8))
+        require(document.optString("format") == "momentum-encrypted-vault") {
+            "This is not a Zylo encrypted vault file."
+        }
+        require(document.optInt("version", -1) == 1) { "This vault file version is not supported." }
+        val currentSalt = prefs.getString(VaultCrypto.SALT_PREF, null)
+            ?: error("Vault is not configured.")
+        require(document.optString("salt") == currentSalt) {
+            "This backup belongs to a different vault and cannot be imported."
+        }
+        val entries = document.optJSONArray("entries")
+            ?: error("The selected vault file contains no records.")
+        val imported = buildList {
+            for (index in 0 until entries.length()) {
+                val entry = entries.optJSONObject(index)
+                    ?: error("The selected vault file contains an invalid record.")
+                val record = VaultRecord(
+                    id = entry.getInt("id"),
+                    nonce = VaultCrypto.decode(entry.getString("nonce")),
+                    ciphertext = VaultCrypto.decode(entry.getString("ciphertext")),
+                    updatedAt = entry.getLong("updatedAt")
+                )
+                VaultCrypto.decrypt(record.nonce, record.ciphertext, key)
+                add(record)
+            }
+        }
+        dao.upsertAll(imported)
+        imported.size
+    }
+
+    suspend fun importCsv(source: Uri, key: ByteArray): Int = withContext(Dispatchers.IO) {
+        val resolver = getApplication<android.app.Application>().contentResolver
+        val text = resolver.openInputStream(source)?.use { input ->
+            input.readBytes().also {
+                require(it.size <= 10 * 1024 * 1024) { "CSV vault import exceeds the 10 MB safety limit." }
+            }
+        }?.toString(Charsets.UTF_8)?.removePrefix("\uFEFF")
+            ?: error("Could not open the selected CSV file.")
+        val rows = parseCsv(text)
+        require(rows.size >= 2) { "The CSV file must contain a header row and at least one record." }
+        val headers = rows.first().map { it.trim().lowercase(Locale.ROOT) }
+        fun value(row: List<String>, vararg names: String): String =
+            names.firstNotNullOfOrNull { name ->
+                headers.indexOf(name).takeIf { it >= 0 }?.let { row.getOrNull(it)?.trim() }
+            }.orEmpty()
+        val records = rows.drop(1).mapNotNull { row ->
+            val title = value(row, "title", "name", "item", "label")
+            val username = value(row, "username", "user", "login username", "login_username", "email")
+            val password = value(row, "password", "pass", "login password", "login_password")
+            val website = value(row, "website", "url", "login uri", "login_uri", "uri")
+            val notes = value(row, "notes", "note", "comments")
+            if (title.isBlank() && username.isBlank() && password.isBlank()) null
+            else VaultRecord(
+                nonce = ByteArray(0),
+                ciphertext = ByteArray(0),
+                updatedAt = System.currentTimeMillis()
+            ).let {
+                val encrypted = VaultCrypto.encrypt(
+                    VaultSecret(
+                        title = title.ifBlank { "Imported item" },
+                        type = "login",
+                        username = username,
+                        password = password,
+                        website = website,
+                        notes = notes,
+                        category = inferredVaultCategory(
+                            VaultSecret(title, "login", username, password, website, notes)
+                        )
+                    ),
+                    key
+                )
+                it.copy(nonce = encrypted.first, ciphertext = encrypted.second)
+            }
+        }
+        require(records.isNotEmpty()) { "No usable records were found in the CSV file." }
+        dao.upsertAll(records)
+        records.size
+    }
+
+    private fun parseCsv(text: String): List<List<String>> {
+        val rows = mutableListOf<List<String>>()
+        var row = mutableListOf<String>()
+        val field = StringBuilder()
+        var quoted = false
+        var index = 0
+        fun finishField() {
+            row += field.toString()
+            field.clear()
+        }
+        fun finishRow() {
+            finishField()
+            if (row.any { it.isNotBlank() }) rows += row
+            row = mutableListOf()
+        }
+        while (index < text.length) {
+            val character = text[index]
+            when {
+                character == '"' && quoted && index + 1 < text.length && text[index + 1] == '"' -> {
+                    field.append('"')
+                    index++
+                }
+                character == '"' -> quoted = !quoted
+                character == ',' && !quoted -> finishField()
+                character == '\n' && !quoted -> finishRow()
+                character == '\r' && !quoted -> Unit
+                else -> field.append(character)
+            }
+            index++
+        }
+        if (field.isNotEmpty() || row.isNotEmpty()) finishRow()
+        require(!quoted) { "The CSV file contains an unfinished quoted field." }
+        return rows
+    }
 }
 
 @Composable
@@ -310,8 +431,10 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
     var selected by remember { mutableStateOf<VaultListItem?>(null) }
     var deleteTarget by remember { mutableStateOf<VaultListItem?>(null) }
     var exportMessage by remember { mutableStateOf<String?>(null) }
+    var externalFilePickerOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val vaultExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        externalFilePickerOpen = false
         val key = sessionKey
         if (uri != null && key != null) scope.launch {
             busy = true
@@ -320,8 +443,37 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
             finally { busy = false }
         }
     }
+    val vaultImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        externalFilePickerOpen = false
+        val key = sessionKey
+        if (uri != null && key != null) scope.launch {
+            busy = true
+            exportMessage = try {
+                val count = vm.importEncrypted(uri, key)
+                refresh++
+                "Imported $count encrypted vault record${if (count == 1) "" else "s"}."
+            } catch (e: Exception) {
+                "Vault import failed: ${e.message ?: "unknown error"}"
+            } finally { busy = false }
+        }
+    }
+    val csvImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        externalFilePickerOpen = false
+        val key = sessionKey
+        if (uri != null && key != null) scope.launch {
+            busy = true
+            exportMessage = try {
+                val count = vm.importCsv(uri, key)
+                refresh++
+                "Imported $count CSV record${if (count == 1) "" else "s"}."
+            } catch (e: Exception) {
+                "CSV import failed: ${e.message ?: "unknown error"}"
+            } finally { busy = false }
+        }
+    }
 
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        if (externalFilePickerOpen) return@LifecycleEventEffect
         sessionEpoch++
         sessionKey?.fill(0)
         sessionKey = null
@@ -363,8 +515,14 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
     }
 
     fun launchBiometricUnlock() {
-        val activity = context.findActivity() as? FragmentActivity ?: return
-        val cipher = vm.prepareBiometricDecryptCipher() ?: return
+        val activity = context.findActivity() as? FragmentActivity ?: run {
+            error = "Biometric unlock is unavailable in this screen."
+            return
+        }
+        val cipher = vm.prepareBiometricDecryptCipher() ?: run {
+            error = "Biometric unlock is not configured. Enable it again from the vault."
+            return
+        }
         val prompt = BiometricPrompt(
             activity,
             ContextCompat.getMainExecutor(context),
@@ -388,7 +546,7 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
         )
         prompt.authenticate(
             BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Unlock Momentum vault")
+                .setTitle("Unlock Zylo vault")
                 .setSubtitle("Use strong biometrics to unwrap the vault key")
                 .setNegativeButtonText("Use master password")
                 .build(),
@@ -397,8 +555,14 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
     }
 
     fun enableBiometricUnlock() {
-        val activity = context.findActivity() as? FragmentActivity ?: return
-        val vmk = sessionKey ?: return
+        val activity = context.findActivity() as? FragmentActivity ?: run {
+            error = "Biometric unlock is unavailable in this screen."
+            return
+        }
+        val vmk = sessionKey ?: run {
+            error = "Unlock the vault before enabling biometric unlock."
+            return
+        }
         val cipher = runCatching { vm.prepareBiometricCipher() }.getOrElse {
             error = "Biometric unlock is unavailable on this device."
             return
@@ -446,7 +610,18 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
             },
             onAdd = { editing = null; editorOpen = true },
             onSelect = { selected = it },
-            onExport = { vaultExportLauncher.launch("momentum-vault-encrypted.json") },
+            onExport = {
+                externalFilePickerOpen = true
+                vaultExportLauncher.launch("momentum-vault-encrypted.json")
+            },
+            onImport = {
+                externalFilePickerOpen = true
+                vaultImportLauncher.launch(arrayOf("application/json", "text/json", "text/plain"))
+            },
+            onImportCsv = {
+                externalFilePickerOpen = true
+                csvImportLauncher.launch(arrayOf("*/*"))
+            },
             onEnableBiometric = ::enableBiometricUnlock
         )
         exportMessage?.let { Text(it, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
@@ -511,7 +686,7 @@ private fun VaultGate(
                         if (configured) "Vault locked" else "Create your private vault",
                         fontSize = 25.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp
                     )
-                    Text("Your passwords are encrypted on this device and never synced by Momentum.", fontSize = 12.5.sp, color = Color.White.copy(alpha = .9f))
+                    Text("Your passwords are encrypted on this device and never synced by Zylo.", fontSize = 12.5.sp, color = Color.White.copy(alpha = .9f))
                 }
             }
             if (configured && biometricAvailable) item {
@@ -521,7 +696,7 @@ private fun VaultGate(
                 item {
                     InfoBanner(
                         icon = Icons.Rounded.Security,
-                        text = "Choose a strong master password with at least 12 characters. Momentum does not store it and cannot reset it; if you forget it, the vault cannot be opened.",
+                        text = "Choose a master password with at least 4 characters. Zylo does not store it and cannot reset it; if you forget it, the vault cannot be opened.",
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -546,7 +721,7 @@ private fun VaultGate(
                     onClick = {
                         when {
                             busy -> Unit
-                            !configured && master.length < 12 -> localError = "Use at least 12 characters for your master password."
+                            !configured && master.length < 4 -> localError = "Use at least 4 characters for your master password."
                             !configured && master != confirm -> localError = "The passwords don’t match."
                             else -> { onSubmit(master); master = ""; confirm = "" }
                         }
@@ -556,7 +731,7 @@ private fun VaultGate(
                 )
             }
             if (configured) item {
-                Text("The vault locks when Momentum goes into the background. Screenshots are blocked while Vault is open.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("The vault locks when Zylo goes into the background. Screenshots are blocked while Vault is open.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -570,26 +745,43 @@ private fun VaultHome(
     onAdd: () -> Unit,
     onSelect: (VaultListItem) -> Unit,
     onExport: () -> Unit,
+    onImport: () -> Unit,
+    onImportCsv: () -> Unit,
     onEnableBiometric: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     var type by remember { mutableStateOf("All") }
+    var category by remember { mutableStateOf("All") }
+    var favoritesOnly by remember { mutableStateOf(false) }
+    var attentionOnly by remember { mutableStateOf(false) }
+    var sort by remember { mutableStateOf("Recent") }
     val filtered = items.filter { item ->
         (type == "All" || (type == "Logins" && item.secret.type == "login") || (type == "Secure notes" && item.secret.type == "note")) &&
-            (query.isBlank() || listOf(item.secret.title, item.secret.username, item.secret.website, item.secret.folder, item.secret.tags).any { it.contains(query, true) })
+            (category == "All" || inferredVaultCategory(item.secret) == category) &&
+            (!favoritesOnly || item.secret.favorite) &&
+            (!attentionOnly || needsVaultAttention(item, items)) &&
+            (query.isBlank() || listOf(item.secret.title, item.secret.username, item.secret.website, item.secret.notes).any { it.contains(query, true) })
+    }.let { matching ->
+        when (sort) {
+            "Name" -> matching.sortedBy { it.secret.title.lowercase() }
+            "Favorites" -> matching.sortedWith(compareByDescending<VaultListItem> { it.secret.favorite }.thenBy { it.secret.title.lowercase() })
+            else -> matching.sortedByDescending { it.updatedAt }
+        }
     }
     val health = vaultHealthReport(items)
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
-                HeroCard {
+                HeroCard(modifier = Modifier.padding(horizontal = 2.dp), contentPadding = 14.dp) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("Private password vault", fontSize = 13.sp, color = Color.White.copy(alpha = .84f))
-                            Text("${items.size} secure item${if (items.size == 1) "" else "s"}", fontSize = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
-                            Text("Encrypted on this device", fontSize = 13.sp, color = Color.White.copy(alpha = .9f))
+                            Text("Private password vault", fontSize = 12.sp, color = Color.White.copy(alpha = .84f))
+                            Text("${items.size} secure item${if (items.size == 1) "" else "s"}", fontSize = 25.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+                            Text("Encrypted on this device", fontSize = 11.sp, color = Color.White.copy(alpha = .9f))
                         }
-                        IconButton(onClick = onLock) { Icon(Icons.Rounded.Lock, "Lock vault now", tint = Color.White) }
+                        IconButton(onClick = onLock, modifier = Modifier.size(40.dp)) {
+                            Icon(Icons.Rounded.Lock, "Lock vault now", tint = Color.White)
+                        }
                     }
                 }
             }
@@ -616,12 +808,57 @@ private fun VaultHome(
                 )
             }
             item {
-                OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
-                    placeholder = { Text("Search titles, usernames, websites") }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = RoundedCornerShape(18.dp))
+                OutlinedTextField(
+                    query,
+                    { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("Search passwords and notes") },
+                    leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { query = "" }) {
+                                Icon(Icons.Rounded.Clear, "Clear search")
+                            }
+                        }
+                    },
+                    shape = RoundedCornerShape(18.dp)
+                )
             }
             item {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("All", "Logins", "Secure notes").forEach { label -> FilterChip(type == label, { type = label }, label = { Text(label) }) }
+                }
+            }
+            item {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    vaultCategories.forEach { label ->
+                        FilterChip(category == label, { category = label }, label = { Text(label) })
+                    }
+                }
+            }
+            item {
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilterChip(
+                        selected = favoritesOnly,
+                        onClick = { favoritesOnly = !favoritesOnly },
+                        label = { Text("Favorites") },
+                        leadingIcon = { Icon(Icons.Rounded.Star, null) }
+                    )
+                    FilterChip(
+                        selected = attentionOnly,
+                        onClick = { attentionOnly = !attentionOnly },
+                        label = { Text("Needs attention") },
+                        leadingIcon = { Icon(Icons.Rounded.Warning, null) }
+                    )
+                    Text("Sort", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    listOf("Recent", "Name", "Favorites").forEach { option ->
+                        FilterChip(sort == option, { sort = option }, label = { Text(option) })
+                    }
                 }
             }
             item { SectionHeader(if (type == "All") "Your items" else type, subtitle = "${filtered.size} item${if (filtered.size == 1) "" else "s"}") }
@@ -634,6 +871,17 @@ private fun VaultHome(
             }
             item {
                 SecondaryButton("Export encrypted vault file", onClick = onExport, icon = Icons.Rounded.Lock)
+            }
+            item {
+                SecondaryButton("Import encrypted vault file", onClick = onImport, icon = Icons.Rounded.FileOpen)
+            }
+            item {
+                SecondaryButton("Import CSV file", onClick = onImportCsv, icon = Icons.Rounded.TableView)
+                Text(
+                    "Excel files must be saved as CSV before importing.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
         ExtendedFloatingActionButton(onClick = onAdd, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("Add secure item", fontWeight = FontWeight.SemiBold) },
@@ -650,20 +898,51 @@ private fun VaultHome(
 @Composable
 private fun VaultItemCard(item: VaultListItem, onClick: () -> Unit) {
     val secret = item.secret
-    PremiumCard(onClick = onClick, contentPadding = PaddingValues(14.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 12.dp)
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconBubble(
                 if (secret.type == "note") Icons.AutoMirrored.Rounded.StickyNote2 else Icons.Rounded.Key,
                 MaterialTheme.colorScheme.primary,
-                44.dp
+                40.dp
             )
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(secret.title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(if (secret.type == "note") "Secure note" else listOf(secret.username, secret.website).filter(String::isNotBlank).joinToString(" · ").ifBlank { "Login" }, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    secret.title.ifBlank { "Untitled item" },
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    if (secret.type == "note") "Secure note"
+                    else secret.username.ifBlank { secret.website.ifBlank { "Login" } },
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-            Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.outline)
+            if (secret.favorite) {
+                Icon(
+                    Icons.Rounded.Star,
+                    "Favorite",
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+            }
+            Icon(Icons.Rounded.ChevronRight, "Open ${secret.title}", tint = MaterialTheme.colorScheme.outline)
         }
+        HorizontalDivider(
+            modifier = Modifier.padding(start = 54.dp, top = 12.dp),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+        )
     }
 }
 
@@ -719,10 +998,10 @@ private fun VaultEntryEditor(initial: VaultListItem?, onDismiss: () -> Unit, onS
     var username by remember(initial?.id) { mutableStateOf(initial?.secret?.username ?: "") }
     var password by remember(initial?.id) { mutableStateOf(initial?.secret?.password ?: "") }
     var notes by remember(initial?.id) { mutableStateOf(initial?.secret?.notes ?: "") }
-    var folder by remember(initial?.id) { mutableStateOf(initial?.secret?.folder ?: "") }
-    var tags by remember(initial?.id) { mutableStateOf(initial?.secret?.tags ?: "") }
     var favorite by remember(initial?.id) { mutableStateOf(initial?.secret?.favorite ?: false) }
-    var totp by remember(initial?.id) { mutableStateOf(initial?.secret?.totp ?: "") }
+    var category by remember(initial?.id) {
+        mutableStateOf(initial?.secret?.let(::inferredVaultCategory) ?: "Other")
+    }
     var showPassword by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -733,48 +1012,43 @@ private fun VaultEntryEditor(initial: VaultListItem?, onDismiss: () -> Unit, onS
         }
         OutlinedTextField(title, { title = it; error = null }, modifier = Modifier.fillMaxWidth(), label = { Text("Title") }, placeholder = { Text(if (type == "login") "e.g. Email, Bank" else "e.g. Recovery codes") }, singleLine = true, shape = RoundedCornerShape(14.dp))
         if (type == "login") {
+            Text("Section", style = MaterialTheme.typography.labelLarge)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                vaultCategories.drop(1).forEach { label ->
+                    FilterChip(category == label, { category = label }, label = { Text(label) })
+                }
+            }
             OutlinedTextField(website, { website = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Website (optional)") }, singleLine = true, shape = RoundedCornerShape(14.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
             OutlinedTextField(username, { username = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Username or email") }, singleLine = true, shape = RoundedCornerShape(14.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email))
             OutlinedTextField(password, { password = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true,
                 visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(), shape = RoundedCornerShape(14.dp),
                 trailingIcon = { IconButton(onClick = { showPassword = !showPassword }) { Icon(if (showPassword) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, "Show or hide password") } })
-            OutlinedButton(onClick = { password = generatePassword() }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Rounded.AutoAwesome, null); Spacer(Modifier.width(8.dp)); Text("Generate strong password") }
-            OutlinedTextField(totp, { totp = it }, modifier = Modifier.fillMaxWidth(), label = { Text("TOTP secret (optional)") }, singleLine = true)
             OutlinedTextField(notes, { notes = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Notes (optional)") }, minLines = 2, maxLines = 5, shape = RoundedCornerShape(14.dp))
         } else {
             OutlinedTextField(notes, { notes = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Secure note") }, minLines = 5, maxLines = 12, shape = RoundedCornerShape(14.dp))
         }
-        OutlinedTextField(folder, { folder = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Folder (optional)") }, singleLine = true)
-        OutlinedTextField(tags, { tags = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Tags (comma-separated)") }, singleLine = true)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = favorite, onCheckedChange = { favorite = it })
             Text("Favorite")
         }
         if (error != null) Text(error.orEmpty(), color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
-        BigButton(if (initial == null) "Save securely" else "Save changes", onClick = {
+        BigButton(if (initial == null) "Save" else "Save changes", onClick = {
             if (title.isBlank()) error = "Add a title to save this item."
-            else if (type == "login" && password.isBlank()) error = "Add a password or generate one."
+            else if (type == "login" && password.isBlank()) error = "Add a password."
             else onSave(
-                if (type == "login") VaultSecret(title.trim(), type, username.trim(), password, website.trim(), notes.trim(), folder.trim(), tags.trim(), favorite, totp.trim())
-                else VaultSecret(title.trim(), type, "", "", "", notes.trim(), folder.trim(), tags.trim(), favorite)
+                if (type == "login") VaultSecret(
+                    title.trim(), type, username.trim(), password, website.trim(), notes.trim(),
+                    initial?.secret?.folder ?: "", initial?.secret?.tags ?: "", favorite,
+                    initial?.secret?.totp ?: "", category
+                )
+                else VaultSecret(
+                    title.trim(), type, "", "", "", notes.trim(),
+                    initial?.secret?.folder ?: "", initial?.secret?.tags ?: "", favorite,
+                    category = "Other"
+                )
             )
         })
     }
-}
-
-private fun generatePassword(length: Int = 20): String {
-    val random = SecureRandom()
-    val groups = listOf("ABCDEFGHJKLMNPQRSTUVWXYZ", "abcdefghijkmnopqrstuvwxyz", "23456789", "!@#$%^&*()-_=+")
-    val alphabet = groups.joinToString("")
-    val characters = groups.map { it[random.nextInt(it.length)] }.toMutableList()
-    repeat(length - characters.size) { characters += alphabet[random.nextInt(alphabet.length)] }
-    for (index in characters.lastIndex downTo 1) {
-        val other = random.nextInt(index + 1)
-        val current = characters[index]
-        characters[index] = characters[other]
-        characters[other] = current
-    }
-    return characters.joinToString("")
 }
 
 private fun copySensitive(context: Context, value: String) {

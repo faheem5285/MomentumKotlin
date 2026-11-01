@@ -18,8 +18,8 @@
     <application
         android:name=".app.MomentumApplication"
         android:allowBackup="false"
-        android:label="Momentum"
-        android:theme="@style/Theme.Momentum">
+        android:label="Zylo"
+        android:theme="@style/Theme.Zylo">
         <activity
             android:name=".app.MainActivity"
             android:exported="true">

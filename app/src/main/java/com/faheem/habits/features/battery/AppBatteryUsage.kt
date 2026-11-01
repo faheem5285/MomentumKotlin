@@ -3,6 +3,8 @@ package com.faheem.habits.features.battery
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.os.BatteryManager
+import androidx.compose.ui.graphics.ImageBitmap
+import com.faheem.habits.core.ui.installedAppIdentity
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
@@ -15,6 +17,7 @@ import kotlin.math.roundToInt
 internal data class AppBatteryUsage(
     val packageName: String,
     val label: String,
+    val icon: ImageBitmap?,
     val estimatedMah: Float,
     val percentOfBattery: Float,
     val foregroundMinutes: Long,
@@ -128,6 +131,7 @@ internal object BatteryUsageEstimator {
             AppBatteryUsage(
                 packageName = app.packageName,
                 label = app.label,
+                icon = app.icon,
                 estimatedMah = mah,
                 percentOfBattery = if (capacity > 0f) mah / capacity * 100f else 0f,
                 foregroundMinutes = app.foregroundMinutes,
@@ -155,7 +159,7 @@ internal object BatteryUsageEstimator {
         )
     }
 
-    private data class ForegroundApp(val packageName: String, val label: String, val foregroundMinutes: Long)
+    private data class ForegroundApp(val packageName: String, val label: String, val icon: ImageBitmap?, val foregroundMinutes: Long)
 
     private fun usageByApp(context: Context): List<ForegroundApp> {
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
@@ -177,7 +181,8 @@ internal object BatteryUsageEstimator {
                 } catch (_: Exception) {
                     usage.packageName
                 }
-                ForegroundApp(usage.packageName, label, usage.totalTimeInForeground / 60_000L)
+                val identity = installedAppIdentity(context, usage.packageName)
+                ForegroundApp(usage.packageName, identity.label, identity.icon, usage.totalTimeInForeground / 60_000L)
             }
             .toList()
     }

@@ -23,6 +23,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -60,6 +61,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
@@ -218,7 +220,7 @@ fun BatteryScreen() {
             onRefreshDiagnostics = { diagnostic = BatteryAnimationDiagnostics.latest(context) },
             onCopyDiagnostics = {
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Momentum charging diagnostics", "${diagnostic.status}\n${diagnostic.detail}"))
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Zylo charging diagnostics", "${diagnostic.status}\n${diagnostic.detail}"))
             },
             onStyle = {
                 style = it
@@ -354,7 +356,7 @@ private fun LazyBatteryContent(
                     Column(Modifier.weight(1f)) {
                         Text("Charge trend", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text(
-                            if (levels.size < 2) "Collecting samples while Momentum runs"
+                            if (levels.size < 2) "Collecting samples while Zylo runs"
                             else "${levels.size} samples · lowest ${levels.minOf { it.percent }}%",
                             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -438,11 +440,27 @@ private fun LazyBatteryContent(
                         valueFormatter = { energyText(it) }
                     )
                     Spacer(Modifier.height(16.dp))
-                    HorizontalBarList(
-                        items = appSlices,
-                        maxItems = 5,
-                        valueFormatter = { energyText(it) }
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        report.apps.take(5).forEach { app ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (app.icon != null) {
+                                    Image(app.icon, app.label, Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)))
+                                } else {
+                                    IconBubble(Icons.Rounded.Apps, MaterialTheme.colorScheme.primary, 32.dp)
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    app.label,
+                                    Modifier.weight(1f),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                                Text(energyText(app.estimatedMah), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(10.dp))
                     HorizontalDivider()
                     Spacer(Modifier.height(10.dp))
@@ -525,7 +543,7 @@ private fun LazyBatteryContent(
                     Spacer(Modifier.height(10.dp))
                     Text(
                         when {
-                            overlayAllowed -> "Ready: $style animation will appear when the screen is on. When locked, Momentum uses a notification."
+                            overlayAllowed -> "Ready: $style animation will appear when the screen is on. When locked, Zylo uses a notification."
                             notificationsAllowed -> "Notifications are ready. Allow Display over other apps for the animation to pop up over the current screen."
                             else -> "Allow notifications for a reliable fallback, and Display over other apps for the pop-up animation."
                         },
@@ -556,7 +574,7 @@ private fun LazyBatteryContent(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Keep listener active in background", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text("Needed after Momentum is removed from Recents. Android keeps a small ongoing notification while this is on.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Needed after Zylo is removed from Recents. Android keeps a small ongoing notification while this is on.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(checked = backgroundListener, onCheckedChange = onBackgroundListener)
                     }
@@ -566,7 +584,7 @@ private fun LazyBatteryContent(
         item {
             InfoBanner(
                 icon = Icons.Rounded.NotificationsActive,
-                text = "The automatic pop-up is optional and dismisses itself. If Android blocks overlays, or the phone is locked, Momentum shows a notification instead. Lock-screen display follows Android notification settings.",
+                text = "The automatic pop-up is optional and dismisses itself. If Android blocks overlays, or the phone is locked, Zylo shows a notification instead. Lock-screen display follows Android notification settings.",
                 tint = MaterialTheme.colorScheme.secondary
             )
         }
@@ -576,7 +594,7 @@ private fun LazyBatteryContent(
                 EmptyState(
                     Icons.Rounded.History,
                     "No charge sessions yet",
-                    "Plug in the charger and Momentum will log each session here"
+                    "Plug in the charger and Zylo will log each session here"
                 )
             }
         }

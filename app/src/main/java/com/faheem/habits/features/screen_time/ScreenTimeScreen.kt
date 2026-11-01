@@ -65,9 +65,8 @@ private fun loadUsage(ctx: Context, days: Long = 1): List<AppUsage> {
         .sortedByDescending { it.totalTimeInForeground }
         .take(40)
         .map {
-            val label = try { pm.getApplicationLabel(pm.getApplicationInfo(it.packageName, 0)).toString() } catch (_: Exception) { it.packageName }
-            val icon = try { pm.getApplicationIcon(it.packageName).toBitmap(96, 96).asImageBitmap() } catch (_: Exception) { null }
-            AppUsage(it.packageName, label, it.totalTimeInForeground / 60_000, icon)
+            val identity = installedAppIdentity(ctx, it.packageName)
+            AppUsage(it.packageName, identity.label, it.totalTimeInForeground / 60_000, identity.icon)
         }
 }
 
@@ -414,7 +413,7 @@ private fun ReelsCounterScreen(count: Int, limit: Int, enabled: Boolean, onSetti
         item {
             InfoBanner(
                 icon = Icons.Rounded.Info,
-                text = "Android reports accessibility scroll events from Instagram. Momentum counts debounced events and resets each day. The count is an estimate, not a verified Reels count.",
+                text = "Android reports accessibility scroll events from Instagram. Zylo counts debounced events and resets each day. The count is an estimate, not a verified Reels count.",
                 tint = MaterialTheme.colorScheme.primary
             )
         }

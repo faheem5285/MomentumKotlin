@@ -120,7 +120,7 @@ fun PermissionsSetupScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
 
     val permissions = remember(refresh, openingSettings) {
         listOf(
-            SetupPermission("Notifications", "Allow Momentum to show reminders and ongoing network status notifications.", "Without it, reminders and the network notification may be hidden.", if (notificationGranted()) PermissionState.ENABLED else PermissionState.DISABLED) {
+            SetupPermission("Notifications", "Allow Zylo to show reminders and ongoing network status notifications.", "Without it, reminders and the network notification may be hidden.", if (notificationGranted()) PermissionState.ENABLED else PermissionState.DISABLED) {
                 if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                     notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 } else openSettings(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
@@ -134,13 +134,13 @@ fun PermissionsSetupScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             SetupPermission("Usage access", "Reads app usage totals to power Screen Time and network data summaries.", "Screen Time totals and Wi-Fi/mobile usage summaries will be unavailable.", if (usageGranted()) PermissionState.ENABLED else PermissionState.DISABLED) {
                 openSettings(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
             },
-            SetupPermission("Accessibility service", "Counts Instagram scroll events for the optional Reels estimate. Momentum does not read screen text.", "The Reels scroll estimate will remain off.", if (com.faheem.habits.features.screen_time.InstagramScrollCounterService.isEnabled(context)) PermissionState.ENABLED else PermissionState.DISABLED) {
+            SetupPermission("Accessibility service", "Counts Instagram scroll events for the optional Reels estimate. Zylo does not read screen text.", "The Reels scroll estimate will remain off.", if (com.faheem.habits.features.screen_time.InstagramScrollCounterService.isEnabled(context)) PermissionState.ENABLED else PermissionState.DISABLED) {
                 openSettings(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             },
             SetupPermission("Background autostart", "Some manufacturers provide an additional autostart switch for reliable background reminders and monitoring.", "Background work may be stopped by manufacturer-specific power management.", PermissionState.UNAVAILABLE) {
                 openSettings(appDetailsIntent(context))
             },
-            SetupPermission("Battery optimization", "Excluding Momentum from battery optimization can improve reliability of user-requested background reminders.", "Android or the manufacturer may delay background work. This setting is optional.", if (batteryUnrestricted()) PermissionState.ENABLED else PermissionState.DISABLED) {
+            SetupPermission("Battery optimization", "Excluding Zylo from battery optimization can improve reliability of user-requested background reminders.", "Android or the manufacturer may delay background work. This setting is optional.", if (batteryUnrestricted()) PermissionState.ENABLED else PermissionState.DISABLED) {
                 openSettings(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
             },
             SetupPermission("Background restrictions", "Review Android's per-app battery and background usage controls.", "Restricted apps may have delayed reminders or background updates.", PermissionState.UNAVAILABLE) {
@@ -185,7 +185,7 @@ fun PermissionsSetupScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             item {
                 InfoBanner(
                     icon = Icons.Rounded.Info,
-                    text = "Settings names vary by Android version and manufacturer. If a page does not open, find Momentum under Settings → Apps and review Autostart, Battery saver and Background restrictions.",
+                    text = "Settings names vary by Android version and manufacturer. If a page does not open, find Zylo under Settings → Apps and review Autostart, Battery saver and Background restrictions.",
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -202,11 +202,11 @@ fun PermissionsSetupScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 )
             }
             item {
-                PrimaryButton("Continue to Momentum", onClick = onBack, icon = Icons.Rounded.CheckCircle)
+                PrimaryButton("Continue to Zylo", onClick = onBack, icon = Icons.Rounded.CheckCircle)
             }
             if (openingSettings > 0) item {
                 Text(
-                    "Could not open that settings page. Open Android Settings → Apps → Momentum and locate the setting manually.",
+                    "Could not open that settings page. Open Android Settings → Apps → Zylo and locate the setting manually.",
                     color = MaterialTheme.colorScheme.error,
                     fontSize = 12.sp
                 )

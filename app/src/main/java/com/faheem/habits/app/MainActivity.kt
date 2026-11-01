@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
@@ -37,12 +38,13 @@ import com.faheem.habits.features.battery.handleAutomaticBatteryPowerEvent
 import com.faheem.habits.features.auth.AuthScreen
 import com.faheem.habits.core.data.supabase.SupabaseAuthApi
 import com.faheem.habits.core.data.supabase.SessionRestoreResult
+import com.faheem.habits.core.data.sync.SupabaseSyncScheduler
 import com.faheem.habits.features.settings.PermissionsSetupScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @dagger.hilt.android.AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (BuildConfig.DEBUG) {
@@ -95,7 +97,10 @@ fun MomentumApp(settingsViewModel: com.faheem.habits.features.settings.SettingsV
     val showPermissionSetup = !permissionSetupSeen
     LaunchedEffect(context) {
         when (SupabaseAuthApi.restoreSession(context.applicationContext)) {
-            SessionRestoreResult.AUTHENTICATED -> isAuthenticated = true
+            SessionRestoreResult.AUTHENTICATED -> {
+                isAuthenticated = true
+                SupabaseSyncScheduler.enqueue(context.applicationContext)
+            }
             SessionRestoreResult.NO_SESSION -> Unit
             SessionRestoreResult.TEMPORARY_FAILURE -> authNotice = "Could not verify your saved session. Check your internet connection and sign in again if needed. Your saved session has been kept."
         }
@@ -149,7 +154,13 @@ fun MomentumApp(settingsViewModel: com.faheem.habits.features.settings.SettingsV
                 CircularProgressIndicator()
             }
         } else {
-            AuthScreen(initialMessage = authNotice, onAuthenticated = { isAuthenticated = true })
+            AuthScreen(
+                initialMessage = authNotice,
+                onAuthenticated = {
+                    isAuthenticated = true
+                    SupabaseSyncScheduler.enqueue(context.applicationContext)
+                }
+            )
         }
     }
 }

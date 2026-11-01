@@ -64,12 +64,17 @@ data class Completion(
     tableName = "habit_skips",
     primaryKeys = ["habitId", "epochDay"],
     foreignKeys = [ForeignKey(entity = Habit::class, parentColumns = ["id"], childColumns = ["habitId"], onDelete = ForeignKey.CASCADE)],
-    indices = [Index("habitId"), Index("epochDay")]
+    indices = [Index("habitId"), Index("epochDay"), Index(value = ["uuid"], unique = true)]
 )
 data class HabitSkip(
     val habitId: Int,
     val epochDay: Long,
-    val reason: String = "freeze"
+    val reason: String = "freeze",
+    @ColumnInfo(defaultValue = "''") val uuid: String = UUID.randomUUID().toString(),
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    @ColumnInfo(defaultValue = "1") val dirty: Boolean = true,
+    @ColumnInfo(defaultValue = "''") val deviceId: String = ""
 )
 
 @Entity(
@@ -138,7 +143,7 @@ data class Loan(
 
 @Entity(
     tableName = "loan_payments",
-    indices = [Index("loanId"), Index("epochDay")],
+    indices = [Index("loanId"), Index("epochDay"), Index(value = ["uuid"], unique = true)],
     foreignKeys = [
         ForeignKey(
             entity = Loan::class,
@@ -153,7 +158,12 @@ data class LoanPayment(
     val loanId: Int,
     val amountMinorUnits: Long,
     val epochDay: Long,
-    val note: String = ""
+    val note: String = "",
+    @ColumnInfo(defaultValue = "''") val uuid: String = UUID.randomUUID().toString(),
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    @ColumnInfo(defaultValue = "1") val dirty: Boolean = true,
+    @ColumnInfo(defaultValue = "''") val deviceId: String = ""
 )
 
 @Entity(tableName = "library_files", indices = [Index("addedEpochDay"), Index(value = ["uuid"], unique = true)])
@@ -214,12 +224,17 @@ data class ToDoItem(
 @Entity(
     tableName = "category_budgets",
     primaryKeys = ["category", "monthKey"],
-    indices = [Index("monthKey")]
+    indices = [Index("monthKey"), Index(value = ["uuid"], unique = true)]
 )
 data class CategoryBudget(
     val category: String,
     val monthKey: String,
-    val limitMinorUnits: Long
+    val limitMinorUnits: Long,
+    @ColumnInfo(defaultValue = "''") val uuid: String = UUID.randomUUID().toString(),
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    @ColumnInfo(defaultValue = "1") val dirty: Boolean = true,
+    @ColumnInfo(defaultValue = "''") val deviceId: String = ""
 )
 
 @Entity(tableName = "sync_state")
@@ -235,6 +250,30 @@ data class SyncState(
 
 @Dao
 interface HabitDao {
+    @Query("SELECT * FROM habits ORDER BY id")
+    suspend fun getAllForSync(): List<Habit>
+    @Query("SELECT * FROM habit_skips")
+    suspend fun getAllSkipsForSync(): List<HabitSkip>
+    @Query("SELECT * FROM habit_skips WHERE uuid = :uuid LIMIT 1")
+    suspend fun getSkipByUuid(uuid: String): HabitSkip?
+    @Query("SELECT * FROM habit_reminders")
+    suspend fun getAllRemindersForSync(): List<HabitReminder>
+    @Query("UPDATE habit_skips SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markSkipsClean(uuids: List<String>)
+    @Query("UPDATE habit_reminders SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markRemindersClean(uuids: List<String>)
+    @Query("UPDATE habits SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markHabitsClean(uuids: List<String>)
+    @Query("UPDATE completions SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markCompletionsClean(uuids: List<String>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertHabit(habit: Habit)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCompletion(completion: Completion)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSkipForSync(skip: HabitSkip)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertReminderForSync(reminder: HabitReminder)
     @Query("SELECT * FROM habits ORDER BY id")
     fun getHabits(): Flow<List<Habit>>
 
@@ -302,6 +341,18 @@ interface HabitDao {
 
 @Dao
 interface ExpenseDao {
+    @Query("SELECT * FROM expenses")
+    suspend fun getAllForSync(): List<Expense>
+    @Query("SELECT * FROM category_budgets")
+    suspend fun getAllBudgetsForSync(): List<CategoryBudget>
+    @Query("SELECT * FROM category_budgets WHERE uuid = :uuid LIMIT 1")
+    suspend fun getBudgetByUuid(uuid: String): CategoryBudget?
+    @Query("UPDATE expenses SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markClean(uuids: List<String>)
+    @Query("UPDATE category_budgets SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markBudgetsClean(uuids: List<String>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertExpense(expense: Expense)
     @Query("SELECT * FROM expenses ORDER BY epochDay DESC, id DESC")
     fun getAll(): Flow<List<Expense>>
 
@@ -324,6 +375,20 @@ interface ExpenseDao {
 @Dao
 @Suppress("TooManyFunctions")
 interface LoanDao {
+    @Query("SELECT * FROM loans")
+    suspend fun getAllForSync(): List<Loan>
+    @Query("SELECT * FROM loan_payments")
+    suspend fun getAllPaymentsForSync(): List<LoanPayment>
+    @Query("SELECT * FROM loan_payments WHERE uuid = :uuid LIMIT 1")
+    suspend fun getPaymentByUuid(uuid: String): LoanPayment?
+    @Query("UPDATE loans SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markClean(uuids: List<String>)
+    @Query("UPDATE loan_payments SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markPaymentsClean(uuids: List<String>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertLoan(loan: Loan)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertPayment(payment: LoanPayment)
     @Query("SELECT * FROM loans ORDER BY settled ASC, epochDay DESC, id DESC")
     fun getAll(): Flow<List<Loan>>
 
@@ -348,15 +413,21 @@ interface LoanDao {
 
 @Dao
 interface FileDao {
+    @Query("SELECT * FROM library_files")
+    suspend fun getAllForSync(): List<FileItem>
+    @Query("UPDATE library_files SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markClean(uuids: List<String>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertForSync(file: FileItem)
     @Query("SELECT * FROM library_files ORDER BY id DESC")
     fun getAll(): Flow<List<FileItem>>
 
     @Query("SELECT * FROM library_files ORDER BY id")
     suspend fun getAllForBackup(): List<FileItem>
-
     @Insert suspend fun insert(file: FileItem)
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertImported(file: FileItem): Long
     @Query("SELECT * FROM library_files WHERE uuid = :uuid LIMIT 1") suspend fun getByUuid(uuid: String): FileItem?
+    @Update suspend fun update(file: FileItem)
     @Query("DELETE FROM library_files") suspend fun deleteAll()
     @Delete suspend fun delete(file: FileItem)
 }
@@ -384,6 +455,12 @@ interface VaultDao {
 
 @Dao
 interface ToDoDao {
+    @Query("SELECT * FROM todo_items")
+    suspend fun getAllForSync(): List<ToDoItem>
+    @Query("UPDATE todo_items SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markClean(uuids: List<String>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertForSync(item: ToDoItem)
     @Query("SELECT * FROM todo_items ORDER BY completed ASC, dueEpochDay ASC, id DESC")
     fun getAll(): Flow<List<ToDoItem>>
 
@@ -418,7 +495,7 @@ interface SyncStateDao {
 
 @Database(
     entities = [Habit::class, Completion::class, HabitSkip::class, HabitReminder::class, Expense::class, CategoryBudget::class, Loan::class, LoanPayment::class, FileItem::class, VaultRecord::class, ToDoItem::class, SyncState::class],
-    version = 13,
+    version = 14,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -635,9 +712,40 @@ abstract class AppDatabase : RoomDatabase() {
                     while (cursor.moveToNext()) {
                         db.execSQL("UPDATE `vault_entries` SET uuid = ? WHERE id = ?", arrayOf(UUID.randomUUID().toString(), cursor.getInt(0)))
                     }
+
                 }
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_vault_entries_uuid` ON `vault_entries` (`uuid`)")
                 db.execSQL("CREATE TABLE IF NOT EXISTS `sync_state` (`tableName` TEXT NOT NULL, `cursor` TEXT NOT NULL, `pendingCount` INTEGER NOT NULL, `conflictCount` INTEGER NOT NULL, `lastSyncEpochMillis` INTEGER NOT NULL, `lastError` TEXT, `paused` INTEGER NOT NULL, PRIMARY KEY(`tableName`))")
+            }
+        }
+
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `habit_skips` ADD COLUMN `uuid` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `habit_skips` ADD COLUMN `updatedAt` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `habit_skips` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `habit_skips` ADD COLUMN `dirty` INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE `habit_skips` ADD COLUMN `deviceId` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `category_budgets` ADD COLUMN `uuid` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `category_budgets` ADD COLUMN `updatedAt` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `category_budgets` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `category_budgets` ADD COLUMN `dirty` INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE `category_budgets` ADD COLUMN `deviceId` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `loan_payments` ADD COLUMN `uuid` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `loan_payments` ADD COLUMN `updatedAt` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `loan_payments` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `loan_payments` ADD COLUMN `dirty` INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE `loan_payments` ADD COLUMN `deviceId` TEXT NOT NULL DEFAULT ''")
+                listOf("habit_skips", "category_budgets", "loan_payments").forEach { table ->
+                    db.query("SELECT rowid FROM `$table` WHERE uuid = ''").use { cursor ->
+                        while (cursor.moveToNext()) {
+                            db.execSQL("UPDATE `$table` SET uuid = ? WHERE rowid = ?", arrayOf(UUID.randomUUID().toString(), cursor.getLong(0)))
+                        }
+                    }
+                }
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_habit_skips_uuid` ON `habit_skips` (`uuid`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_category_budgets_uuid` ON `category_budgets` (`uuid`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_loan_payments_uuid` ON `loan_payments` (`uuid`)")
             }
         }
 
@@ -663,6 +771,7 @@ abstract class AppDatabase : RoomDatabase() {
                     .addMigrations(MIGRATION_10_11)
                     .addMigrations(MIGRATION_11_12)
                     .addMigrations(MIGRATION_12_13)
+                    .addMigrations(MIGRATION_13_14)
                     .build().also { instance = it }
             }
     }

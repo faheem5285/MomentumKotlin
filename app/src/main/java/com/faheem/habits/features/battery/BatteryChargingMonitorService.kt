@@ -76,7 +76,7 @@ class BatteryChargingMonitorService : Service() {
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(
                 NotificationChannel(CHANNEL_ID, "Background charging listener", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "Shows while Momentum listens for charger connection in the background."
+                    description = "Shows while Zylo listens for charger connection in the background."
                 }
             )
         }
@@ -85,7 +85,7 @@ class BatteryChargingMonitorService : Service() {
     private fun buildNotification(): Notification = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
         .setContentTitle("Charging animation listener active")
-        .setContentText("Momentum will show your selected animation when power connects.")
+        .setContentText("Zylo will show your selected animation when power connects.")
         .setCategory(NotificationCompat.CATEGORY_SERVICE)
         .setOngoing(true)
         .setOnlyAlertOnce(true)

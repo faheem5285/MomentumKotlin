@@ -91,7 +91,7 @@ fun HabitReminderManagerSheet(
             )
         } else if (!MomentumNotificationSettings.notificationsAllowed(context)) {
             SecondaryButton(
-                "Enable Momentum notifications in Android settings",
+                "Enable Zylo notifications in Android settings",
                 onClick = { openNotificationSettings(context) },
                 icon = Icons.Rounded.NotificationsActive
             )

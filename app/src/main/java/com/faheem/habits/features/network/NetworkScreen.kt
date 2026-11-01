@@ -17,6 +17,7 @@ import android.telephony.TelephonyManager
 import android.provider.Settings
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -41,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -392,7 +394,11 @@ private fun startNetworkIndicator(context: Context) {
 private fun AppTrafficRow(app: AppNetworkUsage) {
     PremiumCard(contentPadding = PaddingValues(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconBubble(Icons.Rounded.Apps, MaterialTheme.colorScheme.primary, 40.dp)
+            if (app.icon != null) {
+                Image(app.icon, app.label, Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)))
+            } else {
+                IconBubble(Icons.Rounded.Apps, MaterialTheme.colorScheme.primary, 40.dp)
+            }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -402,12 +408,14 @@ private fun AppTrafficRow(app: AppNetworkUsage) {
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
-                Text(
-                    app.packageName.substringAfterLast('.').ifBlank { app.packageName },
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
-                )
+                if (app.label == app.packageName) {
+                    Text(
+                        app.packageName,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
             }
             Text(trafficText(app.totalBytes), fontWeight = FontWeight.Bold, fontSize = 14.sp)
         }

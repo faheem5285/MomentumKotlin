@@ -104,25 +104,15 @@ private fun HabitRow(
     val h = ui.habit
     val color = habitColor(h.colorIndex)
     val colors = MaterialTheme.colorScheme
-    val cardColor by animateColorAsState(
-        if (done) color.copy(alpha = 0.07f) else colors.surface,
-        label = "habit-card"
-    )
-    Surface(
+    PremiumCard(
         modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .clickable(onClick = onOpen),
+            .clip(RoundedCornerShape(22.dp)),
+        onClick = onOpen,
         shape = RoundedCornerShape(22.dp),
-        color = cardColor,
-        border = BorderStroke(
-            1.dp,
-            if (done) color.copy(alpha = 0.24f) else colors.outlineVariant
-        ),
-        shadowElevation = if (done || LocalReduceEffects.current) 0.dp else MomentumTokens.elevationLow
+        contentPadding = PaddingValues(start = 14.dp, end = 12.dp, top = 13.dp, bottom = 13.dp)
     ) {
         Row(
-            Modifier.padding(start = 14.dp, end = 12.dp, top = 13.dp, bottom = 13.dp),
+            Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconBubble(habitIcon(h.icon), color, 42.dp)
