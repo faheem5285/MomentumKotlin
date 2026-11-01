@@ -176,14 +176,17 @@ fun HabitEditorSheet(
             Text("Add reminder for a specific date")
         }
         if (reminders.isNotEmpty() && !notificationAllowed) {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Allow notifications so these reminders can appear on your device.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedButton(onClick = {
+            PremiumCard(contentPadding = PaddingValues(14.dp)) {
+                Text("Allow notifications so these reminders can appear on your device.", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp))
+                SecondaryButton(
+                    "Enable habit notifications",
+                    onClick = {
                         if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                         else openHabitNotificationSettings(context)
-                    }, modifier = Modifier.fillMaxWidth()) { Text("Enable habit notifications") }
-                }
+                    },
+                    icon = Icons.Rounded.NotificationsActive
+                )
             }
         }
         if (reminders.isNotEmpty() && !MomentumNotificationSettings.canSchedulePrecisely(context) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -245,7 +248,7 @@ fun HabitEditorSheet(
             }
         }
 
-        BigButton("Save habit") {
+        BigButton("Save habit", onClick = {
             if (name.isNotBlank()) {
                 val base = initial ?: Habit(name = "")
                 onSave(
@@ -261,7 +264,7 @@ fun HabitEditorSheet(
                 )
                 onDismiss()
             }
-        }
+        })
     }
 }
 
@@ -276,17 +279,13 @@ private fun HabitReminderDraftCard(
     val dayLabels = listOf("M" to 0, "Tu" to 1, "W" to 2, "Th" to 3, "F" to 4, "Sa" to 5, "Su" to 6)
     val date = reminder.dateEpochDay?.let(LocalDate::ofEpochDay) ?: LocalDate.now()
     val time = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, reminder.hour); set(Calendar.MINUTE, reminder.minute) }
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    PremiumCard(contentPadding = PaddingValues(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Reminder ${index + 1}", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 OutlinedButton(onClick = {
                     TimePickerDialog(context, { _, hour, minute -> onChange(reminder.copy(hour = hour, minute = minute)) }, reminder.hour, reminder.minute, DateFormat.is24HourFormat(context)).show()
-                }) { Text(DateFormat.getTimeFormat(context).format(time.time)) }
+                }, shape = RoundedCornerShape(14.dp)) { Text(DateFormat.getTimeFormat(context).format(time.time)) }
                 IconButton(onClick = onDelete) { Icon(Icons.Rounded.Delete, "Remove reminder", tint = MaterialTheme.colorScheme.error) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

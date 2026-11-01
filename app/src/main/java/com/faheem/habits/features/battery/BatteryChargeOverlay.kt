@@ -14,6 +14,7 @@ import android.content.pm.PackageManager
 import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
@@ -96,6 +97,8 @@ internal fun handleAutomaticBatteryPowerEvent(context: Context, action: String?,
         when (action) {
             Intent.ACTION_POWER_CONNECTED -> {
                 BatteryAnimationDiagnostics.record(context, "Power connected event received", "$source received Android's ACTION_POWER_CONNECTED event. Auto-show is ${BatteryAnimationPreferences.autoShow(context)}.")
+                val sessionReading = batteryReading(context.registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED)))
+                BatterySessionHistory.start(context, sessionReading.percent, sessionReading.source)
                 if (!BatteryAnimationPreferences.autoShow(context)) {
                     BatteryAnimationDiagnostics.record(context, "Animation skipped", "Automatic charging animation is turned off in Battery settings.")
                     return
@@ -121,6 +124,8 @@ internal fun handleAutomaticBatteryPowerEvent(context: Context, action: String?,
                 }
             }
             Intent.ACTION_POWER_DISCONNECTED -> {
+                val sessionReading = batteryReading(context.registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED)))
+                BatterySessionHistory.finish(context, sessionReading.percent)
                 context.getSharedPreferences(BatteryAnimationPreferences.NAME, Context.MODE_PRIVATE)
                     .edit().putLong("last_auto_show_event", 0L).apply()
                 ChargeAnimationOverlay.dismiss(context)
@@ -157,7 +162,7 @@ private object ChargeAnimationOverlay {
             val estimator = BatteryPercentEstimator(reading.first, true, SystemClock.elapsedRealtime())
             val initialPercent = estimator.estimate(SystemClock.elapsedRealtime())
                 val root = FrameLayout(appContext).apply {
-                setBackgroundColor(AndroidColor.argb(82, 8, 12, 24))
+                setBackgroundColor(AndroidColor.argb(96, 16, 6, 36))
                 isClickable = true
                 setOnClickListener { dismissInternal() }
             }
@@ -167,10 +172,10 @@ private object ChargeAnimationOverlay {
                 setPadding(dp(appContext, 26), dp(appContext, 22), dp(appContext, 26), dp(appContext, 22))
                 background = GradientDrawable(
                     GradientDrawable.Orientation.TL_BR,
-                    intArrayOf(AndroidColor.rgb(20, 32, 65), AndroidColor.rgb(29, 70, 91))
+                    intArrayOf(AndroidColor.rgb(26, 12, 48), AndroidColor.rgb(8, 47, 74))
                 ).apply {
                     cornerRadius = dp(appContext, 30).toFloat()
-                    setStroke(dp(appContext, 1), AndroidColor.argb(54, 255, 255, 255))
+                    setStroke(dp(appContext, 1), AndroidColor.argb(120, 139, 92, 246))
                 }
                 elevation = dp(appContext, 16).toFloat()
             }
@@ -182,7 +187,7 @@ private object ChargeAnimationOverlay {
                 text = "CHARGING"
                 textSize = 13f
                 letterSpacing = .12f
-                setTextColor(AndroidColor.rgb(205, 255, 224))
+                setTextColor(AndroidColor.rgb(165, 243, 252))
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             }, LinearLayout.LayoutParams(0, dp(appContext, 32), 1f))
             top.addView(TextView(appContext).apply {
@@ -309,6 +314,7 @@ private class ChargingGraphic(context: Context, private var percent: Float, priv
         super.onDetachedFromWindow()
     }
 
+    @Suppress("CyclomaticComplexMethod", "LongMethod")
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val cx = width / 2f
@@ -320,6 +326,110 @@ private class ChargingGraphic(context: Context, private var percent: Float, priv
             paint.shader = RadialGradient(cx, cy, radius * (1.25f + .28f * pulse), intArrayOf(AndroidColor.argb(78, 74, 255, 161), AndroidColor.TRANSPARENT), null, Shader.TileMode.CLAMP)
             canvas.drawCircle(cx, cy, radius * (1.25f + .28f * pulse), paint)
             paint.shader = null
+        }
+        if (style == "Liquid Glass") {
+            val cellWidth = dp(context, 62).toFloat()
+            val cellHeight = dp(context, 102).toFloat()
+            val left = cx - cellWidth / 2
+            val top = cy - cellHeight / 2 + dp(context, 6)
+            val corner = dp(context, 16).toFloat()
+            val cell = Path().apply {
+                addRoundRect(left, top, left + cellWidth, top + cellHeight, corner, corner, Path.Direction.CW)
+            }
+            paint.style = Paint.Style.FILL
+            paint.color = AndroidColor.argb(120, 255, 255, 255)
+            canvas.drawRoundRect(
+                cx - dp(context, 20), top - dp(context, 7),
+                cx + dp(context, 20), top,
+                dp(context, 4).toFloat(), dp(context, 4).toFloat(), paint
+            )
+            paint.color = AndroidColor.argb(26, 255, 255, 255)
+            canvas.drawPath(cell, paint)
+            val inset = dp(context, 8).toFloat()
+            val inner = Path().apply {
+                addRoundRect(
+                    left + inset, top + inset,
+                    left + cellWidth - inset, top + cellHeight - inset,
+                    corner * .7f, corner * .7f, Path.Direction.CW
+                )
+            }
+            val innerHeight = cellHeight - inset * 2
+            val liquidTop = top + inset + innerHeight * (1f - percent / 100f)
+            val wave = dp(context, 4).toFloat()
+            val liquid = Path().apply {
+                moveTo(left + inset, top + cellHeight - inset)
+                lineTo(left + inset, liquidTop)
+                val steps = 24
+                for (step in 0..steps) {
+                    val t = step / steps.toFloat()
+                    lineTo(
+                        left + inset + (cellWidth - inset * 2) * t,
+                        liquidTop + kotlin.math.sin(t * Math.PI * 3 + phase * Math.PI * 2).toFloat() * wave
+                    )
+                }
+                lineTo(left + cellWidth - inset, top + cellHeight - inset)
+                close()
+            }
+            canvas.save()
+            canvas.clipPath(inner)
+            paint.shader = LinearGradient(
+                0f, liquidTop, 0f, top + cellHeight,
+                intArrayOf(
+                    AndroidColor.rgb(103, 232, 249),
+                    AndroidColor.rgb(139, 92, 246),
+                    AndroidColor.rgb(192, 38, 211)
+                ),
+                null, Shader.TileMode.CLAMP
+            )
+            paint.color = AndroidColor.WHITE
+            canvas.drawPath(liquid, paint)
+            paint.shader = null
+            canvas.restore()
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = dp(context, 2).toFloat()
+            paint.color = AndroidColor.argb(200, 255, 255, 255)
+            canvas.drawPath(cell, paint)
+            return
+        }
+        if (style == "Plasma Storm") {
+            paint.style = Paint.Style.FILL
+            paint.shader = RadialGradient(
+                cx, cy, radius * (1.15f + .25f * pulse),
+                intArrayOf(AndroidColor.argb(96, 34, 211, 238), AndroidColor.TRANSPARENT),
+                null, Shader.TileMode.CLAMP
+            )
+            canvas.drawCircle(cx, cy, radius * (1.15f + .25f * pulse), paint)
+            paint.shader = null
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = dp(context, 10).toFloat()
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.color = AndroidColor.argb(60, 255, 255, 255)
+            canvas.drawArc(cx - radius, cy - radius, cx + radius, cy + radius, 0f, 360f, false, paint)
+            paint.color = AndroidColor.rgb(34, 211, 238)
+            canvas.drawArc(cx - radius, cy - radius, cx + radius, cy + radius, -90f, 360f * percent / 100f, false, paint)
+            paint.strokeWidth = dp(context, 2).toFloat()
+            paint.color = AndroidColor.rgb(165, 243, 252)
+            repeat(6) { boltIndex ->
+                val baseAngle = (boltIndex * 60f + phase * 150f) * (Math.PI / 180)
+                val bolt = Path()
+                val segments = 8
+                for (segment in 0..segments) {
+                    val t = segment / segments.toFloat()
+                    val angle = baseAngle + (t - .5f) * .55f
+                    val jitter = (
+                        kotlin.math.sin((boltIndex * 3 + segment * 5).toDouble() + phase * 8) * .5 + .5
+                        ).toFloat() * dp(context, 6)
+                    val r = radius * .82f + if (segment % 2 == 0) jitter else -jitter
+                    val x = cx + kotlin.math.cos(angle).toFloat() * r
+                    val y = cy + kotlin.math.sin(angle).toFloat() * r
+                    if (segment == 0) bolt.moveTo(x, y) else bolt.lineTo(x, y)
+                }
+                canvas.drawPath(bolt, paint)
+            }
+            paint.style = Paint.Style.FILL
+            paint.color = AndroidColor.argb(140, 224, 242, 254)
+            canvas.drawCircle(cx, cy, dp(context, 8) * pulse, paint)
+            return
         }
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = dp(context, 11).toFloat()

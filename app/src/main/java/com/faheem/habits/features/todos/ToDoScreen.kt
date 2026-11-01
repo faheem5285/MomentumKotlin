@@ -1,3 +1,5 @@
+@file:Suppress("FunctionNaming")
+
 package com.faheem.habits.features.todos
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.notifications.*
@@ -13,30 +15,44 @@ import android.os.Build
 import android.text.format.DateFormat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Today
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -108,72 +124,84 @@ fun ToDoScreen(vm: ToDoViewModel = hiltViewModel()) {
         }
         matchesFilter && (task.title.contains(query, true) || task.notes.contains(query, true) || task.category.contains(query, true))
     }.sortedWith(compareBy<ToDoItem> { it.dueEpochDay }.thenByDescending { it.priority }.thenByDescending { it.id })
+    val doneCount = tasks.count { it.completed }
 
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Make room for what matters", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("${openTasks.size} open · ${tasks.count { it.completed }} completed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (openTasks.isNotEmpty()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        when {
-                            overdueCount > 0 -> "$overdueCount overdue · $dueTodayCount due today"
-                            dueTodayCount > 0 -> "$dueTodayCount due today · keep your momentum"
-                            else -> "You're up to date · keep your momentum"
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (overdueCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-            FilledTonalButton(onClick = { creating = true }) {
-                Icon(Icons.Rounded.Add, null)
-                Spacer(Modifier.width(6.dp))
-                Text("Add task")
-            }
-        }
-        if (tasks.any { !it.completed && it.reminderHour != null } && !MomentumNotificationSettings.masterEnabled(context)) {
-            Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
-                Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Task reminders are paused in notification settings", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { MomentumNotificationSettings.setMasterEnabled(context, true) }) { Text("Turn on") }
-                }
-            }
-        }
-        TabRow(selectedTabIndex = tab) {
-            listOf("Tasks", "Calendar", "Done").forEachIndexed { index, label ->
-                Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label) })
-            }
-        }
-
-        when (tab) {
-            0 -> {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    placeholder = { Text("Search tasks, notes, categories") },
-                    leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                    trailingIcon = {
-                        if (query.isNotBlank()) {
-                            IconButton(onClick = { query = "" }) {
-                                Icon(Icons.Rounded.Close, contentDescription = "Clear task search")
+        Box(Modifier.weight(1f)) {
+            when (tab) {
+                0 -> LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    item {
+                        HeroCard {
+                            Text("Make room for what matters", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
+                            Text(
+                                "${openTasks.size} open task${if (openTasks.size == 1) "" else "s"}",
+                                fontSize = 27.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                HeroPill(Icons.Rounded.Today, "$dueTodayCount today")
+                                HeroPill(Icons.Rounded.WarningAmber, "$overdueCount overdue")
+                                HeroPill(Icons.Rounded.CheckCircle, "$doneCount done")
                             }
                         }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(16.dp)
-                )
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf("All", "Today", "Upcoming", "Overdue").forEach { label ->
-                        FilterChip(selected = filter == label, onClick = { filter = label }, label = { Text(label) })
+                    }
+                    if (tasks.any { !it.completed && it.reminderHour != null } && !MomentumNotificationSettings.masterEnabled(context)) {
+                        item {
+                            InfoBanner(
+                                icon = Icons.Rounded.NotificationsOff,
+                                text = "Task reminders are paused in notification settings",
+                                tint = MaterialTheme.colorScheme.tertiary,
+                                actionLabel = "Turn on",
+                                onAction = { MomentumNotificationSettings.setMasterEnabled(context, true) }
+                            )
+                        }
+                    }
+                    item {
+                        OutlinedTextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Search tasks, notes, categories") },
+                            leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                            trailingIcon = {
+                                if (query.isNotBlank()) {
+                                    IconButton(onClick = { query = "" }) {
+                                        Icon(Icons.Rounded.Close, contentDescription = "Clear task search")
+                                    }
+                                }
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(18.dp)
+                        )
+                    }
+                    item {
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("All", "Today", "Upcoming", "Overdue").forEach { label ->
+                                FilterChip(selected = filter == label, onClick = { filter = label }, label = { Text(label) })
+                            }
+                        }
+                    }
+                    if (filtered.isEmpty()) {
+                        item {
+                            EmptyState(
+                                Icons.Rounded.CalendarMonth,
+                                if (query.isBlank()) "Nothing here yet" else "No matching tasks",
+                                if (query.isBlank()) "Add a task with a date to keep your plans in one place." else "Try a different search or filter"
+                            )
+                        }
+                    }
+                    items(filtered, key = { it.id }) { task ->
+                        ToDoCard(task, onClick = { editing = task }, onToggle = { vm.toggle(task) }, onDelete = { vm.delete(task) })
                     }
                 }
-                TaskList(filtered, onEdit = { editing = it }, onToggle = vm::toggle, onDelete = vm::delete)
-            }
-            1 -> {
-                CalendarAgenda(
+                1 -> CalendarAgenda(
                     month = month,
                     selectedDate = selectedDate,
                     tasks = tasks,
@@ -190,9 +218,32 @@ fun ToDoScreen(vm: ToDoViewModel = hiltViewModel()) {
                     onToggle = vm::toggle,
                     onDelete = vm::delete
                 )
+                else -> CompletedList(
+                    tasks = tasks.filter { it.completed }.sortedByDescending { it.dueEpochDay },
+                    onEdit = { editing = it },
+                    onToggle = vm::toggle,
+                    onDelete = vm::delete
+                )
             }
-            else -> TaskList(tasks.filter { it.completed }.sortedByDescending { it.dueEpochDay }, onEdit = { editing = it }, onToggle = vm::toggle, onDelete = vm::delete)
+            ExtendedFloatingActionButton(
+                onClick = { creating = true },
+                icon = { Icon(Icons.Rounded.Add, null) },
+                text = { Text("Add task", fontWeight = FontWeight.SemiBold) },
+                shape = RoundedCornerShape(20.dp),
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp)
+            )
         }
+        MomentumTabs(
+            tabs = listOf(
+                MomentumTab("Tasks", Icons.Rounded.CalendarMonth),
+                MomentumTab("Calendar", Icons.Rounded.Event),
+                MomentumTab("Done", Icons.Rounded.CheckCircle)
+            ),
+            selected = tab,
+            onSelect = { tab = it }
+        )
     }
 
     if (creating) ToDoEditorSheet(null, onDismiss = { creating = false }, onSave = { vm.save(it); creating = false })
@@ -200,13 +251,32 @@ fun ToDoScreen(vm: ToDoViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun TaskList(tasks: List<ToDoItem>, onEdit: (ToDoItem) -> Unit, onToggle: (ToDoItem) -> Unit, onDelete: (ToDoItem) -> Unit) {
+private fun HeroPill(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+    Surface(shape = CircleShape, color = Color.White.copy(alpha = 0.16f)) {
+        Row(
+            Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, null, Modifier.size(14.dp), tint = Color.White)
+            Spacer(Modifier.width(5.dp))
+            Text(text, fontSize = 11.5.sp, fontWeight = FontWeight.Medium, color = Color.White)
+        }
+    }
+}
+
+@Composable
+private fun CompletedList(tasks: List<ToDoItem>, onEdit: (ToDoItem) -> Unit, onToggle: (ToDoItem) -> Unit, onDelete: (ToDoItem) -> Unit) {
     if (tasks.isEmpty()) {
-        EmptyState(Icons.Rounded.CalendarMonth, "Nothing here yet", "Add a task with a date to keep your plans in one place.")
+        EmptyState(Icons.Rounded.CheckCircle, "Nothing completed yet", "Tasks you check off will be collected here.")
         return
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        items(tasks, key = { it.id }) { task -> ToDoCard(task, onClick = { onEdit(task) }, onToggle = { onToggle(task) }, onDelete = { onDelete(task) }) }
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item { SectionHeader("${tasks.size} completed task${if (tasks.size == 1) "" else "s"}") }
+        items(tasks, key = { it.id }) { task -> ToDoCard(task, { onEdit(task) }, { onToggle(task) }, { onDelete(task) }) }
     }
 }
 
@@ -216,40 +286,94 @@ private fun CalendarAgenda(
     onSelect: (LocalDate) -> Unit, onEdit: (ToDoItem) -> Unit, onToggle: (ToDoItem) -> Unit, onDelete: (ToDoItem) -> Unit
 ) {
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onPrevious) { Text("‹") }
-            Text(month.format(DateTimeFormatter.ofPattern("MMMM yyyy")), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            TextButton(onClick = onNext) { Text("›") }
-        }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-            listOf("M", "T", "W", "T", "F", "S", "S").forEach { Text(it, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        }
-        val firstOffset = month.atDay(1).dayOfWeek.value - 1
-        val totalCells = ((firstOffset + month.lengthOfMonth() + 6) / 7) * 7
-        (0 until totalCells step 7).forEach { rowStart ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                (rowStart until rowStart + 7).forEach { cell ->
-                    val dayNum = cell - firstOffset + 1
-                    if (dayNum in 1..month.lengthOfMonth()) {
-                        val date = month.atDay(dayNum)
-                        val hasTasks = tasks.any { it.dueEpochDay == date.toEpochDay() }
-                        Box(
-                            Modifier.weight(1f).padding(vertical = 2.dp).height(42.dp).clip(CircleShape)
-                                .background(if (date == selectedDate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface)
-                                .clickable { onSelect(date) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                Text("$dayNum", color = if (date == selectedDate) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
-                                if (hasTasks) Box(Modifier.size(4.dp).clip(CircleShape).background(if (date == selectedDate) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary))
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onPrevious) { Icon(Icons.Rounded.ChevronLeft, "Previous month") }
+                        Text(
+                            month.format(DateTimeFormatter.ofPattern("MMMM yyyy")),
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        IconButton(onClick = onNext) { Icon(Icons.Rounded.ChevronRight, "Next month") }
+                    }
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                        listOf("M", "T", "W", "T", "F", "S", "S").forEach {
+                            Text(
+                                it,
+                                Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                    val firstOffset = month.atDay(1).dayOfWeek.value - 1
+                    val totalCells = ((firstOffset + month.lengthOfMonth() + 6) / 7) * 7
+                    (0 until totalCells step 7).forEach { rowStart ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            (rowStart until rowStart + 7).forEach { cell ->
+                                val dayNum = cell - firstOffset + 1
+                                if (dayNum in 1..month.lengthOfMonth()) {
+                                    val date = month.atDay(dayNum)
+                                    val hasTasks = tasks.any { it.dueEpochDay == date.toEpochDay() && !it.completed }
+                                    val isSelected = date == selectedDate
+                                    val background by animateColorAsState(
+                                        if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                        label = "calendar-day"
+                                    )
+                                    Box(
+                                        Modifier
+                                            .weight(1f)
+                                            .padding(vertical = 2.dp)
+                                            .height(42.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(background)
+                                            .clickable { onSelect(date) },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                "$dayNum",
+                                                fontSize = 13.sp,
+                                                fontWeight = if (isSelected || date == LocalDate.now()) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                            )
+                                            if (hasTasks) {
+                                                Box(
+                                                    Modifier
+                                                        .padding(top = 2.dp)
+                                                        .size(4.dp)
+                                                        .clip(CircleShape)
+                                                        .background(if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary)
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else Spacer(Modifier.weight(1f).height(42.dp))
                             }
                         }
-                    } else Spacer(Modifier.weight(1f).height(42.dp))
+                    }
                 }
             }
+            item {
+                SectionHeader(
+                    title = selectedDate.format(DateTimeFormatter.ofPattern("EEEE, d MMMM")),
+                    subtitle = if (selectedDate == LocalDate.now()) "Today" else null
+                )
+            }
+            val dayTasks = tasks.filter { it.dueEpochDay == selectedDate.toEpochDay() }.sortedByDescending { it.priority }
+            if (dayTasks.isEmpty()) {
+                item { EmptyState(Icons.Rounded.Event, "Nothing scheduled", "Tap Add task to plan something for this day.") }
+            }
+            items(dayTasks, key = { it.id }) { task -> ToDoCard(task, { onEdit(task) }, { onToggle(task) }, { onDelete(task) }) }
         }
-        Text(selectedDate.format(DateTimeFormatter.ofPattern("EEEE, d MMMM")), Modifier.padding(start = 16.dp, top = 10.dp, bottom = 4.dp), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-        TaskList(tasks.filter { it.dueEpochDay == selectedDate.toEpochDay() }.sortedByDescending { it.priority }, onEdit, onToggle, onDelete)
     }
 }
 
@@ -257,9 +381,10 @@ private fun CalendarAgenda(
 private fun ToDoCard(task: ToDoItem, onClick: () -> Unit, onToggle: () -> Unit, onDelete: () -> Unit) {
     val date = LocalDate.ofEpochDay(task.dueEpochDay)
     val today = LocalDate.now()
+    val overdue = !task.completed && date.isBefore(today)
     val dateLabel = when {
         task.completed -> date.format(DateTimeFormatter.ofPattern("EEE, d MMM yyyy"))
-        date.isBefore(today) -> "Overdue · ${date.format(DateTimeFormatter.ofPattern("EEE, d MMM yyyy"))}"
+        overdue -> "Overdue · ${date.format(DateTimeFormatter.ofPattern("EEE, d MMM"))}"
         date == today -> "Today · ${date.format(DateTimeFormatter.ofPattern("d MMM yyyy"))}"
         else -> date.format(DateTimeFormatter.ofPattern("EEE, d MMM yyyy"))
     }
@@ -268,23 +393,61 @@ private fun ToDoCard(task: ToDoItem, onClick: () -> Unit, onToggle: () -> Unit, 
         2 -> MaterialTheme.colorScheme.tertiary
         else -> MaterialTheme.colorScheme.primary
     }
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-        Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = task.completed, onCheckedChange = { onToggle() })
-            Column(Modifier.weight(1f).clickable(onClick = onClick).padding(horizontal = 6.dp, vertical = 4.dp)) {
-                Text(task.title, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleSmall)
-                if (task.notes.isNotBlank()) Text(task.notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+    val accent = when {
+        task.completed -> MaterialTheme.colorScheme.outline
+        overdue -> MaterialTheme.colorScheme.error
+        else -> priorityColor
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).clickable(onClick = onClick),
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shadowElevation = if (LocalReduceEffects.current) 0.dp else MomentumTokens.elevationLow
+    ) {
+        Row(
+            Modifier.padding(start = 12.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CompletionToggle(
+                checked = task.completed,
+                color = if (task.priority >= 2) priorityColor else Positive,
+                onClick = onToggle,
+                size = 32.dp
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    task.title,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    textDecoration = if (task.completed) TextDecoration.LineThrough else null,
+                    color = if (task.completed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (task.notes.isNotBlank()) {
+                    Text(
+                        task.notes,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 Spacer(Modifier.height(5.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Icon(Icons.Rounded.Event, null, Modifier.size(15.dp), tint = if (!task.completed && date.isBefore(today)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                    Text(dateLabel, style = MaterialTheme.typography.labelMedium, color = if (!task.completed && date.isBefore(today)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                    Text("· ${task.category} · ${priorityLabels[task.priority.coerceIn(0, 3)]}", style = MaterialTheme.typography.labelSmall, color = priorityColor)
-                    if (task.reminderHour != null && task.reminderMinute != null) {
-                        Icon(Icons.Rounded.NotificationsActive, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    StatusPill(dateLabel, accent)
+                    Text("·", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                    Text(task.category, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (task.reminderHour != null) {
+                        Icon(Icons.Rounded.NotificationsActive, null, Modifier.size(13.dp), tint = MaterialTheme.colorScheme.secondary)
                     }
                 }
             }
-            IconButton(onClick = onDelete) { Icon(Icons.Rounded.DeleteOutline, "Delete task", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Rounded.DeleteOutline, "Delete task", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+            }
         }
     }
 }
@@ -304,38 +467,43 @@ private fun ToDoEditorSheet(initial: ToDoItem?, onDismiss: () -> Unit, onSave: (
     }
 
     FormSheet(if (initial == null) "New task" else "Edit task", onDismiss) {
-        OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Task or appointment") }, singleLine = true, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes, location, or details") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth())
-        Text("Date", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        OutlinedButton(onClick = {
-            DatePickerDialog(context, { _, year, month, day -> date = LocalDate.of(year, month + 1, day) }, date.year, date.monthValue - 1, date.dayOfMonth).show()
-        }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Rounded.CalendarMonth, null)
+        OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Task or appointment") }, singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes, location, or details") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth())
+        SectionHeader("Date")
+        OutlinedButton(
+            onClick = {
+                DatePickerDialog(context, { _, year, month, day -> date = LocalDate.of(year, month + 1, day) }, date.year, date.monthValue - 1, date.dayOfMonth).show()
+            },
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Icon(Icons.Rounded.CalendarMonth, null, Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text(date.format(DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy")))
         }
-        Text("Category", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            todoCategories.take(3).forEach { value -> FilterChip(category == value, onClick = { category = value }, label = { Text(value) }) }
+        SectionHeader("Category")
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            todoCategories.forEach { value -> FilterChip(category == value, onClick = { category = value }, label = { Text(value) }) }
         }
+        SectionHeader("Priority")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            todoCategories.drop(3).forEach { value -> FilterChip(category == value, onClick = { category = value }, label = { Text(value) }) }
-        }
-        Text("Priority", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             priorityLabels.forEachIndexed { index, value -> FilterChip(priority == index, onClick = { priority = index }, label = { Text(value) }) }
         }
-        Text("Reminder", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SectionHeader("Reminder")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(onClick = {
-                TimePickerDialog(context, { _, hour, minute ->
-                    reminderHour = hour; reminderMinute = minute
-                    if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    }
-                }, reminderHour ?: 9, reminderMinute ?: 0, DateFormat.is24HourFormat(context)).show()
-            }, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Rounded.NotificationsActive, null)
+            OutlinedButton(
+                onClick = {
+                    TimePickerDialog(context, { _, hour, minute ->
+                        reminderHour = hour; reminderMinute = minute
+                        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }, reminderHour ?: 9, reminderMinute ?: 0, DateFormat.is24HourFormat(context)).show()
+                },
+                modifier = Modifier.weight(1f).height(50.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(Icons.Rounded.NotificationsActive, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(if (reminderHour != null && reminderMinute != null) String.format("%02d:%02d", reminderHour, reminderMinute) else "Add time")
             }
@@ -345,13 +513,13 @@ private fun ToDoEditorSheet(initial: ToDoItem?, onDismiss: () -> Unit, onSave: (
             Text("Turn on the app’s reminder notifications to receive this alert.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text("Past dates are allowed for your records.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        BigButton("Save task") {
+        PrimaryButton("Save task", onClick = {
             if (title.isNotBlank()) {
                 onSave((initial ?: ToDoItem(title = "", dueEpochDay = date.toEpochDay())).copy(
                     title = title.trim(), notes = notes.trim(), dueEpochDay = date.toEpochDay(),
                     category = category, priority = priority, reminderHour = reminderHour, reminderMinute = reminderMinute
                 ))
             }
-        }
+        })
     }
 }

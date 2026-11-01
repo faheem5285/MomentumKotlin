@@ -30,6 +30,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.faheem.habits.core.notifications.MomentumReminderScheduler
+import com.faheem.habits.core.settings.AppearancePreferences
 import com.faheem.habits.core.ui.MomentumTheme
 import com.faheem.habits.BuildConfig
 import com.faheem.habits.features.battery.handleAutomaticBatteryPowerEvent
@@ -64,7 +65,9 @@ class MainActivity : ComponentActivity() {
         scheduleRemindersSafely()
         enableEdgeToEdge()
         setContent {
-            MomentumTheme { MomentumApp() }
+            val themeMode by AppearancePreferences.themeMode.collectAsStateWithLifecycle()
+            val reduceMotion by AppearancePreferences.reduceMotion.collectAsStateWithLifecycle()
+            MomentumTheme(themeMode = themeMode, reduceEffects = reduceMotion) { MomentumApp() }
         }
     }
 

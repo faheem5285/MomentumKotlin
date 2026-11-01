@@ -1,24 +1,13 @@
 package com.faheem.habits.app
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material3.*
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -90,31 +79,34 @@ private fun ModuleScreen(module: AppModule, onBack: () -> Unit) {
             colorScheme = MaterialTheme.colorScheme.copy(
                 primary = accent,
                 onPrimary = Color.White,
-                primaryContainer = accent.copy(alpha = 0.18f),
+                primaryContainer = accent.copy(alpha = 0.14f),
                 onPrimaryContainer = accent,
-                secondaryContainer = accent.copy(alpha = 0.18f),
+                secondaryContainer = accent.copy(alpha = 0.12f),
                 onSecondaryContainer = accent
             )
         ) {
-            Column(Modifier.fillMaxSize()) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
-                    IconBubble(module.icon, accent, 36.dp)
-                    Spacer(Modifier.width(10.dp))
-                    Text(module.label, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                }
-                Box(Modifier.weight(1f)) {
-                    when (module) {
-                        AppModule.Habits -> HabitScreen()
-                        AppModule.ToDos -> ToDoScreen()
-                        AppModule.Money -> ExpensesScreen()
-                        AppModule.Loans -> LoansScreen()
-                        AppModule.Files -> FilesScreen()
-                        AppModule.Screen -> ScreenTimeScreen()
-                        AppModule.Vault -> VaultScreen()
-                        AppModule.Battery -> BatteryScreen()
-                        AppModule.Network -> NetworkScreen()
-                        AppModule.Settings -> AppSettingsScreen()
+            ScreenBackground(tint = accent) {
+                Column(Modifier.fillMaxSize()) {
+                    ModuleHeader(
+                        title = module.label,
+                        eyebrow = "Momentum",
+                        icon = module.icon,
+                        gradient = module.gradient,
+                        onBack = onBack
+                    )
+                    Box(Modifier.weight(1f)) {
+                        when (module) {
+                            AppModule.Habits -> HabitScreen()
+                            AppModule.ToDos -> ToDoScreen()
+                            AppModule.Money -> ExpensesScreen()
+                            AppModule.Loans -> LoansScreen()
+                            AppModule.Files -> FilesScreen()
+                            AppModule.Screen -> ScreenTimeScreen()
+                            AppModule.Vault -> VaultScreen()
+                            AppModule.Battery -> BatteryScreen()
+                            AppModule.Network -> NetworkScreen()
+                            AppModule.Settings -> AppSettingsScreen()
+                        }
                     }
                 }
             }

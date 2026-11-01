@@ -2,23 +2,25 @@ package com.faheem.habits.features.settings
 
 import android.Manifest
 import android.app.AppOpsManager
-import android.app.NotificationManager
-import android.os.PowerManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,21 +30,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -50,6 +44,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,6 +54,15 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.faheem.habits.core.ui.HeroCard
+import com.faheem.habits.core.ui.InfoBanner
+import com.faheem.habits.core.ui.PremiumCard
+import com.faheem.habits.core.ui.PrimaryButton
+import com.faheem.habits.core.ui.Positive
+import com.faheem.habits.core.ui.ProgressBar
+import com.faheem.habits.core.ui.ScreenBackground
+import com.faheem.habits.core.ui.SecondaryButton
+import com.faheem.habits.core.ui.SectionHeader
+import com.faheem.habits.core.ui.StatusPill
 
 private enum class PermissionState { ENABLED, DISABLED, UNAVAILABLE }
 
@@ -146,92 +151,120 @@ fun PermissionsSetupScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val applicable = permissions.filter { it.state != PermissionState.UNAVAILABLE }
     val configured = applicable.count { it.state == PermissionState.ENABLED }
     val total = applicable.size
+    val fraction = if (total == 0) 0f else configured.toFloat() / total
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back") }
-                Column {
-                    Text("Set up Momentum", fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                    Text("Choose which optional features to enable", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+    ScreenBackground(modifier = modifier, tint = MaterialTheme.colorScheme.primary) {
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back to settings")
+            }
+            Text("Permissions", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        }
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(18.dp, 4.dp, 18.dp, 36.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item {
+                HeroCard {
+                    Text("Optional access", fontSize = 13.sp, color = Color.White.copy(alpha = .84f))
+                    Text("$configured of $total enabled", fontSize = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp)
+                    Spacer(Modifier.height(12.dp))
+                    ProgressBar(fraction, Color.White, Color.White.copy(alpha = .25f))
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Grant access only for features you want. You can change these choices later in Settings.",
+                        fontSize = 12.5.sp, color = Color.White.copy(alpha = .9f)
+                    )
                 }
             }
-        }
-        item {
-            HeroCard {
-                Text("Optional access", fontSize = 14.sp, color = androidx.compose.ui.graphics.Color.White.copy(alpha = .86f))
-                Text("$configured of $total enabled", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                LinearProgressIndicator(
-                    progress = { if (total == 0) 0f else configured.toFloat() / total },
-                    modifier = Modifier.fillMaxWidth(),
-                    color = androidx.compose.ui.graphics.Color.White,
-                    trackColor = androidx.compose.ui.graphics.Color.White.copy(alpha = .25f)
+            item {
+                InfoBanner(
+                    icon = Icons.Rounded.Info,
+                    text = "Settings names vary by Android version and manufacturer. If a page does not open, find Momentum under Settings → Apps and review Autostart, Battery saver and Background restrictions.",
+                    tint = MaterialTheme.colorScheme.primary
                 )
+            }
+            item { SectionHeader("Android access", subtitle = "Tap a card to configure it") }
+            items(permissions.size) { index ->
+                PermissionSetupCard(permissions[index])
+            }
+            item {
                 Text(
-                    "Grant access only for features you want. You can change these choices later in Settings.",
+                    "You can continue without enabling anything. Habits, to-dos, money, loans, files and the password vault remain available; related features may be limited until you enable their access.",
                     fontSize = 12.sp,
-                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = .9f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp)
+                )
+            }
+            item {
+                PrimaryButton("Continue to Momentum", onClick = onBack, icon = Icons.Rounded.CheckCircle)
+            }
+            if (openingSettings > 0) item {
+                Text(
+                    "Could not open that settings page. Open Android Settings → Apps → Momentum and locate the setting manually.",
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 12.sp
                 )
             }
         }
-        item {
-            Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
-                    Icon(Icons.Rounded.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(10.dp))
-                    Text("Android settings names and availability vary by version and manufacturer, especially Xiaomi/Redmi. If a page does not open, find Momentum under Settings → Apps or Security/Permissions, then review Autostart, Battery saver and Background restrictions. Momentum cannot change restricted settings for you.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        items(permissions.size) { index ->
-            val item = permissions[index]
-            PermissionSetupCard(item)
-        }
-        item {
-            Text("You can continue without enabling anything. Habits, to-dos, money, loans, files and the password vault remain available; related features may be limited until you enable their access.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
-        }
-        item {
-            FilledTonalButton(
-                onClick = onBack,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
-            ) {
-                Text("Continue to Momentum")
-            }
-        }
-        if (openingSettings > 0) item {
-            Text("Could not open that settings page. Open Android Settings → Apps → Momentum and locate the setting manually.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-        }
+    }
     }
 }
 
 @Composable
 private fun PermissionSetupCard(item: SetupPermission) {
-    val (label, tint) = when (item.state) {
-        PermissionState.ENABLED -> "Enabled" to MaterialTheme.colorScheme.primary
-        PermissionState.DISABLED -> "Disabled" to MaterialTheme.colorScheme.error
-        PermissionState.UNAVAILABLE -> "Not available on this device" to MaterialTheme.colorScheme.onSurfaceVariant
+    val tint = when (item.state) {
+        PermissionState.ENABLED -> Positive
+        PermissionState.DISABLED -> MaterialTheme.colorScheme.error
+        PermissionState.UNAVAILABLE -> MaterialTheme.colorScheme.onSurfaceVariant
     }
-    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (item.state == PermissionState.ENABLED) Icons.Rounded.CheckCircle else Icons.Rounded.Security, contentDescription = null, tint = tint)
-                Spacer(Modifier.width(10.dp))
-                Text(item.title, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-                Text(label, color = tint, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+    PremiumCard(contentPadding = PaddingValues(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = tint.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, tint.copy(alpha = 0.18f))
+            ) {
+                Icon(
+                    if (item.state == PermissionState.ENABLED) Icons.Rounded.CheckCircle else Icons.Rounded.Security,
+                    contentDescription = null,
+                    tint = tint,
+                    modifier = Modifier.padding(8.dp).width(20.dp).height(20.dp)
+                )
             }
-            Text(item.description, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(item.featureImpact, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (item.state == PermissionState.UNAVAILABLE) {
-                OutlinedButton(onClick = item.action, modifier = Modifier.fillMaxWidth()) { Text("View app settings") }
-            } else if (item.state == PermissionState.ENABLED) {
-                OutlinedButton(onClick = item.action, modifier = Modifier.fillMaxWidth()) { Text("Manage setting") }
-            } else {
-                Button(onClick = item.action, modifier = Modifier.fillMaxWidth()) { Text("Enable / configure") }
-            }
+            Spacer(Modifier.width(12.dp))
+            Text(item.title, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            StatusPill(
+                when (item.state) {
+                    PermissionState.ENABLED -> "Ready"
+                    PermissionState.DISABLED -> "Off"
+                    PermissionState.UNAVAILABLE -> "N/A"
+                },
+                tint
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(item.description, fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(4.dp))
+        Text(item.featureImpact, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(10.dp))
+        when (item.state) {
+            PermissionState.UNAVAILABLE -> SecondaryButton("View app settings", onClick = item.action)
+            PermissionState.ENABLED -> SecondaryButton("Manage setting", onClick = item.action)
+            PermissionState.DISABLED -> Button(
+                onClick = item.action,
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            ) { Text("Enable / configure", style = MaterialTheme.typography.labelLarge) }
         }
     }
 }

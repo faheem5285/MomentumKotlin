@@ -56,6 +56,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.FileNotFoundException
+import java.time.LocalDate
 
 @HiltViewModel
 class FileViewModel @Inject constructor(
@@ -139,60 +140,185 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
     val shown = files.filter { (kind == FileKind.All || fileKind(it) == kind) && it.name.contains(query, ignoreCase = true) }
     Box(Modifier.fillMaxSize()) {
         androidx.compose.foundation.lazy.LazyColumn(
-            Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 96.dp),
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
                 HeroCard {
-                    Text("Your file space", fontSize = 14.sp, color = Color.White.copy(alpha = .85f))
-                    Text("${files.size} file${if (files.size == 1) "" else "s"}", fontSize = 32.sp, fontWeight = FontWeight.Bold)
-                    Text("Preview images, PDFs and text files here. Edit text and save a copy.", fontSize = 13.sp, color = Color.White.copy(alpha = .9f))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier
+                                .size(52.dp)
+                                .clip(RoundedCornerShape(17.dp))
+                                .background(Color.White.copy(alpha = 0.16f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Rounded.FolderOpen, null, Modifier.size(26.dp), tint = Color.White)
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Your file space", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
+                            Text(
+                                "${files.size} file${if (files.size == 1) "" else "s"}",
+                                fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Preview images, PDFs and text files here. Edit text and save a copy.",
+                        fontSize = 12.5.sp,
+                        color = Color.White.copy(alpha = 0.88f)
+                    )
                 }
             }
             item {
-                OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
-                    placeholder = { Text("Search your files") }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = RoundedCornerShape(16.dp))
+                OutlinedTextField(
+                    query, { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    placeholder = { Text("Search your files") },
+                    leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                    shape = RoundedCornerShape(18.dp)
+                )
             }
             item {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FileKind.entries.forEach { type -> FilterChip(selected = kind == type, onClick = { kind = type }, label = { Text(type.label) }) }
                 }
             }
-            item { SectionLabel("${shown.size} file${if (shown.size == 1) "" else "s"}") }
+            if (files.isNotEmpty()) {
+                item {
+                    val counts = files.groupingBy { fileKind(it) }.eachCount()
+                        .filterKeys { it != FileKind.All }
+                        .entries
+                        .sortedByDescending { it.value }
+                    val slices = counts.mapIndexed { index, entry ->
+                        ChartSlice(entry.key.label, entry.value.toFloat(), chartColor(index))
+                    }
+                    PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            DonutChart(
+                                slices = slices,
+                                modifier = Modifier.width(146.dp),
+                                centerValue = "${files.size}",
+                                centerLabel = "files",
+                                thickness = 18.dp
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Library mix", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                Spacer(Modifier.height(6.dp))
+                                ChartLegend(
+                                    slices = slices,
+                                    maxRows = 4,
+                                    valueFormatter = { "${it.toInt()}" }
+                                )
+                            }
+                        }
+                    }
+                }
+                item {
+                    val today = LocalDate.now()
+                    val additions = (13 downTo 0).map { offset ->
+                        val day = today.minusDays(offset.toLong()).toEpochDay()
+                        files.count { it.addedEpochDay == day }.toFloat()
+                    }
+                    if (additions.any { it > 0f }) {
+                        PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconBubble(Icons.Rounded.Insights, MaterialTheme.colorScheme.primary, 40.dp)
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("Additions", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                    Text(
+                                        "${additions.sumOf { it.toInt() }} files added in 14 days",
+                                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(14.dp))
+                            BarChart(
+                                values = additions,
+                                labels = (13 downTo 0).map { offset ->
+                                    val day = today.minusDays(offset.toLong())
+                                    if (offset % 2 == 0) "${day.dayOfMonth}" else ""
+                                },
+                                colors = listOf(MaterialTheme.colorScheme.secondary),
+                                highlightIndex = additions.lastIndex,
+                                height = 132.dp,
+                                showValues = false
+                            )
+                        }
+                    }
+                }
+            }
+            item { SectionHeader("${shown.size} file${if (shown.size == 1) "" else "s"}", subtitle = "Stored on this device") }
             if (shown.isEmpty()) {
                 item { EmptyState(Icons.Rounded.FolderOpen, if (files.isEmpty()) "Your library is empty" else "No matching files", if (files.isEmpty()) "Add a file to preview and manage it here" else "Try another search or file type") }
             }
             items(shown, key = { it.id }) { file ->
                 val ext = file.name.substringAfterLast('.', "").uppercase().take(5).ifEmpty { "FILE" }
                 val badge = badgeColors[Math.floorMod(ext.hashCode(), badgeColors.size)]
-                Card(Modifier.fillMaxWidth().clickable { preview = file }, shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
-                    Row(Modifier.padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).background(badge.copy(alpha = .15f)), contentAlignment = Alignment.Center) {
-                            Icon(when (fileKind(file)) { FileKind.Image -> Icons.Rounded.Image; FileKind.Pdf -> Icons.Rounded.PictureAsPdf; FileKind.Text -> Icons.Rounded.Description; else -> Icons.AutoMirrored.Rounded.InsertDriveFile }, null, tint = badge)
+                PremiumCard(
+                    onClick = { preview = file },
+                    contentPadding = PaddingValues(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 4.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(15.dp))
+                                .background(badge.copy(alpha = .13f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                when (fileKind(file)) {
+                                    FileKind.Image -> Icons.Rounded.Image
+                                    FileKind.Pdf -> Icons.Rounded.PictureAsPdf
+                                    FileKind.Text -> Icons.Rounded.Description
+                                    else -> Icons.AutoMirrored.Rounded.InsertDriveFile
+                                },
+                                null,
+                                tint = badge
+                            )
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(file.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("${fileKind(file).label} · Added ${dayText(file.addedEpochDay)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(file.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                "${fileKind(file).label} · Added ${dayText(file.addedEpochDay)}",
+                                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-                        TextButton(onClick = { preview = file }) { Text("Preview") }
                         IconButton(onClick = { removeTarget = file }) { Icon(Icons.Rounded.MoreVert, "More options", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                 }
             }
         }
-        ExtendedFloatingActionButton(onClick = { picker.launch(arrayOf("*/*")) }, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("Add file") },
-            containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp))
+        ExtendedFloatingActionButton(
+            onClick = { picker.launch(arrayOf("*/*")) },
+            icon = { Icon(Icons.Rounded.Add, null) },
+            text = { Text("Add file", fontWeight = FontWeight.SemiBold) },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp)
+        )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FilePreviewSheet(file: FileItem, onDismiss: () -> Unit, onSaveCopy: (String) -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
+    val glass = LocalGlassPalette.current
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = glass.panel,
+        scrimColor = MaterialTheme.colorScheme.scrim,
+        tonalElevation = 0.dp,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(.92f).navigationBarsPadding().imePadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {

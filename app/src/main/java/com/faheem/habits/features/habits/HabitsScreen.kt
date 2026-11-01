@@ -181,6 +181,9 @@ private val habitTabs = listOf(
 @Composable
 fun HabitScreen(vm: HabitViewModel = viewModel()) {
     var tab by remember { mutableIntStateOf(0) }
+    val tabs = remember {
+        habitTabs.map { MomentumTab(it.label, it.icon) }
+    }
 
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {
@@ -193,19 +196,6 @@ fun HabitScreen(vm: HabitViewModel = viewModel()) {
                 }
             }
         }
-        NavigationBar(
-            containerColor = MaterialTheme.colorScheme.surface,
-            tonalElevation = 0.dp,
-            windowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp)
-        ) {
-            habitTabs.forEachIndexed { i, t ->
-                NavigationBarItem(
-                    selected = tab == i,
-                    onClick = { tab = i },
-                    icon = { Icon(t.icon, t.label) },
-                    label = { Text(t.label, maxLines = 1, fontSize = 11.sp) }
-                )
-            }
-        }
+        MomentumTabs(tabs = tabs, selected = tab, onSelect = { tab = it })
     }
 }

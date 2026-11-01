@@ -1,3 +1,5 @@
+@file:Suppress("FunctionNaming", "LongParameterList", "CyclomaticComplexMethod", "TooManyFunctions")
+
 package com.faheem.habits.features.battery
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.notifications.*
@@ -35,12 +37,27 @@ import androidx.compose.material.icons.rounded.BatteryFull
 import androidx.compose.material.icons.rounded.Power
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.HealthAndSafety
+import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.BatterySaver
+import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -56,10 +73,21 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import com.faheem.habits.features.screen_time.hasUsageAccess
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.util.Date
 
-internal data class BatteryReading(val percent: Int, val charging: Boolean, val source: String)
+internal data class BatteryReading(
+    val percent: Int,
+    val charging: Boolean,
+    val source: String,
+    val health: String = "Unknown",
+    val temperatureC: Float? = null,
+    val voltageMv: Int? = null,
+    val technology: String = "Unknown"
+)
 
 internal fun batteryReading(intent: Intent?): BatteryReading {
     if (intent == null) return BatteryReading(0, false, "Battery status unavailable")
@@ -73,11 +101,29 @@ internal fun batteryReading(intent: Intent?): BatteryReading {
         plugged and BatteryManager.BATTERY_PLUGGED_AC != 0 -> "AC power"
         else -> "On battery"
     }
+    val health = intent.getIntExtra(BatteryManager.EXTRA_HEALTH, BatteryManager.BATTERY_HEALTH_UNKNOWN)
+    val temperatureTenths = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)
+    val voltage = intent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0)
+    val technology = intent.getStringExtra(BatteryManager.EXTRA_TECHNOLOGY)?.takeIf { it.isNotBlank() } ?: "Unknown"
     return BatteryReading(
         percent = if (level < 0) 0 else (level * 100f / scale).toInt().coerceIn(0, 100),
         charging = plugged != 0 && (status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL),
-        source = source
+        source = source,
+        health = batteryHealthLabel(health),
+        temperatureC = if (temperatureTenths == Int.MIN_VALUE) null else temperatureTenths / 10f,
+        voltageMv = voltage.takeIf { it > 0 },
+        technology = technology
     )
+}
+
+private fun batteryHealthLabel(value: Int): String = when (value) {
+    BatteryManager.BATTERY_HEALTH_GOOD -> "Good"
+    BatteryManager.BATTERY_HEALTH_OVERHEAT -> "Overheating"
+    BatteryManager.BATTERY_HEALTH_DEAD -> "Replace"
+    BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE -> "Over voltage"
+    BatteryManager.BATTERY_HEALTH_UNSPECIFIED_FAILURE -> "Failure"
+    BatteryManager.BATTERY_HEALTH_COLD -> "Too cold"
+    else -> "Unknown"
 }
 
 @Composable
@@ -86,6 +132,11 @@ fun BatteryScreen() {
     var diagnostic by remember { mutableStateOf(BatteryAnimationDiagnostics.latest(context)) }
     var lastPluggedState by remember { mutableStateOf(false) }
     var reading by remember { mutableStateOf(BatteryReading(0, false, "Reading battery…")) }
+    var sessions by remember { mutableStateOf(BatterySessionHistory.recent(context)) }
+    var usageReport by remember { mutableStateOf<BatteryUsageReport?>(null) }
+    var levels by remember { mutableStateOf(BatteryLevelHistory.samples(context)) }
+    var usageAllowed by remember { mutableStateOf(hasUsageAccess(context)) }
+    var usageRefresh by remember { mutableIntStateOf(0) }
     DisposableEffect(context) {
         val appContext = context
         val receiver = object : BroadcastReceiver() {
@@ -104,11 +155,14 @@ fun BatteryScreen() {
                         }
                         lastPluggedState = next.charging
                         reading = next
+                        BatteryLevelHistory.record(appContext, next.percent, next.charging)
+                        BatteryUsageEstimator.ensureDailyAnchor(appContext)
                     }
                 }
                 diagnostic = BatteryAnimationDiagnostics.latest(appContext)
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                     diagnostic = BatteryAnimationDiagnostics.latest(appContext)
+                    sessions = BatterySessionHistory.recent(appContext)
                 }, 350)
             }
         }
@@ -122,7 +176,14 @@ fun BatteryScreen() {
         )
         reading = batteryReading(initial ?: context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)))
         lastPluggedState = reading.charging
+        BatteryLevelHistory.record(context, reading.percent, reading.charging)
+        BatteryUsageEstimator.ensureDailyAnchor(context)
         onDispose { runCatching { context.unregisterReceiver(receiver) } }
+    }
+    LaunchedEffect(reading.percent, reading.charging, usageRefresh) {
+        levels = BatteryLevelHistory.samples(context)
+        usageAllowed = hasUsageAccess(context)
+        usageReport = withContext(Dispatchers.IO) { BatteryUsageEstimator.load(context) }
     }
     var style by remember { mutableStateOf(BatteryAnimationPreferences.style(context)) }
     var autoShow by remember { mutableStateOf(BatteryAnimationPreferences.autoShow(context)) }
@@ -143,11 +204,12 @@ fun BatteryScreen() {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         overlayAllowed = Settings.canDrawOverlays(context)
         autoShow = BatteryAnimationPreferences.autoShow(context)
+        sessions = BatterySessionHistory.recent(context)
         backgroundListener = context.getSharedPreferences(BatteryAnimationPreferences.NAME, Context.MODE_PRIVATE)
             .getBoolean(BatteryChargingMonitorService.KEY_BACKGROUND_LISTENER, false)
         notificationsAllowed = MomentumNotificationSettings.notificationsAllowed(context)
     }
-    val styles = listOf("Pulse", "Flow", "Glow", "Neon Ring", "Dual Orbit", "Spark", "Wave", "Heartbeat", "Rainbow", "Comet", "Solar Flare", "Ripple", "Segment", "Liquid", "Aurora", "Matrix", "Firefly", "Prism", "Galaxy", "Radar", "Energy Core", "Spiral", "Minimal")
+    val styles = listOf("Liquid Glass", "Plasma Storm", "Pulse", "Flow", "Glow", "Neon Ring", "Dual Orbit", "Spark", "Wave", "Heartbeat", "Rainbow", "Comet", "Solar Flare", "Ripple", "Segment", "Liquid", "Aurora", "Matrix", "Firefly", "Prism", "Galaxy", "Radar", "Energy Core", "Spiral", "Minimal")
 
     Column(Modifier.fillMaxSize()) {
         LazyBatteryContent(
@@ -189,7 +251,17 @@ fun BatteryScreen() {
                 else runCatching { context.startActivity(Intent(ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)) }
             },
             onPreview = { context.startActivity(Intent(context, BatteryChargingActivity::class.java).putExtra(BatteryChargingActivity.EXTRA_PREVIEW, true)) },
-            onPopupPreview = { if (Settings.canDrawOverlays(context)) showBatteryChargingOverlayPreview(context) else openOverlaySettings(context) }
+            onPopupPreview = { if (Settings.canDrawOverlays(context)) showBatteryChargingOverlayPreview(context) else openOverlaySettings(context) },
+            sessions = sessions,
+            onClearSessions = {
+                BatterySessionHistory.clear(context)
+                sessions = BatterySessionHistory.recent(context)
+            },
+            usage = usageReport,
+            levels = levels,
+            usageAllowed = usageAllowed,
+            onUsageSettings = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
+            onRefreshUsage = { usageRefresh++ }
         )
     }
 }
@@ -217,25 +289,40 @@ private fun LazyBatteryContent(
     onOverlayPermission: () -> Unit,
     onNotificationPermission: () -> Unit,
     onPreview: () -> Unit,
-    onPopupPreview: () -> Unit
+    onPopupPreview: () -> Unit,
+    sessions: List<BatteryChargeSession>,
+    onClearSessions: () -> Unit,
+    usage: BatteryUsageReport?,
+    levels: List<BatteryLevelSample>,
+    usageAllowed: Boolean,
+    onUsageSettings: () -> Unit,
+    onRefreshUsage: () -> Unit
 ) {
-    val displayPercent = rememberBatteryPercentEstimate(reading.percent, reading.charging)
+    val estimate = rememberBatteryEstimate(reading.percent, reading.charging)
+    val displayPercent = estimate.percent
+    val reduceMotion = LocalReduceEffects.current
     androidx.compose.foundation.lazy.LazyColumn(
-        Modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp, 12.dp, 18.dp, 28.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        Modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 36.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
             HeroCard {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Battery studio", Modifier.weight(1f), fontSize = 14.sp, color = Color.White.copy(alpha = .85f))
-                    Text(if (reading.charging) "Charging" else "On battery", fontSize = 12.sp, color = Color.White.copy(alpha = .9f))
+                    Text("Battery studio", Modifier.weight(1f), fontSize = 13.sp, color = Color.White.copy(alpha = .84f))
+                    StatusPill(
+                        if (reading.charging) "Charging" else "On battery",
+                        if (reading.charging) Positive else Color.White
+                    )
                 }
                 Spacer(Modifier.height(4.dp))
-                Text(if (reading.charging) "Charging in progress" else "Battery at a glance", fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                Text("Live device status with a calm charging animation", fontSize = 13.sp, color = Color.White.copy(alpha = .88f))
+                Text(
+                    if (reading.charging) "Charging in progress" else "Battery at a glance",
+                    fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp
+                )
+                Text("Live device status with a calm charging animation", fontSize = 12.5.sp, color = Color.White.copy(alpha = .88f))
                 Spacer(Modifier.height(18.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                    BatteryOrb(displayPercent, reading.charging, style)
+                    BatteryOrb(displayPercent, reading.charging, style, animate = reading.charging && !reduceMotion)
                 }
                 Spacer(Modifier.height(14.dp))
                 AnimatedBatteryPercent(
@@ -243,12 +330,142 @@ private fun LazyBatteryContent(
                     fontSize = 38.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
-                Text(if (reading.charging) "${reading.source} · charging" else reading.source, fontSize = 14.sp, color = Color.White.copy(alpha = .9f))
+                Text(if (reading.charging) "${reading.source} · charging" else reading.source, fontSize = 13.sp, color = Color.White.copy(alpha = .9f))
+                estimate.minutesToFull?.let { minutes ->
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        etaText(minutes),
+                        fontSize = 12.5.sp,
+                        color = Color.White.copy(alpha = .92f)
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
-                FilledTonalButton(onClick = onPreview) { Text("Preview full-screen animation") }
+                PrimaryButton("Preview full-screen animation", onClick = onPreview, icon = Icons.Rounded.BatteryChargingFull)
             }
         }
-        item { SectionLabel("Animation style") }
+        item { SectionHeader("Device health", subtitle = "Live readings from Android") }
+        item { BatteryHealthCard(reading) }
+        item { SectionHeader("Battery level", subtitle = "Recorded over the last 24 hours") }
+        item {
+            PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconBubble(Icons.Rounded.Insights, MaterialTheme.colorScheme.primary, 40.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Charge trend", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(
+                            if (levels.size < 2) "Collecting samples while Momentum runs"
+                            else "${levels.size} samples · lowest ${levels.minOf { it.percent }}%",
+                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (levels.size >= 2) {
+                        val delta = levels.last().percent - levels.first().percent
+                        StatusPill(
+                            "${if (delta >= 0) "+" else ""}$delta%",
+                            if (delta >= 0) Positive else Warning
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                if (levels.size < 2) {
+                    ChartPlaceholder("A trend appears after a few readings")
+                } else {
+                    LineChart(
+                        values = levels.map { it.percent.toFloat() },
+                        color = MaterialTheme.colorScheme.primary,
+                        height = 148.dp,
+                        normalized = false
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(
+                            sampleTime(levels.first().timeMillis),
+                            fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            sampleTime(levels.last().timeMillis),
+                            fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+        item { SectionHeader("App energy", subtitle = "Estimated battery use today") }
+        item {
+            PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconBubble(Icons.Rounded.BatterySaver, MaterialTheme.colorScheme.secondary, 40.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Which apps use the battery", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(
+                            usage?.let { "Measured from ${it.sinceLabel} · ${it.confidence}" }
+                                ?: "Reading usage data…",
+                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = onRefreshUsage) { Icon(Icons.Rounded.Refresh, "Refresh app energy") }
+                }
+                Spacer(Modifier.height(12.dp))
+                val report = usage
+                if (report == null || !usageAllowed) {
+                    Text(
+                        if (!usageAllowed) "Allow Usage access to see which apps used the battery."
+                        else "Reading today's app usage…",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (!usageAllowed) {
+                        Spacer(Modifier.height(10.dp))
+                        SecondaryButton("Allow Usage access", onClick = onUsageSettings, icon = Icons.Rounded.Security)
+                    }
+                } else if (!report.hasData) {
+                    ChartPlaceholder("No foreground app usage recorded today")
+                } else {
+                    val appSlices = report.apps.take(5).mapIndexed { index, app ->
+                        ChartSlice(app.label, app.estimatedMah, chartColor(index))
+                    }
+                    val systemSlices = if (report.systemMah > 0f) {
+                        appSlices + ChartSlice(
+                            "System & background",
+                            report.systemMah,
+                            MaterialTheme.colorScheme.outline
+                        )
+                    } else appSlices
+                    CompositionBar(
+                        slices = systemSlices,
+                        valueFormatter = { energyText(it) }
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    HorizontalBarList(
+                        items = appSlices,
+                        maxItems = 5,
+                        valueFormatter = { energyText(it) }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(10.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(
+                            "Total used today",
+                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            energyText(report.observedDrainMah) +
+                                if (report.capacityMah > 0f) " of ${energyText(report.capacityMah)}" else "",
+                            fontSize = 12.sp, fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Estimates blend Android foreground time with the charge-counter drop. Apps that work in the background may be grouped under System.",
+                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+        item { SectionHeader("Animation style", subtitle = "Choose the charging look you like") }
         item {
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
@@ -257,124 +474,240 @@ private fun LazyBatteryContent(
             ) {
                 items(styles, key = { it }) { option ->
                     val selected = style == option
-                    Card(
+                    PremiumCard(
                         onClick = { onStyle(option) },
                         modifier = Modifier.width(132.dp),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-                        ),
-                        border = if (selected) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null
+                        accent = if (selected) MaterialTheme.colorScheme.primary else null,
+                        contentPadding = PaddingValues(12.dp)
                     ) {
-                        Column(Modifier.fillMaxWidth().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                             Box(Modifier.size(82.dp).clip(CircleShape).background(Color(0xFF12203A)), contentAlignment = Alignment.Center) {
-                                BatteryOrb(72f, true, option, Modifier.size(72.dp), animate = selected)
+                                BatteryOrb(72f, true, option, Modifier.size(72.dp), animate = selected && !reduceMotion)
                             }
-                            Text(option, fontWeight = FontWeight.SemiBold, color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
-                            Text(
-                                batteryStyleDescription(option),
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1
-                            )
                         }
-                    }
-                }
-            }
-        }
-        item {
-            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.BatteryChargingFull, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text("Live while this screen is open", fontWeight = FontWeight.SemiBold)
-                        Text("The animation follows the device battery level and charging state.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
-                    }
-                }
-            }
-        }
-        item { SectionLabel("Automatic charging animation") }
-        item {
-            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.BatteryChargingFull, null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Show when power connects", fontWeight = FontWeight.SemiBold)
-                            Text("Displays the selected animation for a few seconds when you plug in.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Switch(checked = autoShow, onCheckedChange = onAutoShow)
-                    }
-                    if (autoShow) {
+                        Spacer(Modifier.height(8.dp))
                         Text(
-                            when {
-                                overlayAllowed -> "Ready: $style animation will appear when the screen is on. When locked, Momentum uses a notification."
-                                notificationsAllowed -> "Notifications are ready. Allow Display over other apps for the animation to pop up over the current screen."
-                                else -> "Allow notifications for a reliable fallback, and Display over other apps for the pop-up animation."
-                            },
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            option,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
-                        if (!notificationsAllowed) OutlinedButton(onClick = onNotificationPermission, modifier = Modifier.fillMaxWidth()) {
-                            Text("Allow charging notifications")
-                        }
-                        if (!overlayAllowed) OutlinedButton(onClick = onOverlayPermission, modifier = Modifier.fillMaxWidth()) {
-                            Text("Allow Display over other apps")
-                        }
-                        if (overlayAllowed) OutlinedButton(onClick = onPopupPreview, modifier = Modifier.fillMaxWidth()) {
-                            Text("Test charging pop-up")
-                        }
-                        HorizontalDivider()
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Keep listener active in background", fontWeight = FontWeight.SemiBold)
-                                Text("Needed after Momentum is removed from Recents. Android keeps a small ongoing notification while this is on.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Switch(checked = backgroundListener, onCheckedChange = onBackgroundListener)
-                        }
+                        Text(
+                            batteryStyleDescription(option),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
                     }
                 }
             }
         }
         item {
-            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
-                    Icon(Icons.Rounded.NotificationsActive, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(10.dp))
-                    Text("The automatic pop-up is optional and dismisses itself. If Android blocks overlays, or the phone is locked, Momentum shows a notification instead. Lock-screen display follows Android notification settings.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            InfoBanner(
+                icon = Icons.Rounded.BatteryChargingFull,
+                text = "Live while this screen is open. The animation follows the device battery level and charging state.",
+                tint = MaterialTheme.colorScheme.primary
+            )
         }
+        item { SectionHeader("Automatic charging animation") }
         item {
-            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconBubble(Icons.Rounded.BatteryChargingFull, MaterialTheme.colorScheme.primary, 40.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Show when power connects", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text("Displays the selected animation for a few seconds when you plug in.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = autoShow, onCheckedChange = onAutoShow)
+                }
+                if (autoShow) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        when {
+                            overlayAllowed -> "Ready: $style animation will appear when the screen is on. When locked, Momentum uses a notification."
+                            notificationsAllowed -> "Notifications are ready. Allow Display over other apps for the animation to pop up over the current screen."
+                            else -> "Allow notifications for a reliable fallback, and Display over other apps for the pop-up animation."
+                        },
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    if (!notificationsAllowed) SecondaryButton(
+                        "Allow charging notifications",
+                        onClick = onNotificationPermission,
+                        icon = Icons.Rounded.NotificationsActive
+                    )
+                    if (!notificationsAllowed) Spacer(Modifier.height(8.dp))
+                    if (!overlayAllowed) SecondaryButton(
+                        "Allow Display over other apps",
+                        onClick = onOverlayPermission,
+                        icon = Icons.Rounded.Power
+                    )
+                    if (!overlayAllowed) Spacer(Modifier.height(8.dp))
+                    if (overlayAllowed) SecondaryButton(
+                        "Test charging pop-up",
+                        onClick = onPopupPreview,
+                        icon = Icons.Rounded.Bolt
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.BugReport, null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Charging diagnostics", fontWeight = FontWeight.SemiBold)
-                            Text(
-                                if (diagnostic.timestamp == 0L) "Waiting for a charger event" else java.text.DateFormat.getDateTimeInstance().format(Date(diagnostic.timestamp)),
-                                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text("Keep listener active in background", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("Needed after Momentum is removed from Recents. Android keeps a small ongoing notification while this is on.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        IconButton(onClick = onRefreshDiagnostics) {
-                            Icon(Icons.Rounded.Refresh, "Refresh diagnostics")
-                        }
+                        Switch(checked = backgroundListener, onCheckedChange = onBackgroundListener)
                     }
-                    Text(diagnostic.status, fontWeight = FontWeight.SemiBold, color = if (diagnostic.status.contains("failed", true) || diagnostic.status.contains("blocked", true) || diagnostic.status.contains("error", true)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                    Text(diagnostic.detail, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 8)
-                    OutlinedButton(onClick = onCopyDiagnostics, modifier = Modifier.fillMaxWidth()) { Text("Copy diagnostic details") }
-                    Text("After plugging in, refresh here to see whether Android delivered the event, the overlay opened, or a permission blocked it.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            }
+        }
+        item {
+            InfoBanner(
+                icon = Icons.Rounded.NotificationsActive,
+                text = "The automatic pop-up is optional and dismisses itself. If Android blocks overlays, or the phone is locked, Momentum shows a notification instead. Lock-screen display follows Android notification settings.",
+                tint = MaterialTheme.colorScheme.secondary
+            )
+        }
+        item { SectionHeader("Charge sessions", subtitle = if (sessions.isEmpty()) null else "${sessions.size} recent") }
+        if (sessions.isEmpty()) {
+            item {
+                EmptyState(
+                    Icons.Rounded.History,
+                    "No charge sessions yet",
+                    "Plug in the charger and Momentum will log each session here"
+                )
+            }
+        }
+        items(sessions, key = { it.startedAt }) { session -> ChargeSessionCard(session) }
+        if (sessions.isNotEmpty()) {
+            item {
+                SecondaryButton("Clear charge history", onClick = onClearSessions, icon = Icons.Rounded.DeleteSweep)
+            }
+        }
+        item {
+            PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconBubble(Icons.Rounded.BugReport, MaterialTheme.colorScheme.primary, 40.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Charging diagnostics", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(
+                            if (diagnostic.timestamp == 0L) "Waiting for a charger event" else java.text.DateFormat.getDateTimeInstance().format(Date(diagnostic.timestamp)),
+                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = onRefreshDiagnostics) {
+                        Icon(Icons.Rounded.Refresh, "Refresh diagnostics")
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    diagnostic.status,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    color = if (diagnostic.status.contains("failed", true) || diagnostic.status.contains("blocked", true) || diagnostic.status.contains("error", true)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                )
+                Text(diagnostic.detail, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 8)
+                Spacer(Modifier.height(10.dp))
+                SecondaryButton("Copy diagnostic details", onClick = onCopyDiagnostics, icon = Icons.Rounded.ContentCopy)
+                Spacer(Modifier.height(8.dp))
+                Text("After plugging in, refresh here to see whether Android delivered the event, the overlay opened, or a permission blocked it.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
 }
 
+@Composable
+private fun BatteryHealthCard(reading: BatteryReading) {
+    val healthColor = when (reading.health) {
+        "Good" -> Positive
+        "Unknown" -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> Warning
+    }
+    PremiumCard(contentPadding = PaddingValues(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBubble(Icons.Rounded.HealthAndSafety, healthColor, 40.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Battery condition", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(
+                    "Reported by the device fuel gauge",
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            StatusPill(reading.health, healthColor)
+        }
+        Spacer(Modifier.height(10.dp))
+        BatteryInfoRow(
+            "Temperature",
+            reading.temperatureC?.let { String.format(java.util.Locale.US, "%.1f °C", it) } ?: "Not reported"
+        )
+        BatteryInfoRow("Voltage", reading.voltageMv?.let { "$it mV" } ?: "Not reported")
+        BatteryInfoRow("Technology", reading.technology)
+        BatteryInfoRow("Power source", reading.source)
+    }
+}
+
+@Composable
+private fun BatteryInfoRow(label: String, value: String) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable
+private fun ChargeSessionCard(session: BatteryChargeSession) {
+    PremiumCard(contentPadding = PaddingValues(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBubble(Icons.Rounded.BatteryChargingFull, MaterialTheme.colorScheme.primary, 40.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "${session.startPercent}% → ${session.endPercent}%",
+                    fontWeight = FontWeight.SemiBold, fontSize = 14.sp
+                )
+                Text(
+                    "${sessionDateFormat(session.startedAt)} · ${durationLabel(session.durationMinutes)}",
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            StatusPill(
+                "+${session.gainedPercent}%",
+                if (session.gainedPercent > 0) Positive else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Text(session.source, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+internal fun etaText(minutes: Int): String = when {
+    minutes <= 0 -> "Almost full"
+    minutes < 60 -> "About $minutes min until full"
+    else -> "About ${minutes / 60} h ${minutes % 60} min until full"
+}
+
+private fun durationLabel(minutes: Int): String = when {
+    minutes < 1 -> "Under a minute"
+    minutes < 60 -> "$minutes min"
+    else -> "${minutes / 60} h ${minutes % 60} min"
+}
+
+private fun sessionDateFormat(millis: Long): String =
+    java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT)
+        .format(Date(millis))
+
+private fun sampleTime(millis: Long): String =
+    java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(Date(millis))
+
 private fun batteryStyleDescription(style: String): String = when (style) {
+    "Liquid Glass" -> "Liquid-filled cell"
+    "Plasma Storm" -> "Electric storm arcs"
     "Pulse" -> "Soft breathing"
     "Flow" -> "Moving energy"
     "Glow" -> "Radiant glow"
@@ -425,9 +758,117 @@ fun BatteryOrb(percent: Float, charging: Boolean, style: String, modifier: Modif
             val arcSize = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke)
             val track = Color.White.copy(alpha = .22f)
             val active = color.copy(alpha = alpha)
+            if (style == "Liquid Glass") {
+                val cellW = size.minDimension * .58f
+                val cellH = size.minDimension * .82f
+                val corner = cellW * .24f
+                val left = center.x - cellW / 2
+                val top = center.y - cellH / 2 + size.minDimension * .04f
+                val cellPath = Path().apply {
+                    addRoundRect(RoundRect(left, top, left + cellW, top + cellH, corner, corner))
+                }
+                val nubW = cellW * .32f
+                val nubH = size.minDimension * .055f
+                drawRoundRect(
+                    color = Color.White.copy(alpha = .42f),
+                    topLeft = Offset(center.x - nubW / 2, top - nubH),
+                    size = Size(nubW, nubH),
+                    cornerRadius = CornerRadius(nubH / 2)
+                )
+                drawPath(cellPath, Color.White.copy(alpha = .10f))
+                val inset = cellW * .11f
+                val innerPath = Path().apply {
+                    addRoundRect(
+                        RoundRect(
+                            left + inset, top + inset,
+                            left + cellW - inset, top + cellH - inset,
+                            corner * .7f, corner * .7f
+                        )
+                    )
+                }
+                val innerTop = top + inset
+                val innerHeight = cellH - inset * 2
+                val liquidTop = innerTop + innerHeight * (1f - progress)
+                val wave = size.minDimension * .035f
+                val liquid = Path().apply {
+                    moveTo(left + inset, top + cellH - inset)
+                    lineTo(left + inset, liquidTop)
+                    val steps = 36
+                    for (step in 0..steps) {
+                        val t = step / steps.toFloat()
+                        val x = left + inset + (cellW - inset * 2) * t
+                        val y = liquidTop + kotlin.math.sin(t * Math.PI * 3.0 + framePulse * Math.PI * 2).toFloat() * wave
+                        lineTo(x, y)
+                    }
+                    lineTo(left + cellW - inset, top + cellH - inset)
+                    close()
+                }
+                clipPath(innerPath) {
+                    drawPath(
+                        liquid,
+                        Brush.verticalGradient(
+                            listOf(Color(0xFF67E8F9), Color(0xFF8B5CF6), Color(0xFFC026D3)),
+                            startY = liquidTop,
+                            endY = top + cellH
+                        )
+                    )
+                    drawRect(
+                        Brush.verticalGradient(
+                            listOf(Color.White.copy(alpha = .38f), Color.Transparent),
+                            endY = innerTop + innerHeight * .55f
+                        ),
+                        topLeft = Offset(left, top),
+                        size = Size(cellW, innerHeight * .55f)
+                    )
+                }
+                if (progress > .05f) {
+                    repeat(3) { index ->
+                        val bubbleX = left + inset + (cellW - inset * 2) * (.25f + index * .22f)
+                        val travel = ((framePulse + index * .27f) % 1f) * innerHeight * progress
+                        val bubbleY = top + cellH - inset - travel
+                        if (bubbleY > liquidTop) {
+                            drawCircle(Color.White.copy(alpha = .30f), 1.7.dp.toPx(), Offset(bubbleX, bubbleY))
+                        }
+                    }
+                }
+                drawPath(
+                    cellPath,
+                    Brush.verticalGradient(
+                        listOf(Color.White.copy(alpha = .80f), Color.White.copy(alpha = .12f))
+                    ),
+                    style = Stroke(3.dp.toPx())
+                )
+                return@Canvas
+            }
             drawArc(track, -90f, 360f, false, bounds, arcSize, style = Stroke(stroke))
             drawArc(active, -90f, 360f * progress, false, bounds, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
             when (style) {
+                "Plasma Storm" -> {
+                    drawCircle(active.copy(alpha = .16f * framePulse), size.minDimension * .46f)
+                    val stormRadius = size.minDimension * .38f
+                    repeat(6) { boltIndex ->
+                        val baseAngle = (boltIndex * 60f + framePulse * 150f) * (Math.PI / 180)
+                        val bolt = Path()
+                        val segments = 8
+                        for (segment in 0..segments) {
+                            val t = segment / segments.toFloat()
+                            val angle = baseAngle + (t - .5f) * .55f
+                            val jitter = (
+                                kotlin.math.sin((boltIndex * 3 + segment * 5).toDouble() + framePulse * 8) * .5 + .5
+                                ).toFloat() * size.minDimension * .05f
+                            val radius = stormRadius + if (segment % 2 == 0) jitter else -jitter
+                            val x = center.x + kotlin.math.cos(angle).toFloat() * radius
+                            val y = center.y + kotlin.math.sin(angle).toFloat() * radius
+                            if (segment == 0) bolt.moveTo(x, y) else bolt.lineTo(x, y)
+                        }
+                        drawPath(
+                            bolt,
+                            Color(0xFFA5F3FC).copy(alpha = .85f),
+                            style = Stroke(1.8.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                    }
+                    drawCircle(Color(0xFFE0F2FE).copy(alpha = .45f * framePulse), size.minDimension * .10f)
+                }
                 "Segment" -> repeat(24) { i ->
                     val sweep = 360f / 24f - 4f
                     drawArc(if (i < (24 * progress).toInt()) active else track, -90f + i * 15f, sweep, false, bounds, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
@@ -468,14 +909,16 @@ fun BatteryOrb(percent: Float, charging: Boolean, style: String, modifier: Modif
                 "Minimal" -> drawArc(Color.White.copy(alpha = .8f), -90f, 360f * progress, false, bounds, arcSize, style = Stroke(4.dp.toPx(), cap = StrokeCap.Round))
             }
         }
-        Icon(
-            if (charging) Icons.Rounded.Bolt else if (percent >= 80f) Icons.Rounded.BatteryFull else Icons.Rounded.Power,
-            null,
-            Modifier.size(58.dp).graphicsLayer {
-                alpha = if (animate && style != "Glow") pulse.value else .9f
-            },
-            tint = color
-        )
+        if (style != "Liquid Glass") {
+            Icon(
+                if (charging) Icons.Rounded.Bolt else if (percent >= 80f) Icons.Rounded.BatteryFull else Icons.Rounded.Power,
+                null,
+                Modifier.size(58.dp).graphicsLayer {
+                    alpha = if (animate && style != "Glow") pulse.value else .9f
+                },
+                tint = color
+            )
+        }
     }
 }
 
@@ -499,8 +942,10 @@ internal fun AnimatedBatteryPercent(
     )
 }
 
+internal data class BatteryEstimate(val percent: Float, val minutesToFull: Int?)
+
 @Composable
-internal fun rememberBatteryPercentEstimate(percent: Int, charging: Boolean): Float {
+internal fun rememberBatteryEstimate(percent: Int, charging: Boolean): BatteryEstimate {
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     val estimator = remember { BatteryPercentEstimator(percent, charging, now) }
 
@@ -514,8 +959,12 @@ internal fun rememberBatteryPercentEstimate(percent: Int, charging: Boolean): Fl
         estimator.update(percent, charging, SystemClock.elapsedRealtime())
         now = SystemClock.elapsedRealtime()
     }
-    return estimator.estimate(now)
+    return BatteryEstimate(estimator.estimate(now), estimator.minutesToFull(now))
 }
+
+@Composable
+internal fun rememberBatteryPercentEstimate(percent: Int, charging: Boolean): Float =
+    rememberBatteryEstimate(percent, charging).percent
 
 internal class BatteryPercentEstimator(initialPercent: Int, initialCharging: Boolean, now: Long) {
     private var lastReportedPercent = initialPercent.coerceIn(0, 100)
@@ -571,6 +1020,15 @@ internal class BatteryPercentEstimator(initialPercent: Int, initialCharging: Boo
         val direction = if (charging) 1f else -1f
         val estimate = anchorPercent + elapsedSeconds * ratePerSecond * direction
         return estimate.coerceIn(lowerBound(lastReportedPercent, charging), upperBound(lastReportedPercent, charging))
+    }
+
+    fun minutesToFull(now: Long): Int? {
+        val remaining = 100f - estimate(now)
+        return when {
+            !charging -> null
+            remaining <= 0f -> 0
+            else -> (remaining / ratePerSecond / 60f).toInt().coerceAtLeast(1)
+        }
     }
 
     private fun lowerBound(reported: Int, isCharging: Boolean) =

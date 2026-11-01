@@ -15,10 +15,12 @@ import android.net.ConnectivityManager
 import android.os.Build
 import android.telephony.TelephonyManager
 import android.provider.Settings
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CellTower
@@ -26,6 +28,10 @@ import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.DataUsage
+import androidx.compose.material.icons.rounded.TrendingUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -33,6 +39,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -45,6 +52,7 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private enum class NetworkPeriod(val label: String) { Today("Today"), Month("This month") }
@@ -91,6 +99,7 @@ fun NetworkScreen() {
     var period by remember { mutableStateOf(NetworkPeriod.Today) }
     var granted by remember { mutableStateOf(hasUsageAccess(context)) }
     var report by remember { mutableStateOf<NetworkReport?>(null) }
+    var appReport by remember { mutableStateOf<AppNetworkReport?>(null) }
     var loading by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableIntStateOf(0) }
     var indicatorEnabled by remember {
@@ -105,20 +114,34 @@ fun NetworkScreen() {
         if (granted) {
             loading = true
             report = withContext(Dispatchers.IO) { loadNetworkReport(context, period) }
+            appReport = withContext(Dispatchers.IO) {
+                val days = when (period) {
+                    NetworkPeriod.Today -> 7
+                    NetworkPeriod.Month -> LocalDate.now().dayOfMonth.coerceAtLeast(2)
+                }
+                loadAppNetworkReport(context, days)
+            }
             loading = false
-        } else report = null
+        } else {
+            report = null
+            appReport = null
+        }
     }
     val settings = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
     Column(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             item {
                 HeroCard {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Network usage", Modifier.weight(1f), fontSize = 14.sp, color = Color.White.copy(alpha = .86f))
+                        Text("Network usage", Modifier.weight(1f), fontSize = 13.sp, color = Color.White.copy(alpha = .84f))
                         HeroRefreshButton(onClick = { refreshKey++ }, description = "Refresh network usage")
                     }
                     val total = report?.let { if (it.wifi != null && it.mobile != null) mb(it.wifi + it.mobile) else "Unavailable" } ?: "—"
-                    Text(total, fontSize = 31.sp, fontWeight = FontWeight.ExtraBold)
+                    Text(total, fontSize = 33.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
                     Text("Device traffic · ${period.label.lowercase()}", fontSize = 13.sp, color = Color.White.copy(alpha = .9f))
                     Spacer(Modifier.height(14.dp))
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -141,75 +164,220 @@ fun NetworkScreen() {
                 }
             }
             item {
-                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBubble(Icons.Rounded.Speed, MaterialTheme.colorScheme.primary, 40.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Network indicator", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("Live speed and today’s totals in your status bar", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = indicatorEnabled, onCheckedChange = { enable ->
+                            if (enable) {
+                                if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else startNetworkIndicator(context)
+                                indicatorEnabled = true
+                            } else {
+                                indicatorEnabled = false
+                                context.getSharedPreferences(NetworkIndicatorService.PREFS, Context.MODE_PRIVATE).edit().putBoolean(NetworkIndicatorService.KEY_ENABLED, false).apply()
+                                context.startService(Intent(context, NetworkIndicatorService::class.java).setAction(NetworkIndicatorService.ACTION_STOP))
+                            }
+                        })
+                    }
+                    if (indicatorEnabled) {
+                        Spacer(Modifier.height(10.dp))
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            NetworkPill("Live speed")
+                            NetworkPill("Wi-Fi ${mb(report?.wifi)}")
+                            NetworkPill("Data ${mb(report?.mobile)}")
+                        }
+                    }
+                    if (!granted) {
+                        Spacer(Modifier.height(10.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.Speed, null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("Persistent network indicator", fontWeight = FontWeight.SemiBold)
-                                Text("Keeps live speed and today’s Wi-Fi and mobile totals in a status-bar notification.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Switch(checked = indicatorEnabled, onCheckedChange = { enable ->
-                                if (enable) {
-                                    if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                    } else startNetworkIndicator(context)
-                                    indicatorEnabled = true
-                                } else {
-                                    indicatorEnabled = false
-                                    context.getSharedPreferences(NetworkIndicatorService.PREFS, Context.MODE_PRIVATE).edit().putBoolean(NetworkIndicatorService.KEY_ENABLED, false).apply()
-                                    context.startService(Intent(context, NetworkIndicatorService::class.java).setAction(NetworkIndicatorService.ACTION_STOP))
-                                }
-                            })
-                        }
-                        if (indicatorEnabled) {
-                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                NetworkPill("Live speed in notification")
-                                NetworkPill("Wi-Fi ${mb(report?.wifi)}")
-                                NetworkPill("Data ${mb(report?.mobile)}")
-                            }
-                        }
-                        if (!granted) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Rounded.NotificationsActive, null, tint = MaterialTheme.colorScheme.tertiary)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Grant Usage access below to include the daily Wi-Fi and data totals in the indicator.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                            Icon(Icons.Rounded.NotificationsActive, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.tertiary)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Usage access adds daily Wi-Fi and data totals to the indicator.",
+                                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
             }
             item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    NetworkMetricCard("Wi-Fi", mb(report?.wifi), "Received + sent", Icons.Rounded.Wifi, Modifier.weight(1f))
-                    NetworkMetricCard("Mobile data", mb(report?.mobile), "Received + sent", Icons.Rounded.CellTower, Modifier.weight(1f))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    MetricTile(
+                        title = "Wi-Fi",
+                        value = mb(report?.wifi),
+                        detail = "Received + sent",
+                        icon = Icons.Rounded.Wifi,
+                        accent = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    MetricTile(
+                        title = "Mobile",
+                        value = mb(report?.mobile),
+                        detail = "Received + sent",
+                        icon = Icons.Rounded.CellTower,
+                        accent = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            if (granted && appReport != null) {
+                item { SectionHeader("Traffic trend", subtitle = "Last 7 days") }
+                item {
+                    val daily = appReport!!.daily
+                    PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconBubble(Icons.Rounded.TrendingUp, MaterialTheme.colorScheme.primary, 40.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Daily data volume", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                Text(
+                                    "Wi-Fi + mobile combined",
+                                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Text(
+                                trafficText(daily.sumOf { it.totalBytes }),
+                                fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        BarChart(
+                            values = daily.map { it.totalBytes / 1_000_000f },
+                            labels = daily.map { DateTimeFormatter.ofPattern("EEE", Locale.US).format(it.day) },
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primary,
+                                MaterialTheme.colorScheme.secondary
+                            ),
+                            highlightIndex = daily.lastIndex,
+                            height = 156.dp,
+                            valueFormatter = { value ->
+                                if (value >= 1000f) String.format(Locale.US, "%.1fG", value / 1000f)
+                                else if (value >= 10f) value.toInt().toString()
+                                else String.format(Locale.US, "%.1f", value)
+                            }
+                        )
+                    }
+                }
+                item {
+                    val wifi = appReport!!.daily.sumOf { it.wifiBytes }
+                    val mobile = appReport!!.daily.sumOf { it.mobileBytes }
+                    val slices = listOf(
+                        ChartSlice("Wi-Fi", wifi.toFloat(), MaterialTheme.colorScheme.primary),
+                        ChartSlice("Mobile", mobile.toFloat(), MaterialTheme.colorScheme.secondary)
+                    )
+                    PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                        Text("Connection mix", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(
+                            "Share of traffic in this period",
+                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            DonutChart(
+                                slices = slices,
+                                modifier = Modifier.width(150.dp),
+                                centerValue = trafficText(wifi + mobile),
+                                centerLabel = "total",
+                                thickness = 18.dp
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                ChartLegend(
+                                    slices = slices,
+                                    valueFormatter = { trafficText(it.toLong()) },
+                                    maxRows = 2
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    if (mobile > wifi) "Mobile data is the larger share"
+                                    else "Wi-Fi carries most of the traffic",
+                                    fontSize = 11.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+                item {
+                    SectionHeader(
+                        "Data by app",
+                        subtitle = "${appReport!!.apps.size} app${if (appReport!!.apps.size == 1) "" else "s"} · ${period.label.lowercase()}"
+                    )
+                }
+                if (appReport!!.apps.isEmpty()) {
+                    item {
+                        EmptyState(
+                            Icons.Rounded.Apps,
+                            "No per-app data yet",
+                            "Android starts reporting app traffic after apps use the network"
+                        )
+                    }
+                } else {
+                    item {
+                        val slices = appReport!!.apps.take(6).mapIndexed { index, app ->
+                            ChartSlice(app.label, app.totalBytes.toFloat(), chartColor(index))
+                        }
+                        PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconBubble(Icons.Rounded.DataUsage, MaterialTheme.colorScheme.secondary, 40.dp)
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("Top consumers", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                    Text(
+                                        "Ranked by total bytes",
+                                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(14.dp))
+                            HorizontalBarList(
+                                items = slices,
+                                maxItems = 6,
+                                valueFormatter = { trafficText(it.toLong()) }
+                            )
+                        }
+                    }
+                    items(appReport!!.apps.take(12), key = { "traffic-${it.uid}-${it.packageName}" }) { app ->
+                        AppTrafficRow(app)
+                    }
                 }
             }
             item {
-                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Language, null, tint = MaterialTheme.colorScheme.primary)
+                PremiumCard(contentPadding = PaddingValues(15.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBubble(Icons.Rounded.Language, MaterialTheme.colorScheme.primary, 40.dp)
                         Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text(report?.country ?: "Country", fontWeight = FontWeight.SemiBold)
+                        Column(Modifier.weight(1f)) {
+                            Text(report?.country ?: "Country", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                             Text(report?.countrySource ?: "Reading network country…", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
             }
             if (!granted) item {
-                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Allow Usage access", fontWeight = FontWeight.Bold)
-                        Text("Android requires Usage access to show device-wide Wi-Fi and mobile totals. The permission stays under your control.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Button(onClick = settings) { Text("Open Usage access settings") }
-                    }
-                }
+                InfoBanner(
+                    icon = Icons.Rounded.Security,
+                    text = "Android requires Usage access to show device-wide Wi-Fi and mobile totals. The permission stays under your control.",
+                    tint = MaterialTheme.colorScheme.primary,
+                    actionLabel = "Open settings",
+                    onAction = settings
+                )
             }
-            if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))) }
             item {
-                Text("Totals use decimal MB (1 MB = 1,000,000 bytes). Android may keep recent or carrier-managed usage unavailable on some devices.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "Totals use decimal MB (1 MB = 1,000,000 bytes). Android may keep recent or carrier-managed usage unavailable on some devices.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
             }
         }
     }
@@ -221,20 +389,51 @@ private fun startNetworkIndicator(context: Context) {
 }
 
 @Composable
-private fun NetworkPill(text: String) {
-    Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primaryContainer) {
-        Text(text, Modifier.padding(horizontal = 8.dp, vertical = 6.dp), fontSize = 10.sp, color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 1)
+private fun AppTrafficRow(app: AppNetworkUsage) {
+    PremiumCard(contentPadding = PaddingValues(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBubble(Icons.Rounded.Apps, MaterialTheme.colorScheme.primary, 40.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    app.label,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                Text(
+                    app.packageName.substringAfterLast('.').ifBlank { app.packageName },
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+            Text(trafficText(app.totalBytes), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        }
+        if (app.wifiBytes > 0L || app.mobileBytes > 0L) {
+            Spacer(Modifier.height(10.dp))
+            CompositionBar(
+                slices = listOf(
+                    ChartSlice("Wi-Fi", app.wifiBytes.toFloat(), MaterialTheme.colorScheme.primary),
+                    ChartSlice("Mobile", app.mobileBytes.toFloat(), MaterialTheme.colorScheme.secondary)
+                ),
+                valueFormatter = { trafficText(it.toLong()) }
+            )
+        }
     }
 }
 
 @Composable
-private fun NetworkMetricCard(title: String, value: String, detail: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier = Modifier) {
-    Card(modifier, shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
-            Text(title, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            Text(value, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-            Text(detail, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+private fun NetworkPill(text: String) {
+    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)) {
+        Text(
+            text,
+            Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1
+        )
     }
 }

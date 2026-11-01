@@ -1,3 +1,5 @@
+@file:Suppress("FunctionNaming")
+
 package com.faheem.habits.features.settings
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.data.backup.MomentumBackup
@@ -12,10 +14,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.ui.text.style.TextAlign
-import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,12 +26,17 @@ import androidx.compose.runtime.key
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.faheem.habits.core.settings.AppearancePreferences
+import com.faheem.habits.core.settings.ThemeMode
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.DateFormat
 
@@ -57,6 +61,8 @@ fun AppSettingsScreen() {
     var lastBackupAt by remember { mutableLongStateOf(WeeklyBackupSettings.lastBackupAt(context)) }
     var databaseVersion by remember { mutableIntStateOf(0) }
     var integrityMessage by remember { mutableStateOf<String?>(null) }
+    val themeMode by AppearancePreferences.themeMode.collectAsStateWithLifecycle()
+    val reduceMotion by AppearancePreferences.reduceMotion.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
         if (uri != null) scope.launch { backupBusy = true; backupMessage = try { MomentumBackup.export(context, uri); "Backup exported. Vault secrets and file contents are excluded." } catch (e: Exception) { "Export failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } }
@@ -101,134 +107,234 @@ fun AppSettingsScreen() {
         return
     }
 
-    key(version) { LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 28.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            HeroCard {
-                Text("App settings", fontSize = 14.sp, color = Color.White.copy(alpha = .86f))
-                Text("Make Momentum yours", fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                Text("Choose which tools appear on your Home screen. Hiding a module keeps all of its saved data.", fontSize = 13.sp, color = Color.White.copy(alpha = .9f))
-            }
-        }
-        item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Data & Backup", fontWeight = FontWeight.SemiBold)
-                    Text("Database version: ${if (databaseVersion == 0) "Checking…" else databaseVersion}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(if (lastBackupAt == 0L) "Last weekly backup: none yet" else "Last weekly backup: ${DateFormat.getDateTimeInstance().format(java.util.Date(lastBackupAt))}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(if (weeklyFolder == null) "Choose a folder for automatic local copies." else "Weekly backup folder is selected.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedButton(onClick = { folderPicker.launch(null) }, modifier = Modifier.fillMaxWidth()) { Text(if (weeklyFolder == null) "Choose backup folder" else "Change backup folder") }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Automatic weekly backup", Modifier.weight(1f), fontWeight = FontWeight.Medium)
-                        Switch(checked = weeklyEnabled, enabled = weeklyFolder != null, onCheckedChange = { weeklyEnabled = it; WeeklyBackupSettings.setEnabled(context, it) })
-                    }
-                    OutlinedButton(enabled = !backupBusy, onClick = { scope.launch { backupBusy = true; integrityMessage = try { withContext(Dispatchers.IO) { AppDatabase.get(context).openHelper.readableDatabase.query("PRAGMA integrity_check").use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else "No result" } } } catch (e: Exception) { "Integrity check failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } } }, modifier = Modifier.fillMaxWidth()) { Text("Check database integrity") }
-                    integrityMessage?.let { Text(it, fontSize = 12.sp, color = if (it == "ok") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
+    key(version) {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 36.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item {
+                HeroCard {
+                    Text("App settings", fontSize = 13.sp, color = Color.White.copy(alpha = .84f))
+                    Text("Make Momentum yours", fontSize = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Choose which tools appear on your Home screen. Hiding a module keeps all of its saved data.",
+                        fontSize = 12.5.sp, color = Color.White.copy(alpha = .9f)
+                    )
                 }
             }
-        }
-        item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            item { SectionHeader("Data & backup", subtitle = "Local copies and database health") }
+            item {
+                PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBubble(Icons.Rounded.Storage, MaterialTheme.colorScheme.primary, 42.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Storage", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text(
+                                "Database version ${if (databaseVersion == 0) "checking…" else databaseVersion}",
+                                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        StatusPill(if (integrityMessage == "ok") "Healthy" else "On device", if (integrityMessage == "ok") Positive else MaterialTheme.colorScheme.primary)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    SettingInfoRow(
+                        label = "Last weekly backup",
+                        value = if (lastBackupAt == 0L) "None yet" else DateFormat.getDateTimeInstance().format(java.util.Date(lastBackupAt))
+                    )
+                    SettingInfoRow(
+                        label = "Backup folder",
+                        value = if (weeklyFolder == null) "Not selected" else "Ready"
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Automatic weekly backup", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                            Text(
+                                "Copies records to your chosen folder",
+                                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(checked = weeklyEnabled, enabled = weeklyFolder != null, onCheckedChange = { weeklyEnabled = it; WeeklyBackupSettings.setEnabled(context, it) })
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    SecondaryButton(
+                        if (weeklyFolder == null) "Choose backup folder" else "Change backup folder",
+                        onClick = { folderPicker.launch(null) },
+                        icon = Icons.Rounded.FolderOpen
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    SecondaryButton(
+                        "Check database integrity",
+                        onClick = { scope.launch { backupBusy = true; integrityMessage = try { withContext(Dispatchers.IO) { AppDatabase.get(context).openHelper.readableDatabase.query("PRAGMA integrity_check").use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else "No result" } } } catch (e: Exception) { "Integrity check failed: ${e.message ?: "unknown error"}" } finally { backupBusy = false } } },
+                        icon = Icons.Rounded.FactCheck
+                    )
+                    integrityMessage?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(it, fontSize = 12.sp, color = if (it == "ok") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+            item {
+                PremiumCard(contentPadding = PaddingValues(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconBubble(Icons.Rounded.Backup, MaterialTheme.colorScheme.primary, 42.dp)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Backup & restore", fontWeight = FontWeight.SemiBold)
+                            Text("Backup & restore", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                             Text("Export or merge your app records", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    Text("Restores add records without deleting existing data. Password Vault entries and actual file contents are excluded; saved file references may not work on another device.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Restores add records without deleting existing data. Password Vault entries and actual file contents are excluded.",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(enabled = !backupBusy, onClick = { exportLauncher.launch("momentum-backup.json") }, modifier = Modifier.weight(1f)) { Text("Export JSON") }
-                        Button(enabled = !backupBusy, onClick = { importLauncher.launch(arrayOf("application/json", "text/json", "*/*")) }, modifier = Modifier.weight(1f)) { Text("Restore JSON") }
+                        SecondaryButton("Export", onClick = { exportLauncher.launch("momentum-backup.json") }, modifier = Modifier.weight(1f), icon = Icons.Rounded.FileUpload)
+                        SecondaryButton("Restore", onClick = { importLauncher.launch(arrayOf("application/json", "text/json", "*/*")) }, modifier = Modifier.weight(1f), icon = Icons.Rounded.FileDownload)
                     }
-                    if (backupBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    backupMessage?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) }
+                    if (backupBusy) {
+                        Spacer(Modifier.height(10.dp))
+                        LinearProgressIndicator(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)))
+                    }
+                    backupMessage?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
-        }
-        item {
-            Card(
-                Modifier.fillMaxWidth().clickable { remindersOpen = true },
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconBubble(Icons.Rounded.NotificationsActive, MaterialTheme.colorScheme.primary, 42.dp)
-                    Spacer(Modifier.width(12.dp))
+            item { SectionHeader("Appearance", subtitle = "Theme and motion") }
+            item {
+                PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBubble(Icons.Rounded.Palette, MaterialTheme.colorScheme.secondary, 42.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Theme", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text(
+                                "Match the system or lock Momentum to light or dark",
+                                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ThemeMode.entries.forEach { mode ->
+                            FilterChip(
+                                selected = themeMode == mode,
+                                onClick = { AppearancePreferences.setThemeMode(context, mode) },
+                                label = { Text(mode.label) },
+                                leadingIcon = {
+                                    Icon(
+                                        when (mode) {
+                                            ThemeMode.System -> Icons.Rounded.Contrast
+                                            ThemeMode.Light -> Icons.Rounded.LightMode
+                                            ThemeMode.Dark -> Icons.Rounded.DarkMode
+                                        },
+                                        null,
+                                        Modifier.size(16.dp)
+                                    )
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Reduce motion", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                            Text(
+                                "Turns off glow blooms and ambient animation",
+                                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = reduceMotion,
+                            onCheckedChange = { AppearancePreferences.setReduceMotion(context, it) }
+                        )
+                    }
+                }
+            }
+            item { SectionHeader("Preferences") }
+            item {
+                PremiumCard(onClick = { remindersOpen = true }, contentPadding = PaddingValues(15.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBubble(Icons.Rounded.NotificationsActive, MaterialTheme.colorScheme.primary, 42.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Notifications & reminders", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("Manage schedules, categories and channels", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.outline)
+                    }
+                }
+            }
+            item {
+                PremiumCard(onClick = { permissionsOpen = true }, contentPadding = PaddingValues(15.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBubble(Icons.Rounded.Security, MaterialTheme.colorScheme.secondary, 42.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Permissions & background setup", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("Review Android access and background settings", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.outline)
+                    }
+                }
+            }
+            item {
+                Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Notifications & reminders", fontWeight = FontWeight.SemiBold)
-                        Text("Manage schedules, categories and channels", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Home screen modules", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("Choose what appears on Home", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Icon(Icons.Rounded.ChevronRight, null)
-                }
-            }
-        }
-        item {
-            Card(
-                Modifier.fillMaxWidth().clickable { permissionsOpen = true },
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconBubble(Icons.Rounded.Security, MaterialTheme.colorScheme.primary, 42.dp)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Permissions & background setup", fontWeight = FontWeight.SemiBold)
-                        Text("Review Android access and background settings", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Icon(Icons.Rounded.ChevronRight, null)
-                }
-            }
-        }
-        item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.Apps, null, tint = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.width(10.dp))
-                Column {
-                    Text("Home screen modules", fontWeight = FontWeight.Bold)
-                    Text("Turn modules on or off", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = {
-                    context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE).edit().clear().apply()
-                    version++
-                }) { Text("Show all") }
-            }
-        }
-        items(modules, key = { "${version}-${it.name}" }) { module ->
-            val visible = isModuleVisible(context, module)
-            Card(
-                Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconBubble(module.icon, module.gradient.first(), 42.dp)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(module.label, fontWeight = FontWeight.SemiBold)
-                        Text(if (visible) "Shown on Home" else "Hidden from Home", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Switch(checked = visible, onCheckedChange = { checked ->
-                        context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE).edit()
-                            .putBoolean(modulePref(module), checked).apply()
+                    TextButton(onClick = {
+                        context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE).edit().clear().apply()
                         version++
-                    })
+                    }) { Text("Show all") }
                 }
             }
-        }
-        item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
-                    Icon(Icons.Rounded.Info, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(10.dp))
-                    Text("Changes take effect when you return to Home. Your habit history, files, finance records, and vault entries stay on this device when a module is hidden.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            items(modules, key = { "${version}-${it.name}" }) { module ->
+                val visible = isModuleVisible(context, module)
+                PremiumCard(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 11.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBubble(module.icon, module.gradient.first(), 42.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(module.label, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text(
+                                if (visible) "Shown on Home" else "Hidden from Home",
+                                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(checked = visible, onCheckedChange = { checked ->
+                            context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE).edit()
+                                .putBoolean(modulePref(module), checked).apply()
+                            version++
+                        })
+                    }
                 }
             }
+            item {
+                InfoBanner(
+                    icon = Icons.Rounded.Info,
+                    text = "Changes take effect when you return to Home. Your records stay on this device when a module is hidden.",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
         }
-    } }
+    }
+}
+
+@Composable
+private fun SettingInfoRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
+    }
 }

@@ -29,9 +29,11 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import java.util.concurrent.TimeUnit
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -496,47 +498,62 @@ private fun VaultGate(
     var showPassword by remember { mutableStateOf(false) }
     var localError by remember(configured) { mutableStateOf<String?>(null) }
 
-    Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.Center) {
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.Center) {
+        LazyColumn(
+            contentPadding = PaddingValues(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             item {
                 HeroCard {
                     Icon(Icons.Rounded.Lock, null, Modifier.size(38.dp), tint = Color.White)
                     Spacer(Modifier.height(12.dp))
-                    Text(if (configured) "Vault locked" else "Create your private vault", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                    Text("Your passwords are encrypted on this device and never synced by Momentum.", fontSize = 13.sp, color = Color.White.copy(alpha = .9f))
+                    Text(
+                        if (configured) "Vault locked" else "Create your private vault",
+                        fontSize = 25.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp
+                    )
+                    Text("Your passwords are encrypted on this device and never synced by Momentum.", fontSize = 12.5.sp, color = Color.White.copy(alpha = .9f))
                 }
             }
             if (configured && biometricAvailable) item {
-                OutlinedButton(onClick = onBiometric, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Rounded.Fingerprint, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Unlock with biometrics")
-                }
+                SecondaryButton("Unlock with biometrics", onClick = onBiometric, icon = Icons.Rounded.Fingerprint)
             }
             if (!configured) {
-                item { Text("Choose a strong master password with at least 12 characters. Momentum does not store it and cannot reset it; if you forget it, the vault cannot be opened.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                item {
+                    InfoBanner(
+                        icon = Icons.Rounded.Security,
+                        text = "Choose a strong master password with at least 12 characters. Momentum does not store it and cannot reset it; if you forget it, the vault cannot be opened.",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
             item {
                 OutlinedTextField(master, { master = it.take(128); localError = null }, modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Master password") }, singleLine = true,
+                    label = { Text("Master password") }, singleLine = true, shape = RoundedCornerShape(16.dp),
                     visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = { IconButton(onClick = { showPassword = !showPassword }) { Icon(if (showPassword) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, "Show or hide master password") } })
             }
             if (!configured) item {
                 OutlinedTextField(confirm, { confirm = it.take(128); localError = null }, modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Confirm master password") }, singleLine = true,
+                    label = { Text("Confirm master password") }, singleLine = true, shape = RoundedCornerShape(16.dp),
                     visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation())
             }
-            if (localError != null || error != null) item { Text(localError ?: error.orEmpty(), color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
+            if (localError != null || error != null) item {
+                InfoBanner(icon = Icons.Rounded.Warning, text = localError ?: error.orEmpty(), tint = MaterialTheme.colorScheme.error)
+            }
             item {
-                BigButton(if (busy) "Unlocking…" else if (configured) "Unlock vault" else "Create vault") {
-                    when {
-                        busy -> Unit
-                        !configured && master.length < 12 -> localError = "Use at least 12 characters for your master password."
-                        !configured && master != confirm -> localError = "The passwords don’t match."
-                        else -> { onSubmit(master); master = ""; confirm = "" }
-                    }
-                }
+                PrimaryButton(
+                    text = if (busy) "Unlocking…" else if (configured) "Unlock vault" else "Create vault",
+                    onClick = {
+                        when {
+                            busy -> Unit
+                            !configured && master.length < 12 -> localError = "Use at least 12 characters for your master password."
+                            !configured && master != confirm -> localError = "The passwords don’t match."
+                            else -> { onSubmit(master); master = ""; confirm = "" }
+                        }
+                    },
+                    enabled = !busy,
+                    icon = if (configured) Icons.Rounded.LockOpen else Icons.Rounded.Lock
+                )
             }
             if (configured) item {
                 Text("The vault locks when Momentum goes into the background. Screenshots are blocked while Vault is open.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -563,75 +580,89 @@ private fun VaultHome(
     }
     val health = vaultHealthReport(items)
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
                 HeroCard {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("Private password vault", fontSize = 14.sp, color = Color.White.copy(alpha = .85f))
-                            Text("${items.size} secure item${if (items.size == 1) "" else "s"}", fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                            Text("Encrypted on this device", fontSize = 13.sp)
+                            Text("Private password vault", fontSize = 13.sp, color = Color.White.copy(alpha = .84f))
+                            Text("${items.size} secure item${if (items.size == 1) "" else "s"}", fontSize = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+                            Text("Encrypted on this device", fontSize = 13.sp, color = Color.White.copy(alpha = .9f))
                         }
                         IconButton(onClick = onLock) { Icon(Icons.Rounded.Lock, "Lock vault now", tint = Color.White) }
                     }
                 }
             }
             item {
-                OutlinedButton(onClick = onEnableBiometric, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Rounded.Fingerprint, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Enable biometric unlock")
-                }
+                SecondaryButton("Enable biometric unlock", onClick = onEnableBiometric, icon = Icons.Rounded.Fingerprint)
             }
             if (unreadable > 0) item {
-                Text("$unreadable item${if (unreadable == 1) "" else "s"} could not be decrypted. Their encrypted data has not been changed.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                InfoBanner(
+                    icon = Icons.Rounded.Warning,
+                    text = "$unreadable item${if (unreadable == 1) "" else "s"} could not be decrypted. Their encrypted data has not been changed.",
+                    tint = MaterialTheme.colorScheme.error
+                )
             }
             item {
-                Text(
-                    "Password health: ${health.weak} weak · ${health.reused} reused · ${health.duplicates} duplicate",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (health.weak + health.reused > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                val issues = health.weak + health.reused + health.duplicates
+                InfoBanner(
+                    icon = if (issues > 0) Icons.Rounded.Warning else Icons.Rounded.VerifiedUser,
+                    text = if (issues > 0) {
+                        "Password health: ${health.weak} weak · ${health.reused} reused · ${health.duplicates} duplicate"
+                    } else {
+                        "Password health looks good. No weak, reused or duplicate passwords found."
+                    },
+                    tint = if (issues > 0) MaterialTheme.colorScheme.tertiary else Positive
                 )
             }
             item {
                 OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
-                    placeholder = { Text("Search titles, usernames, websites") }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = RoundedCornerShape(16.dp))
+                    placeholder = { Text("Search titles, usernames, websites") }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = RoundedCornerShape(18.dp))
             }
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("All", "Logins", "Secure notes").forEach { label -> FilterChip(type == label, { type = label }, label = { Text(label) }) }
                 }
             }
-            item { SectionLabel("Your items · ${filtered.size}") }
+            item { SectionHeader(if (type == "All") "Your items" else type, subtitle = "${filtered.size} item${if (filtered.size == 1) "" else "s"}") }
             if (filtered.isEmpty()) item {
                 EmptyState(Icons.Rounded.Password, if (items.isEmpty()) "Your vault is empty" else "No matching items", if (items.isEmpty()) "Add a login or secure note to get started" else "Try another search or filter")
             }
             items(filtered, key = { it.id }) { entry -> VaultItemCard(entry) { onSelect(entry) } }
             item {
-                Text("Credentials stay encrypted in the database. Copying a value clears the clipboard after 30 seconds when possible.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Credentials stay encrypted in the database. Copying a value clears the clipboard after 30 seconds when possible.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp))
             }
-            item { OutlinedButton(onClick = onExport, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Rounded.Lock, null); Spacer(Modifier.width(8.dp)); Text("Export encrypted vault file") } }
+            item {
+                SecondaryButton("Export encrypted vault file", onClick = onExport, icon = Icons.Rounded.Lock)
+            }
         }
-        ExtendedFloatingActionButton(onClick = onAdd, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("Add secure item") },
+        ExtendedFloatingActionButton(onClick = onAdd, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("Add secure item", fontWeight = FontWeight.SemiBold) },
+            shape = RoundedCornerShape(20.dp),
             containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp))
+            elevation = FloatingActionButtonDefaults.elevation(
+                defaultElevation = MomentumTokens.elevationHigh,
+                pressedElevation = MomentumTokens.elevationMedium
+            ),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp))
     }
 }
 
 @Composable
 private fun VaultItemCard(item: VaultListItem, onClick: () -> Unit) {
     val secret = item.secret
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).clip(CircleShape).padding(10.dp), contentAlignment = Alignment.Center) {
-                Icon(if (secret.type == "note") Icons.AutoMirrored.Rounded.StickyNote2 else Icons.Rounded.Key, null, tint = MaterialTheme.colorScheme.primary)
-            }
-            Spacer(Modifier.width(10.dp))
+    PremiumCard(onClick = onClick, contentPadding = PaddingValues(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBubble(
+                if (secret.type == "note") Icons.AutoMirrored.Rounded.StickyNote2 else Icons.Rounded.Key,
+                MaterialTheme.colorScheme.primary,
+                44.dp
+            )
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(secret.title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(secret.title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(if (secret.type == "note") "Secure note" else listOf(secret.username, secret.website).filter(String::isNotBlank).joinToString(" · ").ifBlank { "Login" }, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.outline)
         }
     }
 }
@@ -669,7 +700,7 @@ private fun VaultDetailSheet(item: VaultListItem, onDismiss: () -> Unit, onEdit:
             Text(secret.notes)
             TextButton(onClick = { copySensitive(context, secret.notes) }) { Icon(Icons.Rounded.ContentCopy, null); Spacer(Modifier.width(6.dp)); Text("Copy note") }
         }
-        BigButton("Edit item", onEdit)
+        BigButton("Edit item", onClick = onEdit)
         TextButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Rounded.DeleteOutline, null, tint = MaterialTheme.colorScheme.error); Spacer(Modifier.width(6.dp)); Text("Delete item", color = MaterialTheme.colorScheme.error) }
     }
 }
@@ -720,14 +751,14 @@ private fun VaultEntryEditor(initial: VaultListItem?, onDismiss: () -> Unit, onS
             Text("Favorite")
         }
         if (error != null) Text(error.orEmpty(), color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
-        BigButton(if (initial == null) "Save securely" else "Save changes") {
+        BigButton(if (initial == null) "Save securely" else "Save changes", onClick = {
             if (title.isBlank()) error = "Add a title to save this item."
             else if (type == "login" && password.isBlank()) error = "Add a password or generate one."
             else onSave(
                 if (type == "login") VaultSecret(title.trim(), type, username.trim(), password, website.trim(), notes.trim(), folder.trim(), tags.trim(), favorite, totp.trim())
                 else VaultSecret(title.trim(), type, "", "", "", notes.trim(), folder.trim(), tags.trim(), favorite)
             )
-        }
+        })
     }
 }
 

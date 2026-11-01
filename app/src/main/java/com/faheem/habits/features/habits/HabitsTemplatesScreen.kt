@@ -42,17 +42,17 @@ fun TemplatesScreen(vm: HabitViewModel) {
 
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 24.dp),
+        contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
             HeroCard {
-                Text("Habit library", fontSize = 14.sp, color = Color.White.copy(alpha = 0.85f))
-                Text("${HabitTemplates.size} ready-made habits", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                Text("Habit library", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
+                Text("${HabitTemplates.size} ready-made habits", fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
                 Spacer(Modifier.height(6.dp))
                 Text(
                     "Every habit tells you exactly what to do. Tap Add, then change anything in Manage.",
-                    fontSize = 13.sp, color = Color.White.copy(alpha = 0.9f)
+                    fontSize = 12.5.sp, color = Color.White.copy(alpha = 0.9f)
                 )
             }
         }
@@ -63,7 +63,7 @@ fun TemplatesScreen(vm: HabitViewModel) {
                 placeholder = { Text("Search habits") },
                 leadingIcon = { Icon(Icons.Rounded.Search, null) },
                 singleLine = true,
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(18.dp),
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -74,25 +74,24 @@ fun TemplatesScreen(vm: HabitViewModel) {
                 }
             }
         }
-        item { SectionLabel("${shown.size} habits") }
+        item { SectionHeader(if (cat == "All") "All habits" else cat, subtitle = "${shown.size} to explore") }
         if (shown.isEmpty()) {
             item { EmptyState(Icons.Rounded.Search, "No match", "Try another word or category") }
         }
         items(shown, key = { it.name }) { tpl ->
             val color = habitColor(categoryColorIndex(tpl.category))
             val added = tpl.name.lowercase() in existing
-            Card(
-                Modifier.fillMaxWidth().animateItem(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            PremiumCard(
+                modifier = Modifier.animateItem(),
+                accent = color,
+                contentPadding = PaddingValues(14.dp)
             ) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
+                Row(verticalAlignment = Alignment.Top) {
                     IconBubble(habitIcon(tpl.icon), color, 44.dp)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(tpl.name, fontWeight = FontWeight.SemiBold)
-                        Text(tpl.what, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(tpl.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(tpl.what, fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(6.dp))
                         Text(
                             "${tpl.category} · ${scheduleText(tpl.daysMask)} · ${TIME_LABELS[tpl.timeOfDay]}",
@@ -117,7 +116,7 @@ fun TemplatesScreen(vm: HabitViewModel) {
                                 )
                             )
                             Toast.makeText(ctx, "Added to Today", Toast.LENGTH_SHORT).show()
-                        }) { Text("Add") }
+                        }, shape = RoundedCornerShape(14.dp)) { Text("Add") }
                     }
                 }
             }

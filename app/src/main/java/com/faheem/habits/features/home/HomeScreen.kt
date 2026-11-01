@@ -1,3 +1,5 @@
+@file:Suppress("FunctionNaming", "LongParameterList")
+
 package com.faheem.habits.features.home
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.notifications.*
@@ -11,7 +13,10 @@ import com.faheem.habits.features.screen_time.todayScreenMinutes
 
 
 import android.app.Application
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,6 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,6 +32,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -169,153 +176,345 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
     ).filter { spec -> spec.module?.let { isModuleVisible(ctx, it) } ?: true } }
     val settingsTile = TileSpec("Settings", "Manage modules and preferences", AppModule.Settings.icon, AppModule.Settings.gradient, AppModule.Settings)
 
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 32.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        item {
-            HeroCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(greeting(), fontSize = 14.sp, color = Color.White.copy(alpha = 0.85f))
-                        Text("Momentum", fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
-                        Text(
-                            LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM")),
-                            fontSize = 14.sp, color = Color.White.copy(alpha = 0.85f)
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            if (s.habitsTotal == 0) "Open Habits to begin"
-                            else if (s.habitsDone == s.habitsTotal) "All habits done today 🎉"
-                            else "${s.habitsTotal - s.habitsDone} habits left today",
-                            fontSize = 15.sp, fontWeight = FontWeight.Medium
-                        )
-                        if (s.habitsTotal == 0) {
-                            Spacer(Modifier.height(10.dp))
-                            Button(
-                                onClick = { onOpen(AppModule.Habits) },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.White,
-                                    contentColor = AppModule.Habits.gradient.first()
-                                ),
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                            ) {
-                                Text("Create your first habit", fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                    }
-                    ProgressRing(
-                        if (s.habitsTotal == 0) 0f else s.habitsDone.toFloat() / s.habitsTotal,
-                        "${s.habitsDone}/${s.habitsTotal}"
+    ScreenBackground(tint = BrandGradient.first()) {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(18.dp, 10.dp, 18.dp, 36.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item { HomeHero(s) { onOpen(it) } }
+            item {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TodaySummaryCard(
+                        title = "Habits",
+                        value = "${s.habitsDone}/${s.habitsTotal}",
+                        detail = if (s.habitsTotal == 0) "Ready to start" else if (s.habitsDone == s.habitsTotal) "All done today" else "Completed today",
+                        icon = AppModule.Habits.icon,
+                        tint = AppModule.Habits.gradient.last(),
+                        progress = if (s.habitsTotal == 0) 0f else s.habitsDone.toFloat() / s.habitsTotal,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TodaySummaryCard(
+                        title = "To-dos",
+                        value = s.tasksDueToday.toString(),
+                        detail = if (s.overdueTasks > 0) "${s.overdueTasks} overdue" else "Due today",
+                        icon = AppModule.ToDos.icon,
+                        tint = AppModule.ToDos.gradient.last(),
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
+            item { SectionHeader("Your space", subtitle = "Everything in one place") }
+            items(
+                items = tiles.chunked(2),
+                key = { row -> row.joinToString("|") { it.title } },
+                contentType = { "module-row" }
+            ) { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    row.forEach { spec -> ModuleTile(spec, Modifier.weight(1f)) { spec.module?.let(onOpen) } }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+            item { SectionHeader("On this device") }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    deviceTools.forEach { spec ->
+                        DeviceRow(spec) { spec.module?.let(onOpen) }
+                    }
+                }
+            }
+            item {
+                DeviceRow(settingsTile) { onOpen(AppModule.Settings) }
+            }
         }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TodaySummaryCard(
-                    title = "Habits",
-                    value = "${s.habitsDone}/${s.habitsTotal}",
-                    detail = if (s.habitsTotal == 0) "Ready to start" else if (s.habitsDone == s.habitsTotal) "All done today" else "Completed today",
-                    icon = AppModule.Habits.icon,
-                    tint = AppModule.Habits.gradient.first(),
-                    modifier = Modifier.weight(1f)
+    }
+}
+
+@Composable
+private fun HomeHero(s: HomeState, onOpen: (AppModule) -> Unit) {
+    HeroCard(gradient = BrandGradient) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(greeting(), fontSize = 14.sp, color = Color.White.copy(alpha = 0.82f))
+                Text("Momentum", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM")),
+                    fontSize = 13.sp,
+                    color = Color.White.copy(alpha = 0.82f)
                 )
-                TodaySummaryCard(
-                    title = "To-dos",
-                    value = s.tasksDueToday.toString(),
-                    detail = if (s.overdueTasks > 0) "${s.overdueTasks} overdue" else "Due today",
-                    icon = AppModule.ToDos.icon,
-                    tint = AppModule.ToDos.gradient.first(),
-                    modifier = Modifier.weight(1f)
+            }
+            ProgressRing(
+                if (s.habitsTotal == 0) 0f else s.habitsDone.toFloat() / s.habitsTotal,
+                "${s.habitsDone}/${s.habitsTotal}"
+            )
+        }
+        Spacer(Modifier.height(20.dp))
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = Color.White.copy(alpha = 0.14f),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.22f))
+        ) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(20.dp), tint = Color.White)
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    when {
+                        s.habitsTotal == 0 -> "Open Habits to begin"
+                        s.habitsDone == s.habitsTotal -> "All habits done today. Beautiful work."
+                        else -> "${s.habitsTotal - s.habitsDone} habit${if (s.habitsTotal - s.habitsDone == 1) "" else "s"} left today"
+                    },
+                    Modifier.weight(1f),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White
                 )
+                if (s.habitsTotal == 0) {
+                    TextButton(onClick = { onOpen(AppModule.Habits) }) {
+                        Text("Start", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
-        item { SectionLabel("Your modules") }
-        items(
-            items = tiles.chunked(2),
-            key = { row -> row.joinToString("|") { it.title } },
-            contentType = { "module-row" }
-        ) { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                row.forEach { spec -> ModuleTile(spec, Modifier.weight(1f)) { spec.module?.let(onOpen) } }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
-            }
-        }
-        item { SectionLabel("Device tools") }
-        items(
-            items = deviceTools.chunked(2),
-            key = { row -> row.joinToString("|") { it.title } },
-            contentType = { "device-row" }
-        ) { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                row.forEach { spec -> ModuleTile(spec, Modifier.weight(1f)) { spec.module?.let(onOpen) } }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
-            }
-        }
-        item { SectionLabel("Manage app") }
-        item { ModuleTile(settingsTile, Modifier.fillMaxWidth()) { onOpen(AppModule.Settings) } }
     }
 }
 
 @Composable
 private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -> Unit) {
+    val glass = LocalGlassPalette.current
+    val shape = RoundedCornerShape(MomentumTokens.radiusMedium)
     Box(
         modifier
-            .height(156.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(Brush.linearGradient(spec.gradient))
+            .height(142.dp)
+            .shadow(
+                if (LocalReduceEffects.current) 0.dp else MomentumTokens.elevationMedium,
+                shape,
+                clip = false,
+                ambientColor = spec.gradient.first().copy(alpha = 0.55f),
+                spotColor = spec.gradient.last().copy(alpha = 0.35f)
+            )
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(glass.cardTop, glass.cardBottom)))
+            .background(glassSheenBrush(glass))
+            .background(neonWashBrush(glass, spec.gradient.first()))
             .clickable(
                 enabled = spec.module != null,
                 role = Role.Button,
                 onClickLabel = "Open ${spec.title}",
                 onClick = onClick
             )
+            .border(
+                1.dp,
+                neonEdgeBrush(glass, spec.gradient.first()),
+                shape
+            )
             .semantics {
                 contentDescription = "${spec.title}. ${spec.subtitle}. Open module."
             }
     ) {
-        Icon(
-            spec.icon, null,
-            Modifier.size(112.dp).align(Alignment.BottomEnd).offset(x = 24.dp, y = 24.dp),
-            tint = Color.White.copy(alpha = 0.14f)
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .offset(x = 34.dp, y = (-48).dp)
+                .size(132.dp)
+                .background(
+                    Brush.radialGradient(
+                        listOf(
+                            spec.gradient.last().copy(alpha = 0.32f),
+                            spec.gradient.first().copy(alpha = 0.12f),
+                            spec.gradient.first().copy(alpha = 0f)
+                        )
+                    ),
+                    CircleShape
+                )
         )
         Column(
-            Modifier.fillMaxSize().padding(16.dp),
+            Modifier.fillMaxSize().padding(15.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Box(
-                Modifier.size(44.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.22f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(spec.icon, null, Modifier.size(24.dp), tint = Color.White)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .shadow(
+                            12.dp,
+                            RoundedCornerShape(13.dp),
+                            clip = false,
+                            ambientColor = spec.gradient.first().copy(alpha = 0.75f),
+                            spotColor = spec.gradient.last().copy(alpha = 0.50f)
+                        )
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(Brush.linearGradient(spec.gradient))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.White.copy(alpha = 0.28f), Color.Transparent)
+                            )
+                        )
+                        .border(1.dp, Color.White.copy(alpha = 0.55f), RoundedCornerShape(13.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(spec.icon, null, Modifier.size(21.dp), tint = Color.White)
+                }
+                Spacer(Modifier.weight(1f))
+                Icon(
+                    Icons.AutoMirrored.Rounded.ArrowForward,
+                    null,
+                    Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.outline
+                )
             }
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(spec.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(spec.subtitle, fontSize = 12.sp, color = Color.White.copy(alpha = 0.92f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    spec.title,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    spec.subtitle,
+                    fontSize = 11.5.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }
 }
 
 @Composable
-private fun TodaySummaryCard(title: String, value: String, detail: String, icon: ImageVector, tint: Color, modifier: Modifier = Modifier) {
-    Card(
-        modifier = modifier.height(124.dp),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+private fun DeviceRow(spec: TileSpec, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val glass = LocalGlassPalette.current
+    val shape = RoundedCornerShape(MomentumTokens.radiusLarge)
+    Row(
+        modifier
+            .fillMaxWidth()
+            .shadow(
+                if (LocalReduceEffects.current) 0.dp else MomentumTokens.elevationLow,
+                shape,
+                clip = false,
+                ambientColor = spec.gradient.first().copy(alpha = 0.40f),
+                spotColor = spec.gradient.last().copy(alpha = 0.25f)
+            )
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(glass.cardTop, glass.cardBottom)))
+            .background(glassSheenBrush(glass))
+            .background(neonWashBrush(glass, spec.gradient.first()))
+            .clickable(
+                enabled = spec.module != null,
+                role = Role.Button,
+                onClickLabel = "Open ${spec.title}",
+                onClick = onClick
+            )
+            .border(
+                1.dp,
+                neonEdgeBrush(glass, spec.gradient.first()),
+                shape
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        Box(
+            Modifier
+                .size(40.dp)
+                .shadow(
+                    10.dp,
+                    RoundedCornerShape(13.dp),
+                    clip = false,
+                    ambientColor = spec.gradient.first().copy(alpha = 0.65f),
+                    spotColor = spec.gradient.last().copy(alpha = 0.45f)
+                )
+                .clip(RoundedCornerShape(13.dp))
+                .background(Brush.linearGradient(spec.gradient))
+                .border(1.dp, Color.White.copy(alpha = 0.50f), RoundedCornerShape(13.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(spec.icon, null, Modifier.size(20.dp), tint = Color.White)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(spec.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                spec.subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.outline)
+    }
+}
+
+@Composable
+private fun TodaySummaryCard(
+    title: String,
+    value: String,
+    detail: String,
+    icon: ImageVector,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    progress: Float = 0f
+) {
+    val glass = LocalGlassPalette.current
+    val shape = RoundedCornerShape(MomentumTokens.radiusMedium)
+    Box(
+        modifier
+            .height(118.dp)
+            .shadow(
+                if (LocalReduceEffects.current) 0.dp else MomentumTokens.elevationLow,
+                shape,
+                clip = false,
+                ambientColor = tint.copy(alpha = 0.50f),
+                spotColor = tint.copy(alpha = 0.32f)
+            )
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(glass.cardTop, glass.cardBottom)))
+            .background(glassSheenBrush(glass))
+            .background(neonWashBrush(glass, tint))
+            .border(
+                1.dp,
+                neonEdgeBrush(glass, tint),
+                shape
+            )
+    ) {
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .offset(x = 26.dp, y = (-38).dp)
+                .size(110.dp)
+                .background(
+                    Brush.radialGradient(listOf(tint.copy(alpha = 0.28f), tint.copy(alpha = 0f))),
+                    CircleShape
+                )
+        )
         Column(
             Modifier.fillMaxSize().padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                IconBubble(icon, tint, 32.dp)
-                Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                IconBubble(icon, tint, 30.dp)
+                Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                value,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                detail,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (progress > 0f) {
+                ProgressBar(progress, tint, MaterialTheme.colorScheme.surfaceVariant, height = 4.dp)
+            }
         }
     }
 }

@@ -55,8 +55,7 @@ class BatteryChargingActivity : ComponentActivity() {
 }
 
 @Composable
-private fun BatteryChargingAnimationScreen(preview: Boolean, onClose: () -> Unit) {
-    val context = LocalContext.current
+private fun BatteryChargingAnimationScreen(preview: Boolean, onClose: () -> Unit) {    val context = LocalContext.current
     var reading by remember { mutableStateOf(BatteryReading(0, false, "Charging")) }
     DisposableEffect(context) {
         val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
@@ -71,10 +70,11 @@ private fun BatteryChargingAnimationScreen(preview: Boolean, onClose: () -> Unit
         onDispose { runCatching { context.unregisterReceiver(receiver) } }
     }
     val style = BatteryAnimationPreferences.style(context)
-    val displayPercent = rememberBatteryPercentEstimate(reading.percent, preview || reading.charging)
+    val estimate = rememberBatteryEstimate(reading.percent, preview || reading.charging)
+    val displayPercent = estimate.percent
     Box(
         Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(Color(0xFF101A35), Color(0xFF123C43), Color(0xFF0B1224)))
+            Brush.verticalGradient(listOf(Color(0xFF120A2A), Color(0xFF0B2A3D), Color(0xFF05060E)))
         ).padding(24.dp)
     ) {
         IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd)) {
@@ -91,6 +91,10 @@ private fun BatteryChargingAnimationScreen(preview: Boolean, onClose: () -> Unit
             Spacer(Modifier.height(22.dp))
             AnimatedBatteryPercent(displayPercent)
             Text(reading.source, color = Color.White.copy(alpha = .82f), fontSize = 16.sp)
+            estimate.minutesToFull?.let { minutes ->
+                Spacer(Modifier.height(6.dp))
+                Text(etaText(minutes), color = Color(0xFFC4B5FD), fontSize = 14.sp)
+            }
             Spacer(Modifier.height(28.dp))
             Text("$style animation${if (preview) " · change it in Battery" else ""}", color = Color(0xFFBDF9D3), fontSize = 14.sp)
         }

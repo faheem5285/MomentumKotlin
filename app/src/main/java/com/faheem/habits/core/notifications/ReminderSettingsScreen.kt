@@ -1,4 +1,4 @@
-@file:Suppress("CyclomaticComplexMethod")
+@file:Suppress("CyclomaticComplexMethod", "FunctionNaming")
 
 package com.faheem.habits.core.notifications
 import com.faheem.habits.core.data.*
@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Alarm
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Security
@@ -60,106 +61,134 @@ fun ReminderSettingsScreen(onBack: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back to settings") }
-            Text("Notifications & reminders", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back to settings")
+            }
+            Text("Reminders", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
         }
         key(revision) {
             androidx.compose.foundation.lazy.LazyColumn(
-                Modifier.weight(1f), contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 24.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                Modifier.weight(1f),
+                contentPadding = PaddingValues(18.dp, 4.dp, 18.dp, 32.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {
                     HeroCard {
-                        Icon(if (notificationsAllowed) Icons.Rounded.NotificationsActive else Icons.Rounded.NotificationsOff, null, tint = Color.White)
-                        Spacer(Modifier.height(6.dp))
-                        Text("Stay on track", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                        Text("Choose which Momentum reminders you receive and when they arrive.", fontSize = 13.sp, color = Color.White.copy(alpha = .9f))
+                        Icon(
+                            if (notificationsAllowed) Icons.Rounded.NotificationsActive else Icons.Rounded.NotificationsOff,
+                            null, tint = Color.White
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text("Stay on track", fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
+                        Text(
+                            "Choose which Momentum reminders you receive and when they arrive.",
+                            fontSize = 13.sp, color = Color.White.copy(alpha = .9f)
+                        )
                     }
                 }
                 item {
-                        GlassCard {
-                            Text("Reminder health check", style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                "Notifications: ${if (notificationsAllowed) "allowed" else "blocked"}\n" +
-                                    "Exact alarms: ${if (MomentumNotificationSettings.canSchedulePrecisely(context)) "allowed" else "fallback mode"}\n" +
-                                    "Battery optimization: ${if (MomentumNotificationSettings.isIgnoringBatteryOptimizations(context)) "ignored" else "active"}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                    PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Reminder health", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                                Text("How reliably reminders reach you", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            StatusPill(
+                                if (notificationsAllowed) "Active" else "Blocked",
+                                if (notificationsAllowed) Positive else MaterialTheme.colorScheme.error
                             )
-                            if (!MomentumNotificationSettings.isIgnoringBatteryOptimizations(context)) {
-                                OutlinedButton(onClick = {
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        HealthRow("Notifications", if (notificationsAllowed) "Allowed" else "Blocked", notificationsAllowed)
+                        HealthRow("Exact alarms", if (MomentumNotificationSettings.canSchedulePrecisely(context)) "Allowed" else "Fallback mode", MomentumNotificationSettings.canSchedulePrecisely(context))
+                        HealthRow("Battery", if (MomentumNotificationSettings.isIgnoringBatteryOptimizations(context)) "Unrestricted" else "Optimized", MomentumNotificationSettings.isIgnoringBatteryOptimizations(context))
+                        if (!MomentumNotificationSettings.isIgnoringBatteryOptimizations(context)) {
+                            Spacer(Modifier.height(10.dp))
+                            SecondaryButton(
+                                "Allow background delivery",
+                                onClick = {
                                     runCatching {
                                         context.startActivity(
                                             Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
                                                 .setData(android.net.Uri.parse("package:${context.packageName}"))
                                         )
                                     }
-                                }) {
-                                    Icon(Icons.Rounded.Security, null)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Allow background delivery")
-                                }
-                            }
-                            Button(onClick = { MomentumReminderScheduler.scheduleTestReminder(context) }) {
-                                Text("Send test reminder in 10 seconds")
-                            }
-                            Text(
-                                "Quiet hours: ${quietHours.first}:00 - ${quietHours.second}:00",
-                                style = MaterialTheme.typography.bodyMedium
+                                },
+                                icon = Icons.Rounded.Security
                             )
-                            OutlinedButton(onClick = {
-                                TimePickerDialog(
-                                    context,
-                                    { _, hour, _ ->
-                                        MomentumNotificationSettings.setQuietHours(context, hour, quietHours.second)
-                                        revision++
-                                    },
-                                    quietHours.first,
-                                    0,
-                                    DateFormat.is24HourFormat(context)
-                                ).show()
-                            }) {
-                                Text("Set quiet-hours start")
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        PrimaryButton(
+                            "Send test reminder in 10s",
+                            onClick = { MomentumReminderScheduler.scheduleTestReminder(context) },
+                            icon = Icons.Rounded.NotificationsActive
+                        )
+                    }
+                }
+                item {
+                    PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Quiet hours", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                                Text(
+                                    "${quietHours.first}:00 – ${quietHours.second}:00",
+                                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                            OutlinedButton(onClick = {
-                                TimePickerDialog(
-                                    context,
-                                    { _, hour, _ ->
-                                        MomentumNotificationSettings.setQuietHours(context, quietHours.first, hour)
-                                        revision++
-                                    },
-                                    quietHours.second,
-                                    0,
-                                    DateFormat.is24HourFormat(context)
-                                ).show()
-                            }) {
-                                Text("Set quiet-hours end")
-                            }
-                            Text("Next scheduled reminders", fontWeight = FontWeight.SemiBold)
-                            if (nextReminders.isEmpty()) {
-                                Text("No habit or to-do reminders are currently scheduled.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            } else {
-                                nextReminders.forEach {
-                                    Text(
-                                        "${it.title} · ${java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT, Locale.getDefault()).format(java.util.Date(it.triggerAtMillis))}",
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                            }
-                            Text(
-                                "On Xiaomi, Oppo, Vivo, Samsung, and Huawei, allow Momentum to start automatically and exclude it from battery cleanup.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            StatusPill("No alerts", MaterialTheme.colorScheme.secondary)
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SecondaryButton(
+                                "Start",
+                                onClick = {
+                                    TimePickerDialog(
+                                        context,
+                                        { _, hour, _ ->
+                                            MomentumNotificationSettings.setQuietHours(context, hour, quietHours.second)
+                                            revision++
+                                        },
+                                        quietHours.first,
+                                        0,
+                                        DateFormat.is24HourFormat(context)
+                                    ).show()
+                                },
+                                modifier = Modifier.weight(1f),
+                                icon = Icons.Rounded.Alarm
+                            )
+                            SecondaryButton(
+                                "End",
+                                onClick = {
+                                    TimePickerDialog(
+                                        context,
+                                        { _, hour, _ ->
+                                            MomentumNotificationSettings.setQuietHours(context, quietHours.first, hour)
+                                            revision++
+                                        },
+                                        quietHours.second,
+                                        0,
+                                        DateFormat.is24HourFormat(context)
+                                    ).show()
+                                },
+                                modifier = Modifier.weight(1f),
+                                icon = Icons.Rounded.Alarm
                             )
                         }
                     }
+                }
                 item {
-                    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("Allow reminders", fontWeight = FontWeight.Bold)
-                                Text(if (master) "Reminder schedule is active" else "Turn on to schedule selected reminders", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Reminder schedule", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                                Text(
+                                    if (master) "Active and scheduling reminders" else "Turn on to schedule reminders",
+                                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                             Switch(checked = master, onCheckedChange = { checked ->
                                 MomentumNotificationSettings.setMasterEnabled(context, checked)
@@ -191,20 +220,57 @@ fun ReminderSettingsScreen(onBack: () -> Unit) {
                         onClick = { requestExactAlarms(context) }
                     )
                 }
-                item { SectionLabel("Reminder schedule") }
+                item {
+                    SectionHeader("Next reminders", subtitle = if (nextReminders.isEmpty()) "Nothing scheduled" else "${nextReminders.size} upcoming")
+                }
+                if (nextReminders.isEmpty()) item {
+                    EmptyState(Icons.Rounded.NotificationsOff, "No reminders scheduled", "Add reminder times to a habit or task to see them here")
+                } else {
+                    items(nextReminders.size) { index ->
+                        val reminder = nextReminders[index]
+                        val formatted = java.text.DateFormat.getDateTimeInstance(
+                            java.text.DateFormat.SHORT,
+                            java.text.DateFormat.SHORT,
+                            Locale.getDefault()
+                        ).format(java.util.Date(reminder.triggerAtMillis))
+                        PremiumCard(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconBubble(Icons.Rounded.Alarm, MaterialTheme.colorScheme.primary, 38.dp)
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(reminder.title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                    Text(formatted, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+                item { SectionHeader("Reminder types") }
                 items(ReminderKinds.size) { index ->
                     ReminderCard(ReminderKinds[index], context, enabled = master, onChanged = { revision++ })
                 }
                 item {
-                    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                        Text(
-                            "Reminder times use your device’s local time. Android may delay background reminders to save battery. Lock-screen visibility and sound are controlled by Android notification settings and each notification channel.",
-                            Modifier.padding(16.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    InfoBanner(
+                        icon = Icons.Rounded.Info,
+                        text = "Reminder times use your device’s local time. Android may delay background reminders to save battery. Lock-screen visibility and sound are controlled by Android notification settings and each channel.",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun HealthRow(label: String, value: String, healthy: Boolean) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            value,
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = if (healthy) Positive else MaterialTheme.colorScheme.tertiary
+        )
     }
 }
 
@@ -218,12 +284,13 @@ private fun requestExactAlarms(context: android.content.Context) {
 
 @Composable
 private fun PermissionCard(text: String, button: String, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text, color = MaterialTheme.colorScheme.onSecondaryContainer)
-            Button(onClick = onClick) { Text(button) }
-        }
-    }
+    InfoBanner(
+        icon = Icons.Rounded.Security,
+        text = text,
+        tint = MaterialTheme.colorScheme.tertiary,
+        actionLabel = button,
+        onAction = onClick
+    )
 }
 
 @Composable
@@ -236,22 +303,27 @@ private fun ReminderCard(kind: ReminderKind, context: Context, enabled: Boolean,
         Calendar.MONDAY to "M", Calendar.TUESDAY to "T", Calendar.WEDNESDAY to "W",
         Calendar.THURSDAY to "T", Calendar.FRIDAY to "F", Calendar.SATURDAY to "S", Calendar.SUNDAY to "S"
     )
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconBubble(kind.module.icon, kind.module.gradient.first(), 40.dp)
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(kind.title, fontWeight = FontWeight.SemiBold)
-                    Text(if (kind.weekly) "Weekly reminder" else "Daily reminder", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Switch(checked = checked, enabled = enabled, onCheckedChange = {
-                    MomentumNotificationSettings.setEnabled(context, kind.id, it)
-                    onChanged()
-                })
+    PremiumCard(contentPadding = PaddingValues(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBubble(kind.module.icon, kind.module.gradient.first(), 40.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(kind.title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(
+                    if (kind.weekly) "Weekly reminder" else "Daily reminder",
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(enabled = enabled, onClick = {
+            Switch(checked = checked, enabled = enabled, onCheckedChange = {
+                MomentumNotificationSettings.setEnabled(context, kind.id, it)
+                onChanged()
+            })
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                enabled = enabled,
+                onClick = {
                     TimePickerDialog(
                         context,
                         { _, selectedHour, selectedMinute ->
@@ -260,28 +332,36 @@ private fun ReminderCard(kind: ReminderKind, context: Context, enabled: Boolean,
                         },
                         hour, minute, DateFormat.is24HourFormat(context)
                     ).show()
-                }) {
-                    Icon(Icons.Rounded.Alarm, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(DateFormat.getTimeFormat(context).format(Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, hour); set(Calendar.MINUTE, minute) }.time))
+                },
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(Icons.Rounded.Alarm, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    DateFormat.getTimeFormat(context).format(
+                        Calendar.getInstance().apply {
+                            set(Calendar.HOUR_OF_DAY, hour); set(Calendar.MINUTE, minute)
+                        }.time
+                    )
+                )
+            }
+            Text(if (kind.weekly) "on the selected day" else "every day", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (kind.weekly) {
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                days.forEach { (day, label) ->
+                    FilterChip(
+                        selected = weekday == day,
+                        enabled = enabled,
+                        onClick = { MomentumNotificationSettings.setWeekday(context, kind.id, day); onChanged() },
+                        label = { Text(label) }
+                    )
                 }
-                Text(if (kind.weekly) "on" else "every day", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (kind.weekly) {
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    days.forEach { (day, label) ->
-                        FilterChip(
-                            selected = weekday == day,
-                            enabled = enabled,
-                            onClick = { MomentumNotificationSettings.setWeekday(context, kind.id, day); onChanged() },
-                            label = { Text(label) }
-                        )
-                    }
-                }
-            }
-            TextButton(enabled = true, onClick = { openChannelSettings(context, kind.id) }) {
-                Text("Sound, vibration & lock-screen options")
-            }
+        }
+        TextButton(enabled = true, onClick = { openChannelSettings(context, kind.id) }) {
+            Text("Sound, vibration & lock-screen options")
         }
     }
 }

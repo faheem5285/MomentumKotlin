@@ -6,6 +6,9 @@ import com.faheem.habits.R
 
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,12 +18,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -32,46 +37,58 @@ import java.time.format.DateTimeFormatter
 
 @Composable
 fun StreakChip(count: Int) {
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(50))
-            .background(Warning.copy(alpha = 0.15f))
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(Icons.Rounded.LocalFireDepartment, null, Modifier.size(16.dp), tint = Warning)
-        Spacer(Modifier.width(4.dp))
-        Text("$count", fontWeight = FontWeight.Bold, color = Warning, fontSize = 13.sp)
-    }
+    StatusPill(
+        text = "$count day${if (count == 1) "" else "s"}",
+        color = Warning,
+        icon = Icons.Rounded.LocalFireDepartment
+    )
 }
 
 @Composable
 private fun DayChip(day: Long, selected: Boolean, complete: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val dow = LocalDate.ofEpochDay(day).dayOfWeek.value
-    val onSel = Color.White
+    val colors = MaterialTheme.colorScheme
+    val background by animateColorAsState(
+        if (selected) colors.primary else colors.surface,
+        label = "day-bg"
+    )
     Column(
         modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface)
+            .clip(RoundedCornerShape(18.dp))
+            .background(background)
+            .border(
+                1.dp,
+                if (selected) Color.Transparent else colors.outlineVariant,
+                RoundedCornerShape(18.dp)
+            )
             .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
+            .padding(vertical = 9.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            DAY_NAMES[dow - 1], fontSize = 11.sp,
-            color = if (selected) onSel.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
+            DAY_NAMES[dow - 1],
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (selected) colors.onPrimary.copy(alpha = 0.82f) else colors.onSurfaceVariant
         )
         Text(
             "${LocalDate.ofEpochDay(day).dayOfMonth}",
             fontWeight = FontWeight.Bold,
-            color = if (selected) onSel else MaterialTheme.colorScheme.onSurface
+            fontSize = 16.sp,
+            color = if (selected) colors.onPrimary else colors.onSurface
         )
         Box(
             Modifier
                 .padding(top = 4.dp)
-                .size(6.dp)
+                .size(5.dp)
                 .clip(CircleShape)
-                .background(if (complete) (if (selected) onSel else Positive) else Color.Transparent)
+                .background(
+                    when {
+                        complete && selected -> colors.onPrimary
+                        complete -> Positive
+                        else -> Color.Transparent
+                    }
+                )
         )
     }
 }
@@ -86,63 +103,65 @@ private fun HabitRow(
 ) {
     val h = ui.habit
     val color = habitColor(h.colorIndex)
-    val bg by animateColorAsState(if (done) color else Color.Transparent, label = "chk")
-
+    val colors = MaterialTheme.colorScheme
     val cardColor by animateColorAsState(
-        if (done) color.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surface,
+        if (done) color.copy(alpha = 0.07f) else colors.surface,
         label = "habit-card"
     )
-    Card(
-        modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).clickable(onClick = onOpen),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = cardColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (done) 0.dp else 2.dp)
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .clickable(onClick = onOpen),
+        shape = RoundedCornerShape(22.dp),
+        color = cardColor,
+        border = BorderStroke(
+            1.dp,
+            if (done) color.copy(alpha = 0.24f) else colors.outlineVariant
+        ),
+        shadowElevation = if (done || LocalReduceEffects.current) 0.dp else MomentumTokens.elevationLow
     ) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconBubble(habitIcon(h.icon), color, 40.dp)
+        Row(
+            Modifier.padding(start = 14.dp, end = 12.dp, top = 13.dp, bottom = 13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconBubble(habitIcon(h.icon), color, 42.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     h.name,
                     fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
                     textDecoration = if (done) TextDecoration.LineThrough else null,
-                    color = if (done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                    color = if (done) colors.onSurfaceVariant else colors.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 if (h.description.isNotBlank()) {
                     Text(
                         h.description,
                         fontSize = 12.sp,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = colors.onSurfaceVariant
                     )
                 }
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(5.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Schedule, null, Modifier.size(13.dp), tint = color)
                     Spacer(Modifier.width(4.dp))
                     Text(
                         "${TIME_LABELS[h.timeOfDay]}  ·  ${scheduleText(h.daysMask)}",
                         fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
             }
             Spacer(Modifier.width(8.dp))
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Box(
-                    Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(bg)
-                        .border(2.dp, if (done) color else MaterialTheme.colorScheme.outline, CircleShape)
-                        .clickable(onClick = onToggle),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (done) Icon(Icons.Rounded.Check, null, Modifier.size(19.dp), tint = Color.White)
-                }
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                CompletionToggle(checked = done, color = color, onClick = onToggle, size = 36.dp)
                 if (ui.current > 0) StreakChip(ui.current)
             }
         }
@@ -151,15 +170,19 @@ private fun HabitRow(
 
 @Composable
 private fun MiniStat(label: String, value: String, modifier: Modifier) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
-        Text(value, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(
+            Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(value, fontSize = 21.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -168,72 +191,85 @@ fun HabitDetailSheet(ui: HabitUi, onDismiss: () -> Unit, onEdit: () -> Unit, onA
     val h = ui.habit
     val color = habitColor(h.colorIndex)
     val t = today()
+    val colors = MaterialTheme.colorScheme
 
     FormSheet(h.name, onDismiss) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconBubble(habitIcon(h.icon), color, 48.dp)
-            Spacer(Modifier.width(12.dp))
-            Text(
-                "${scheduleText(h.daysMask)} · ${TIME_LABELS[h.timeOfDay]}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            IconBubble(habitIcon(h.icon), color, 52.dp)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    scheduleText(h.daysMask),
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.onSurface
+                )
+                Text(
+                    "Best time · ${TIME_LABELS[h.timeOfDay]}",
+                    fontSize = 12.sp,
+                    color = colors.onSurfaceVariant
+                )
+            }
+            StatusPill(if (ui.current > 0) "${ui.current} day streak" else "New habit", color)
         }
+        SectionHeader("Your plan")
         Text(
-            "What to do",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            h.description.ifBlank { "No instructions yet. Tap Edit to describe exactly what to do." },
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (h.description.isBlank()) colors.onSurfaceVariant else colors.onSurface
         )
-        Text(h.description.ifBlank { "No instructions yet. Tap Edit to describe exactly what to do." })
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             MiniStat("Streak", "${ui.current}", Modifier.weight(1f))
             MiniStat("Best", "${ui.best}", Modifier.weight(1f))
             MiniStat("Check-ins", "${ui.days.size}", Modifier.weight(1f))
         }
-        Card(
-            Modifier.fillMaxWidth().clickable(onClick = onManageReminders),
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        PremiumCard(
+            onClick = onManageReminders,
+            accent = color,
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 13.dp)
         ) {
-            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 IconBubble(Icons.Rounded.NotificationsActive, color, 40.dp)
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Reminders", fontWeight = FontWeight.SemiBold)
                     Text(
                         if (ui.reminders.isEmpty()) "Add times and days for this habit"
                         else "${ui.reminders.size} reminder time${if (ui.reminders.size == 1) "" else "s"} set",
-                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        fontSize = 12.sp, color = colors.onSurfaceVariant
                     )
                 }
-                Icon(Icons.Rounded.ChevronRight, null)
+                Icon(Icons.Rounded.ChevronRight, null, tint = colors.outline)
             }
         }
-        Text(
-            "Last 14 days",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        SectionHeader("Last 14 days")
+        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             (t - 13..t).forEach { d ->
                 Box(
                     Modifier
-                        .size(18.dp)
+                        .size(19.dp)
                         .clip(CircleShape)
+                        .border(1.dp, colors.outlineVariant.copy(alpha = 0.55f), CircleShape)
                         .background(
                             when {
                                 d in ui.days -> color
-                                isScheduled(h.daysMask, d) -> MaterialTheme.colorScheme.surfaceVariant
-                                else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                                isScheduled(h.daysMask, d) -> colors.surfaceVariant
+                                else -> Color.Transparent
                             }
                         )
                 )
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) { Text("Edit") }
-            OutlinedButton(onClick = onArchive, modifier = Modifier.weight(1f)) { Text("Archive") }
+            OutlinedButton(
+                onClick = onEdit,
+                modifier = Modifier.weight(1f).height(50.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) { Icon(Icons.Rounded.Edit, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Edit") }
+            OutlinedButton(
+                onClick = onArchive,
+                modifier = Modifier.weight(1f).height(50.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) { Icon(Icons.Rounded.Archive, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Archive") }
         }
     }
 }
@@ -302,7 +338,7 @@ fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 96.dp),
+            contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
@@ -311,21 +347,32 @@ fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -> Unit) {
                         Column(Modifier.weight(1f)) {
                             Text(
                                 if (isToday) greeting() else "Looking back",
-                                fontSize = 14.sp, color = Color.White.copy(alpha = 0.85f)
+                                fontSize = 13.sp,
+                                color = Color.White.copy(alpha = 0.82f)
                             )
                             Text(
                                 LocalDate.ofEpochDay(selected).format(DateTimeFormatter.ofPattern("EEEE, d MMM")),
-                                fontSize = 22.sp, fontWeight = FontWeight.Bold
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = (-0.3).sp
                             )
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                when {
-                                    list.isEmpty() -> "Nothing scheduled"
-                                    doneCount == list.size -> "All done 🎉"
-                                    else -> "${list.size - doneCount} left to do"
-                                },
-                                fontSize = 15.sp
-                            )
+                            Spacer(Modifier.height(10.dp))
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.White.copy(alpha = 0.16f)
+                            ) {
+                                Text(
+                                    when {
+                                        list.isEmpty() -> "Nothing scheduled"
+                                        doneCount == list.size -> "All done — enjoy it"
+                                        else -> "${list.size - doneCount} left to do"
+                                    },
+                                    Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.White
+                                )
+                            }
                         }
                         ProgressRing(progress, "$doneCount/${list.size}")
                     }
@@ -346,34 +393,40 @@ fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -> Unit) {
             }
             if (active.isNotEmpty()) {
                 item {
-                    Card(
-                        Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("This week", fontWeight = FontWeight.SemiBold)
-                                    Text(
-                                        if (weekScheduled == 0) "Your weekly progress will show here"
-                                        else "$weekDone of $weekScheduled check-ins completed",
-                                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                    PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Rounded.Insights, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("This week", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                                 Text(
-                                    if (weekScheduled == 0) "—" else "${weekDone * 100 / weekScheduled}%",
-                                    fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
+                                    if (weekScheduled == 0) "Your weekly progress will show here"
+                                    else "$weekDone of $weekScheduled check-ins completed",
+                                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            ProgressBar(
-                                if (weekScheduled == 0) 0f else weekDone.toFloat() / weekScheduled,
-                                MaterialTheme.colorScheme.primary,
-                                MaterialTheme.colorScheme.surfaceVariant,
-                                height = 6.dp
+                            Text(
+                                if (weekScheduled == 0) "—" else "${weekDone * 100 / weekScheduled}%",
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
+                        Spacer(Modifier.height(12.dp))
+                        ProgressBar(
+                            if (weekScheduled == 0) 0f else weekDone.toFloat() / weekScheduled,
+                            MaterialTheme.colorScheme.primary,
+                            MaterialTheme.colorScheme.surfaceVariant,
+                            height = 6.dp
+                        )
                     }
                 }
             }
@@ -381,9 +434,7 @@ fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -> Unit) {
                 item {
                     Column {
                         EmptyState(Icons.Rounded.CheckCircle, "No habits yet", "Start from 100 ready-made habits")
-                        Button(onClick = onBrowseTemplates, modifier = Modifier.fillMaxWidth()) {
-                            Text("Browse the library")
-                        }
+                        PrimaryButton("Browse the library", onBrowseTemplates, icon = Icons.Rounded.Lightbulb)
                     }
                 }
             } else if (list.isEmpty()) {
@@ -396,7 +447,10 @@ fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -> Unit) {
                     .sortedWith(compareBy<HabitUi> { selected in it.days }.thenBy { it.habit.name.lowercase() })
                 if (g.isNotEmpty()) {
                     item(key = "header-$t") {
-                        SectionLabel("$label · ${g.count { selected in it.days }}/${g.size}")
+                        SectionHeader(
+                            title = label,
+                            subtitle = "${g.count { selected in it.days }} of ${g.size} complete"
+                        )
                     }
                     items(g, key = { it.habit.id }) { ui ->
                         HabitRow(
@@ -413,10 +467,15 @@ fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -> Unit) {
         ExtendedFloatingActionButton(
             onClick = { creating = true },
             icon = { Icon(Icons.Rounded.Add, null) },
-            text = { Text("New habit") },
+            text = { Text("New habit", fontWeight = FontWeight.SemiBold) },
+            shape = RoundedCornerShape(20.dp),
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
+            elevation = FloatingActionButtonDefaults.elevation(
+                defaultElevation = MomentumTokens.elevationHigh,
+                pressedElevation = MomentumTokens.elevationMedium
+            ),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp)
         )
     }
 }

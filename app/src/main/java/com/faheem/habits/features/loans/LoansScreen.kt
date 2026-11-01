@@ -1,3 +1,5 @@
+@file:Suppress("FunctionNaming")
+
 package com.faheem.habits.features.loans
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.notifications.*
@@ -6,6 +8,7 @@ import com.faheem.habits.R
 
 
 import android.app.Application
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -25,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
@@ -46,8 +50,8 @@ class LoanViewModel(app: Application) : AndroidViewModel(app) {
     fun remove(loan: Loan) { viewModelScope.launch { dao.delete(loan) } }
 }
 
-private val LentColor = Color(0xFF16A34A)
-private val BorrowedColor = Color(0xFFF59E0B)
+private val LentColor = Positive
+private val BorrowedColor = AccentAmber
 
 @Composable
 fun LoansScreen(vm: LoanViewModel = viewModel()) {
@@ -109,18 +113,25 @@ fun LoansScreen(vm: LoanViewModel = viewModel()) {
             }
             if (tab != 2) {
                 ExtendedFloatingActionButton(
-                    onClick = { showAdd = true }, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("Add record") },
-                    containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
+                    onClick = { showAdd = true },
+                    icon = { Icon(Icons.Rounded.Add, null) },
+                    text = { Text("Add record", fontWeight = FontWeight.SemiBold) },
+                    shape = RoundedCornerShape(20.dp),
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp)
                 )
             }
         }
-        NavigationBar(windowInsets = WindowInsets(0.dp)) {
-            listOf("Overview", "Open", "Settled").forEachIndexed { index, label ->
-                val icon = when (index) { 0 -> Icons.Rounded.Dashboard; 1 -> Icons.Rounded.SwapHoriz; else -> Icons.Rounded.TaskAlt }
-                NavigationBarItem(selected = tab == index, onClick = { tab = index }, icon = { Icon(icon, label) }, label = { Text(label) })
-            }
-        }
+        MomentumTabs(
+            tabs = listOf(
+                MomentumTab("Overview", Icons.Rounded.Dashboard),
+                MomentumTab("Open", Icons.Rounded.SwapHoriz),
+                MomentumTab("Settled", Icons.Rounded.TaskAlt)
+            ),
+            selected = tab,
+            onSelect = { tab = it }
+        )
     }
 }
 
@@ -131,37 +142,108 @@ private fun LoanOverview(
 ) {
     val peopleCount = openLoans.map { it.person.trim().lowercase() }.distinct().size
     val recent = openLoans.take(4)
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             HeroCard {
-                Text("Outstanding balance", fontSize = 14.sp, color = Color.White.copy(alpha = .85f))
-                Text(if (net >= 0) "${money(net)} in your favour" else "${money(-net)} net owed", fontSize = 27.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(14.dp))
+                Text("Outstanding balance", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
+                Text(
+                    if (net >= 0) "${money(net)} in your favour" else "${money(-net)} net owed",
+                    fontSize = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp
+                )
+                Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    BalancePill("To receive", money(toReceive), LentColor, Modifier.weight(1f))
-                    BalancePill("To repay", money(toPay), BorrowedColor, Modifier.weight(1f))
+                    BalancePill("To receive", money(toReceive), Modifier.weight(1f))
+                    BalancePill("To repay", money(toPay), Modifier.weight(1f))
                 }
             }
         }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                LoanMetric("Open records", "${openLoans.size}", Modifier.weight(1f))
-                LoanMetric("People", "$peopleCount", Modifier.weight(1f))
-                LoanMetric("Settled", "$settledCount", Modifier.weight(1f))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LoanMetric("Open", "${openLoans.size}", Icons.Rounded.ReceiptLong, Modifier.weight(1f))
+                LoanMetric("People", "$peopleCount", Icons.Rounded.People, Modifier.weight(1f))
+                LoanMetric("Settled", "$settledCount", Icons.Rounded.TaskAlt, Modifier.weight(1f))
             }
         }
-        item { SectionLabel("Needs attention") }
+        if (openLoans.isNotEmpty()) {
+            item {
+                val slices = buildList {
+                    if (toReceive > 0) add(ChartSlice("To receive", toReceive.toFloat(), Positive))
+                    if (toPay > 0) add(ChartSlice("To repay", toPay.toFloat(), Warning))
+                }
+                PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        DonutChart(
+                            slices = slices,
+                            modifier = Modifier.width(146.dp),
+                            centerValue = money(kotlin.math.abs(net)),
+                            centerLabel = if (net >= 0) "in your favour" else "net owed",
+                            thickness = 18.dp
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Balance split", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Spacer(Modifier.height(6.dp))
+                            ChartLegend(
+                                slices = slices,
+                                maxRows = 2,
+                                valueFormatter = { money(it.toDouble()) }
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Across $peopleCount ${if (peopleCount == 1) "person" else "people"}",
+                                fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+            item {
+                val byPerson = openLoans
+                    .groupBy { it.person.trim().ifBlank { "Unnamed" } }
+                    .mapValues { (_, loans) -> loans.sumOf { it.amountMinorUnits } / 100.0 }
+                    .entries
+                    .sortedByDescending { it.value }
+                    .take(6)
+                    .mapIndexed { index, entry ->
+                        ChartSlice(entry.key, entry.value.toFloat(), chartColor(index))
+                    }
+                PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBubble(Icons.Rounded.People, MaterialTheme.colorScheme.secondary, 40.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("By person", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text(
+                                "Outstanding amounts",
+                                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    HorizontalBarList(
+                        items = byPerson,
+                        maxItems = 6,
+                        valueFormatter = { money(it.toDouble()) }
+                    )
+                }
+            }
+        }
+        item {
+            SectionHeader(
+                title = "Needs attention",
+                subtitle = if (openLoans.isEmpty()) null else "${openLoans.size} open record${if (openLoans.size == 1) "" else "s"}",
+                actionLabel = if (openLoans.size > recent.size) "View all" else null,
+                onAction = if (openLoans.size > recent.size) onOpenLedger else null
+            )
+        }
         if (recent.isEmpty()) item { EmptyState(Icons.Rounded.CheckCircle, "All clear", "Add a lend or borrow record whenever you need to track one") }
         items(recent, key = { it.id }) { LoanRow(it) { onSelect(it) } }
-        if (openLoans.size > recent.size) item { TextButton(onClick = onOpenLedger) { Text("View all ${openLoans.size} open records") } }
         item {
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Info, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(10.dp))
-                    Text("Keep notes specific, like “March utilities” or “paid for dinner,” so you can recognize each record later.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            InfoBanner(
+                icon = Icons.Rounded.Lightbulb,
+                text = "Keep notes specific, like “March utilities” or “paid for dinner,” so you can recognize each record later.",
+                tint = MaterialTheme.colorScheme.secondary
+            )
         }
     }
 }
@@ -171,7 +253,7 @@ private fun LoanLedger(
     loans: List<Loan>, query: String, onQuery: (String) -> Unit, direction: Int, onDirection: (Int) -> Unit,
     settled: Boolean, onSelect: (Loan) -> Unit, onEmptyAdd: () -> Unit
 ) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             OutlinedTextField(
                 value = query,
@@ -187,7 +269,7 @@ private fun LoanLedger(
                         }
                     }
                 },
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(18.dp)
             )
         }
         item {
@@ -199,18 +281,14 @@ private fun LoanLedger(
         }
         item {
             val total = loans.sumOf { it.amountMinorUnits }
-            Card(
-                Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            PremiumCard(accent = if (settled) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(if (settled) "Settled records" else "Open records", fontWeight = FontWeight.SemiBold)
-                        Text("${loans.size} records matching your filters", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if (settled) "Settled records" else "Open records", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(
+                            "${loans.size} record${if (loans.size == 1) "" else "s"} matching your filters",
+                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     Text(money(total), fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 }
@@ -219,8 +297,14 @@ private fun LoanLedger(
         if (loans.isEmpty()) {
             item {
                 Column {
-                    EmptyState(if (settled) Icons.Rounded.TaskAlt else Icons.Rounded.SwapHoriz, if (settled) "No settled records" else "No matching records", if (settled) "Once an item is settled, it will be kept here" else "Try another name, note or filter")
-                    if (!settled && query.isBlank() && direction == 0) Button(onClick = onEmptyAdd, modifier = Modifier.fillMaxWidth()) { Text("Add a record") }
+                    EmptyState(
+                        if (settled) Icons.Rounded.TaskAlt else Icons.Rounded.SwapHoriz,
+                        if (settled) "No settled records" else "No matching records",
+                        if (settled) "Once an item is settled, it will be kept here" else "Try another name, note or filter"
+                    )
+                    if (!settled && query.isBlank() && direction == 0) {
+                        SecondaryButton("Add a record", onEmptyAdd, icon = Icons.Rounded.Add)
+                    }
                 }
             }
         }
@@ -231,18 +315,28 @@ private fun LoanLedger(
 @Composable
 private fun LoanRow(loan: Loan, onClick: () -> Unit) {
     val color = if (loan.lent) LentColor else BorrowedColor
-    Card(Modifier.fillMaxWidth().alpha(if (loan.settled) .68f else 1f).clickable(onClick = onClick),
-        shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).clip(CircleShape).background(color.copy(alpha = .15f)), contentAlignment = Alignment.Center) {
+    PremiumCard(
+        onClick = onClick,
+        modifier = Modifier.alpha(if (loan.settled) 0.62f else 1f),
+        contentPadding = PaddingValues(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(44.dp).clip(RoundedCornerShape(15.dp)).background(color.copy(alpha = .13f)),
+                contentAlignment = Alignment.Center
+            ) {
                 Text(loan.person.trim().take(1).uppercase(), color = color, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(loan.person, fontWeight = FontWeight.SemiBold)
-                Text("${if (loan.settled) "Settled" else if (loan.lent) "Owes you" else "You owe"} · ${dayText(loan.epochDay)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (loan.note.isNotBlank()) Text(loan.note, fontSize = 12.sp, maxLines = 1, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(loan.person, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "${if (loan.settled) "Settled" else if (loan.lent) "Owes you" else "You owe"} · ${dayText(loan.epochDay)}",
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (loan.note.isNotBlank()) {
+                    Text(loan.note, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             Text((if (loan.lent) "+" else "−") + money(loan.amountMinorUnits), color = color, fontWeight = FontWeight.Bold)
         }
@@ -250,17 +344,33 @@ private fun LoanRow(loan: Loan, onClick: () -> Unit) {
 }
 
 @Composable
-private fun BalancePill(label: String, value: String, color: Color, modifier: Modifier) {
-    Column(modifier.clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = .16f)).padding(12.dp)) {
-        Text(label, fontSize = 12.sp, color = Color.White.copy(alpha = .85f))
-        Text(value, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
+private fun BalancePill(label: String, value: String, modifier: Modifier) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.White.copy(alpha = .15f))
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Text(label, fontSize = 11.5.sp, color = Color.White.copy(alpha = .85f))
+        Spacer(Modifier.height(2.dp))
+        Text(value, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color.White)
     }
 }
 
 @Composable
-private fun LoanMetric(label: String, value: String, modifier: Modifier) {
-    Card(modifier, shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.padding(12.dp)) { Text(value, fontSize = 20.sp, fontWeight = FontWeight.Bold); Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+private fun LoanMetric(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Icon(icon, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(6.dp))
+            Text(value, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -269,29 +379,42 @@ private fun LoanDetailSheet(loan: Loan, onDismiss: () -> Unit, onSettle: () -> U
     val color = if (loan.lent) LentColor else BorrowedColor
     FormSheet(loan.person, onDismiss) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(52.dp).clip(CircleShape).background(color.copy(alpha = .15f)), contentAlignment = Alignment.Center) {
-                Text(loan.person.trim().take(1).uppercase(), color = color, fontWeight = FontWeight.Bold, fontSize = 21.sp)
+            Box(Modifier.size(54.dp).clip(RoundedCornerShape(18.dp)).background(color.copy(alpha = .14f)), contentAlignment = Alignment.Center) {
+                Text(loan.person.trim().take(1).uppercase(), color = color, fontWeight = FontWeight.Bold, fontSize = 22.sp)
             }
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text(if (loan.lent) "They owe you" else "You owe them", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(money(loan.amountMinorUnits), fontSize = 25.sp, fontWeight = FontWeight.Bold, color = color)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(if (loan.lent) "They owe you" else "You owe them", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                Text(money(loan.amountMinorUnits), fontSize = 27.sp, fontWeight = FontWeight.Bold, color = color, letterSpacing = (-0.4).sp)
             }
+            StatusPill(if (loan.settled) "Settled" else "Open", if (loan.settled) Positive else color)
         }
+        SectionHeader("Details")
         LoanDetailLine("Recorded", dayText(loan.epochDay))
         LoanDetailLine("Status", if (loan.settled) "Settled" else "Open")
         if (loan.note.isNotBlank()) LoanDetailLine("Note", loan.note)
-        BigButton(if (loan.settled) "Reopen record" else "Mark as settled", onSettle)
-        OutlinedButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Rounded.Edit, null); Spacer(Modifier.width(8.dp)); Text("Edit record") }
-        TextButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Rounded.DeleteOutline, null, tint = MaterialTheme.colorScheme.error); Spacer(Modifier.width(8.dp)); Text("Delete record", color = MaterialTheme.colorScheme.error) }
+        PrimaryButton(if (loan.settled) "Reopen record" else "Mark as settled", onSettle)
+        SecondaryButton("Edit record", onEdit, icon = Icons.Rounded.Edit)
+        TextButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Rounded.DeleteOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Delete record", color = MaterialTheme.colorScheme.error)
+        }
     }
 }
 
 @Composable
 private fun LoanDetailLine(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, fontWeight = FontWeight.Medium)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+        Text(value, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, maxLines = 2)
     }
 }
 
@@ -303,14 +426,14 @@ private fun LoanEditorSheet(initial: Loan?, onDismiss: () -> Unit, onSave: (Stri
     var lent by remember(initial) { mutableStateOf(initial?.lent ?: true) }
     FormSheet(if (initial == null) "Add loan record" else "Edit loan record", onDismiss) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = lent, onClick = { lent = true }, label = { Text("I lent") })
-            FilterChip(selected = !lent, onClick = { lent = false }, label = { Text("I borrowed") })
+            FilterChip(selected = lent, onClick = { lent = true }, label = { Text("I lent") }, leadingIcon = { Icon(Icons.Rounded.ArrowUpward, null, Modifier.size(16.dp)) })
+            FilterChip(selected = !lent, onClick = { lent = false }, label = { Text("I borrowed") }, leadingIcon = { Icon(Icons.Rounded.ArrowDownward, null, Modifier.size(16.dp)) })
         }
-        OutlinedTextField(person, { person = it }, label = { Text("Person") }, singleLine = true, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(amount, { amount = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) }, label = { Text("Amount") }, prefix = { Text(CURRENCY) }, singleLine = true, shape = RoundedCornerShape(14.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(note, { note = it }, label = { Text("Note (optional)") }, singleLine = true, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth())
-        BigButton(if (initial == null) "Save record" else "Save changes") {
+        OutlinedTextField(person, { person = it }, label = { Text("Person") }, singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(amount, { amount = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) }, label = { Text("Amount") }, prefix = { Text(CURRENCY) }, singleLine = true, shape = RoundedCornerShape(16.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(note, { note = it }, label = { Text("Note (optional)") }, singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth())
+        PrimaryButton(if (initial == null) "Save record" else "Save changes", onClick = {
             amount.toDoubleOrNull()?.takeIf { person.isNotBlank() && it > 0 }?.let { onSave(person.trim(), it, lent, note.trim()) }
-        }
+        })
     }
 }

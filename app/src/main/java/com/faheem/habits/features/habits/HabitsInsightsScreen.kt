@@ -28,51 +28,40 @@ private val Gold = Color(0xFFF59E0B)
 
 @Composable
 private fun StatCard(icon: ImageVector, color: Color, value: String, label: String, modifier: Modifier) {
-    Card(
-        modifier,
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            IconBubble(icon, color, 36.dp)
-            Spacer(Modifier.height(10.dp))
-            Text(value, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
+    MetricTile(
+        title = label,
+        value = value,
+        icon = icon,
+        accent = color,
+        modifier = modifier
+    )
 }
 
 @Composable
 private fun AchievementCard(a: Achievement, modifier: Modifier) {
     val color = if (a.unlocked) Gold else MaterialTheme.colorScheme.outline
-    Card(
-        modifier.height(176.dp),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column(Modifier.padding(14.dp).fillMaxSize()) {
-            IconBubble(a.icon, color, 44.dp)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                a.title, fontWeight = FontWeight.Bold, fontSize = 15.sp,
-                color = if (a.unlocked) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+    PremiumCard(modifier = modifier.height(176.dp), contentPadding = PaddingValues(14.dp)) {
+        IconBubble(a.icon, color, 44.dp)
+        Spacer(Modifier.height(10.dp))
+        Text(
+            a.title,
+            fontWeight = FontWeight.Bold,
+            fontSize = 15.sp,
+            color = if (a.unlocked) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(a.desc, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+        Spacer(Modifier.weight(1f))
+        if (a.unlocked) {
+            Text("Unlocked ✓", color = Positive, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+        } else {
+            ProgressBar(
+                a.current.toFloat() / a.target,
+                MaterialTheme.colorScheme.primary,
+                MaterialTheme.colorScheme.surfaceVariant,
+                height = 6.dp
             )
-            Text(a.desc, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
-            Spacer(Modifier.weight(1f))
-            if (a.unlocked) {
-                Text("Unlocked ✓", color = Positive, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-            } else {
-                ProgressBar(
-                    a.current.toFloat() / a.target,
-                    MaterialTheme.colorScheme.primary,
-                    MaterialTheme.colorScheme.surfaceVariant,
-                    height = 6.dp
-                )
-                Spacer(Modifier.height(4.dp))
-                Text("${a.current} / ${a.target}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            Spacer(Modifier.height(4.dp))
+            Text("${a.current} / ${a.target}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -95,30 +84,30 @@ fun InsightsScreen(vm: HabitViewModel) {
 
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 24.dp),
+        contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
             HeroCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Your level", fontSize = 14.sp, color = Color.White.copy(alpha = 0.85f))
-                        Text("Level ${ins.level}", fontSize = 34.sp, fontWeight = FontWeight.Bold)
-                        Text("${ins.xp} XP · ${ins.totalCheckIns} check-ins", fontSize = 14.sp)
+                        Text("Your level", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
+                        Text("Level ${ins.level}", fontSize = 34.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
+                        Text("${ins.xp} XP · ${ins.totalCheckIns} check-ins", fontSize = 13.sp, color = Color.White.copy(alpha = 0.9f))
                     }
                     Icon(Icons.Rounded.EmojiEvents, null, Modifier.size(56.dp), tint = Color.White.copy(alpha = 0.9f))
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(14.dp))
                 ProgressBar(ins.xpInLevel / 200f, Color.White, Color.White.copy(alpha = 0.25f))
                 Spacer(Modifier.height(6.dp))
-                Text("${200 - ins.xpInLevel} XP to level ${ins.level + 1}", fontSize = 13.sp)
+                Text("${200 - ins.xpInLevel} XP to level ${ins.level + 1}", fontSize = 12.5.sp, color = Color.White.copy(alpha = 0.9f))
             }
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    StatCard(Icons.Rounded.LocalFireDepartment, Warning, "${ins.currentStreak}", "Current streak (days)", Modifier.weight(1f))
-                    StatCard(Icons.Rounded.EmojiEvents, Gold, "${ins.bestStreak}", "Best streak (days)", Modifier.weight(1f))
+                    StatCard(Icons.Rounded.LocalFireDepartment, Warning, "${ins.currentStreak}", "Current streak", Modifier.weight(1f))
+                    StatCard(Icons.Rounded.EmojiEvents, Gold, "${ins.bestStreak}", "Best streak", Modifier.weight(1f))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     StatCard(Icons.Rounded.CheckCircle, primary, "${ins.rate7}%", "Done this week", Modifier.weight(1f))
@@ -126,100 +115,101 @@ fun InsightsScreen(vm: HabitViewModel) {
                 }
             }
         }
-        item { SectionLabel("This week") }
+        item { SectionHeader("This week", subtitle = "Daily completion rate") }
         item {
-            Card(
-                Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Row(
-                    Modifier.fillMaxWidth().height(150.dp).padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    ins.last7.forEach { dr ->
-                        val dow = LocalDate.ofEpochDay(dr.day).dayOfWeek.value
-                        val rate = dr.rate
-                        Column(
-                            Modifier.weight(1f),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Bottom
-                        ) {
-                            Text(
-                                if (rate == null) "–" else "${(rate * 100).toInt()}%",
-                                fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Box(
-                                Modifier
-                                    .width(18.dp)
-                                    .height(((rate ?: 0f) * 70f).dp.coerceAtLeast(4.dp))
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (rate == null) MaterialTheme.colorScheme.outline.copy(alpha = 0.3f) else primary)
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Text(DAY_LETTERS[dow - 1], fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        }
+            PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    IconBubble(Icons.Rounded.Insights, primary, 40.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Consistency", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(
+                            "${ins.rate7}% done this week",
+                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                }
-            }
-        }
-        item { SectionLabel("Last 12 weeks") }
-        item {
-            Card(
-                Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Column(Modifier.padding(16.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        ins.heat.forEach { week ->
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                week.forEach { dr ->
-                                    val r = dr.rate
-                                    Box(
-                                        Modifier
-                                            .size(18.dp)
-                                            .clip(RoundedCornerShape(5.dp))
-                                            .background(
-                                                when {
-                                                    r == null -> MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
-                                                    r == 0f -> MaterialTheme.colorScheme.surfaceVariant
-                                                    else -> primary.copy(alpha = 0.3f + 0.7f * r)
-                                                }
-                                            )
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Darker = more habits done that day (Monday at the top)",
-                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    StatusPill(
+                        "${ins.perfectDays} perfect",
+                        if (ins.perfectDays > 0) Positive else MaterialTheme.colorScheme.outline
                     )
                 }
+                Spacer(Modifier.height(14.dp))
+                BarChart(
+                    values = ins.last7.map { it.rate ?: 0f },
+                    labels = ins.last7.map { DAY_LETTERS[LocalDate.ofEpochDay(it.day).dayOfWeek.value - 1] },
+                    colors = listOf(primary),
+                    highlightIndex = ins.last7.lastIndex,
+                    height = 150.dp,
+                    valueFormatter = { rate -> "${(rate * 100).toInt()}%" }
+                )
             }
         }
-        item { SectionLabel("Streaks") }
+        item { SectionHeader("Habit mix", subtitle = "When your habits happen") }
+        item {
+            val times = all.filter { !it.habit.archived }
+                .groupingBy { TIME_LABELS.getOrElse(it.habit.timeOfDay) { "Anytime" } }
+                .eachCount()
+            val slices = times.entries
+                .sortedByDescending { it.value }
+                .mapIndexed { index, (label, count) ->
+                    ChartSlice(label, count.toFloat(), chartColor(index))
+                }
+            PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                if (slices.isEmpty()) {
+                    ChartPlaceholder("Add a habit to see your mix")
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        DonutChart(
+                            slices = slices,
+                            modifier = Modifier.width(146.dp),
+                            centerValue = "${slices.sumOf { it.value.toInt() }}",
+                            centerLabel = "habits",
+                            thickness = 18.dp
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            ChartLegend(
+                                slices = slices,
+                                maxRows = 4,
+                                valueFormatter = { "${it.toInt()}" }
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Balance your day by spreading habits across the morning, afternoon and evening.",
+                                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        item { SectionHeader("Last 12 weeks") }
+        item {
+            PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                HeatmapGrid(
+                    columns = ins.heat.map { week -> week.map { it.rate } },
+                    color = primary,
+                    cellSize = 18.dp,
+                    spacing = 4.dp
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Darker = more habits done that day (Monday at the top)",
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        item { SectionHeader("Streaks") }
         if (active.isEmpty()) {
             item { EmptyState(Icons.Rounded.LocalFireDepartment, "No streaks yet", "Complete a habit to start one") }
         }
         items(active, key = { it.habit.id }) { ui ->
-            Card(
-                Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            PremiumCard(contentPadding = PaddingValues(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     IconBubble(habitIcon(ui.habit.icon), habitColor(ui.habit.colorIndex), 40.dp)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(ui.habit.name, fontWeight = FontWeight.SemiBold)
+                        Text(ui.habit.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text(
                             "Best ${ui.best} · ${ui.days.size} check-ins",
                             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -242,7 +232,7 @@ fun InsightsScreen(vm: HabitViewModel) {
                 }
             }
         }
-        item { SectionLabel("Achievements · ${achs.count { it.unlocked }}/${achs.size}") }
+        item { SectionHeader("Achievements", subtitle = "${achs.count { it.unlocked }} of ${achs.size} unlocked") }
         items(achs.chunked(2)) { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 row.forEach { a -> AchievementCard(a, Modifier.weight(1f)) }
