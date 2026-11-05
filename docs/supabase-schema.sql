@@ -130,6 +130,9 @@ create table if not exists public.momentum_loans (
   epoch_day bigint not null,
   settled boolean not null default false,
   due_epoch_day bigint,
+  title text not null default '',
+  status text not null default 'pending',
+  person_id uuid,
   updated_at timestamptz not null default now(),
   deleted_at timestamptz,
   device_id text not null,
@@ -143,6 +146,108 @@ create table if not exists public.momentum_loan_payments (
   amount_minor_units bigint not null,
   epoch_day bigint not null,
   note text not null default '',
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  device_id text not null,
+  version bigint not null default 1
+);
+
+create table if not exists public.momentum_loan_people (
+  id uuid primary key,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name text not null,
+  phone text not null default '',
+  address text not null default '',
+  profile_image_path text not null default '',
+  notes text not null default '',
+  archived boolean not null default false,
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  device_id text not null,
+  version bigint not null default 1
+);
+
+alter table public.momentum_loans
+  add column if not exists title text not null default '',
+  add column if not exists status text not null default 'pending',
+  add column if not exists person_id uuid;
+alter table public.momentum_loans
+  drop constraint if exists momentum_loans_person_id_fkey;
+alter table public.momentum_loans
+  add constraint momentum_loans_person_id_fkey
+  foreign key (person_id) references public.momentum_loan_people(id) on delete set null;
+
+create table if not exists public.momentum_loan_attachments (
+  id uuid primary key,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  loan_id uuid not null references public.momentum_loans(id) on delete cascade,
+  name text not null,
+  object_path text not null,
+  mime text not null default '',
+  added_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  device_id text not null,
+  version bigint not null default 1
+);
+
+create table if not exists public.momentum_contacts (
+  id uuid primary key,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name text not null,
+  phone text not null default '',
+  email text not null default '',
+  address text not null default '',
+  notes text not null default '',
+  profile_image_path text not null default '',
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  device_id text not null,
+  version bigint not null default 1
+);
+
+create table if not exists public.momentum_life_rules (
+  id uuid primary key,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  title text not null,
+  body text not null default '',
+  kind text not null default 'Rule',
+  pinned boolean not null default false,
+  created_epoch_day bigint not null default 0,
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  device_id text not null,
+  version bigint not null default 1
+);
+
+create table if not exists public.momentum_life_rule_files (
+  id uuid primary key,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  rule_id uuid not null references public.momentum_life_rules(id) on delete cascade,
+  name text not null,
+  object_path text not null,
+  mime text not null default '',
+  folder_path text not null default '',
+  added_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  device_id text not null,
+  version bigint not null default 1
+);
+
+create table if not exists public.momentum_custom_notifications (
+  id uuid primary key,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  title text not null,
+  message text not null default '',
+  repeat_mode text not null default 'once',
+  hour integer not null default 9,
+  minute integer not null default 0,
+  date_epoch_day bigint,
+  days_mask integer not null default 127,
+  day_of_month integer not null default 1,
+  enabled boolean not null default true,
+  last_delivered_epoch_millis bigint not null default 0,
   updated_at timestamptz not null default now(),
   deleted_at timestamptz,
   device_id text not null,
@@ -207,8 +312,9 @@ begin
   foreach table_name in array array[
     'momentum_habits', 'momentum_completions', 'momentum_habit_skips',
     'momentum_habit_reminders', 'momentum_expenses', 'momentum_category_budgets',
-    'momentum_loans', 'momentum_loan_payments', 'momentum_files',
-    'momentum_todos', 'momentum_vault_entries'
+    'momentum_loan_people', 'momentum_loans', 'momentum_loan_attachments', 'momentum_loan_payments',
+    'momentum_contacts', 'momentum_files', 'momentum_todos', 'momentum_life_rules',
+    'momentum_life_rule_files', 'momentum_custom_notifications', 'momentum_vault_entries'
   ] loop
     execute format('create index if not exists %I_user_updated_idx on public.%I(user_id, updated_at)', table_name, table_name);
     execute format('create index if not exists %I_user_deleted_idx on public.%I(user_id, deleted_at)', table_name, table_name);

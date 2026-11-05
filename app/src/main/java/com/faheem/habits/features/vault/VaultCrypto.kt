@@ -1,4 +1,4 @@
-@file:Suppress("TooManyFunctions")
+@file:Suppress("TooManyFunctions", "ReturnCount")
 
 package com.faheem.habits.features.vault
 

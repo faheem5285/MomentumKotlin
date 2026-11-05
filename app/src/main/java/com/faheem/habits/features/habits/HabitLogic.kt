@@ -42,8 +42,11 @@ val HabitIcons: Map<String, ImageVector> = linkedMapOf(
     "mosque" to Icons.Rounded.Mosque,
     "wudu" to Icons.Rounded.WaterDrop,
     "star" to Icons.Rounded.Star,
+    "health" to Icons.Rounded.HealthAndSafety,
     "fitness" to Icons.Rounded.FitnessCenter,
     "run" to Icons.Rounded.DirectionsRun,
+    "cycle" to Icons.Rounded.DirectionsBike,
+    "swim" to Icons.Rounded.Pool,
     "walk" to Icons.Rounded.DirectionsWalk,
     "water" to Icons.Rounded.WaterDrop,
     "bed" to Icons.Rounded.Bedtime,
@@ -73,6 +76,9 @@ val HabitIcons: Map<String, ImageVector> = linkedMapOf(
     "trophy" to Icons.Rounded.EmojiEvents,
     "idea" to Icons.Rounded.Lightbulb,
     "phone" to Icons.Rounded.PhoneAndroid,
+    "directions" to Icons.Rounded.Directions,
+    "checklist" to Icons.Rounded.Checklist,
+    "calendar" to Icons.Rounded.CalendarMonth,
 )
 
 val IslamicHabitIconKeys = listOf("prayer", "quran", "dhikr", "dua", "charity", "fast", "mosque", "wudu")

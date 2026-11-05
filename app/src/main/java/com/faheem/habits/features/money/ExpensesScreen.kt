@@ -133,7 +133,7 @@ fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel()) {
     if (showBudget) BudgetSheet(budget, { showBudget = false }) { vm.setBudget(it); showBudget = false }
     if (showAdd) AddExpenseSheet({ showAdd = false }) { title, amount, cat -> vm.add(title, amount, cat); showAdd = false }
     deleting?.let { expense ->
-        AlertDialog(
+        MomentumDialog(
             onDismissRequest = { deleting = null }, title = { Text("Delete expense?") },
             text = { Text("${expense.title} · ${money(expense.amountMinorUnits)} will be removed from your history.") },
             confirmButton = { TextButton(onClick = { vm.remove(expense); deleting = null }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
@@ -155,14 +155,10 @@ fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel()) {
                 1 -> ActivityScreen(filtered, query, { query = it }, category, { category = it }, onDelete = { deleting = it })
                 else -> BudgetScreen(spent, budget, budgetFraction, byCategory, vm, onBudget = { showBudget = true })
             }
-            ExtendedFloatingActionButton(
+            MomentumFab(
+                text = "Add expense",
                 onClick = { showAdd = true },
-                icon = { Icon(Icons.Rounded.Add, null) },
-                text = { Text("Add expense", fontWeight = FontWeight.SemiBold) },
-                shape = RoundedCornerShape(20.dp),
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp)
+                modifier = Modifier.align(Alignment.BottomEnd).padding(MomentumTokens.screenPadding)
             )
         }
         MomentumTabs(
@@ -179,26 +175,32 @@ fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel()) {
 
 @Composable
 private fun MonthSwitcher(month: YearMonth, onPrevious: () -> Unit, onNext: () -> Unit) {
+    val glass = LocalGlassPalette.current
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 2.dp),
+        Modifier.fillMaxWidth().padding(horizontal = MomentumTokens.screenPadding, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onPrevious) { Icon(Icons.Rounded.ChevronLeft, "Previous month") }
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-        ) {
-            Text(
-                month.format(DateTimeFormatter.ofPattern("MMMM yyyy")),
-                Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold
-            )
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            IconButton(onClick = onPrevious) { Icon(Icons.Rounded.ChevronLeft, "Previous month") }
         }
-        Spacer(Modifier.weight(1f))
-        IconButton(onClick = onNext, enabled = month < YearMonth.now()) {
-            Icon(Icons.Rounded.ChevronRight, "Next month")
+        Box(Modifier.weight(2f), contentAlignment = Alignment.Center) {
+            Surface(
+                shape = CircleShape,
+                color = glass.chip,
+                border = BorderStroke(1.dp, glass.panelBorder)
+            ) {
+                Text(
+                    month.format(DateTimeFormatter.ofPattern("MMMM yyyy")),
+                    Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+            IconButton(onClick = onNext, enabled = month < YearMonth.now()) {
+                Icon(Icons.Rounded.ChevronRight, "Next month")
+            }
         }
     }
 }
@@ -225,7 +227,7 @@ private fun OverviewScreen(
     }
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+        contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
@@ -409,18 +411,21 @@ private fun ActivityScreen(
     expenses: List<Expense>, query: String, onQuery: (String) -> Unit, category: String,
     onCategory: (String) -> Unit, onDelete: (Expense) -> Unit
 ) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            OutlinedTextField(
-                query, onQuery, modifier = Modifier.fillMaxWidth(), singleLine = true,
+            MomentumTextField(
+                value = query,
+                onValueChange = onQuery,
                 placeholder = { Text("Search expenses") },
                 leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                shape = RoundedCornerShape(18.dp)
+                singleLine = true
             )
         }
         item {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                (listOf("All") + categories.map { it.name }).forEach { name -> FilterChip(category == name, { onCategory(name) }, label = { Text(name) }) }
+                (listOf("All") + categories.map { it.name }).forEach { name ->
+                    MomentumChip(selected = category == name, onClick = { onCategory(name) }, label = name)
+                }
             }
         }
         item { SectionHeader("${expenses.size} expenses · ${money(expenses.sumOf { it.amountMinorUnits })}") }
@@ -431,7 +436,7 @@ private fun ActivityScreen(
 
 @Composable
 private fun BudgetScreen(spent: Double, budget: Double, fraction: Float, byCategory: Map<String, Double>, vm: ExpenseViewModel, onBudget: () -> Unit) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             HeroCard {
                 Text("Monthly plan", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
@@ -486,9 +491,18 @@ private fun CategoryBudgetCard(name: String, spent: Double, limit: Double, onSav
     val c = catOf(name)
     if (editing) {
         var input by remember(limit) { mutableStateOf(if (limit > 0) limit.toString() else "") }
-        AlertDialog(
+        MomentumDialog(
             onDismissRequest = { editing = false }, title = { Text("$name limit") },
-            text = { OutlinedTextField(input, { input = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) }, label = { Text("Monthly limit") }, prefix = { Text(CURRENCY) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)) },
+            text = {
+                MomentumTextField(
+                    value = input,
+                    onValueChange = { input = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) },
+                    label = { Text("Monthly limit") },
+                    prefix = { Text(CURRENCY) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                )
+            },
             confirmButton = { TextButton(onClick = { input.toDoubleOrNull()?.takeIf { it >= 0 }?.let(onSave); editing = false }) { Text("Save") } },
             dismissButton = { TextButton(onClick = { editing = false }) { Text("Cancel") } }
         )
@@ -539,7 +553,14 @@ private fun ExpenseRow(expense: Expense, onDelete: () -> Unit) {
 private fun BudgetSheet(value: Double, onDismiss: () -> Unit, onSave: (Double) -> Unit) {
     var input by remember { mutableStateOf(if (value > 0) value.toString() else "") }
     FormSheet("Monthly budget", onDismiss) {
-        OutlinedTextField(input, { input = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) }, label = { Text("Spending limit") }, prefix = { Text(CURRENCY) }, singleLine = true, shape = RoundedCornerShape(16.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
+        MomentumTextField(
+            value = input,
+            onValueChange = { input = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) },
+            label = { Text("Spending limit") },
+            prefix = { Text(CURRENCY) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+        )
         PrimaryButton("Save budget", onClick = { input.toDoubleOrNull()?.takeIf { it > 0 }?.let(onSave) })
     }
 }
@@ -550,11 +571,26 @@ private fun AddExpenseSheet(onDismiss: () -> Unit, onSave: (String, Double, Stri
     var title by remember { mutableStateOf("") }
     var category by remember { mutableStateOf(categories[0].name) }
     FormSheet("New expense", onDismiss) {
-        OutlinedTextField(amount, { amount = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) }, label = { Text("Amount") }, prefix = { Text(CURRENCY) }, singleLine = true, shape = RoundedCornerShape(16.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(title, { title = it }, label = { Text("Description") }, placeholder = { Text("e.g. Groceries, bus fare") }, singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth())
+        MomentumTextField(
+            value = amount,
+            onValueChange = { amount = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) },
+            label = { Text("Amount") },
+            prefix = { Text(CURRENCY) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+        )
+        MomentumTextField(
+            value = title,
+            onValueChange = { title = it },
+            label = { Text("Description") },
+            placeholder = { Text("e.g. Groceries, bus fare") },
+            singleLine = true
+        )
         SectionHeader("Category")
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            categories.forEach { c -> FilterChip(category == c.name, { category = c.name }, label = { Text(c.name) }, leadingIcon = { Icon(c.icon, null, Modifier.size(18.dp)) }) }
+            categories.forEach { c ->
+                MomentumChip(selected = category == c.name, onClick = { category = c.name }, label = c.name, icon = c.icon)
+            }
         }
         PrimaryButton("Save expense", onClick = { amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { onSave(title.ifBlank { category }, it, category) } })
     }

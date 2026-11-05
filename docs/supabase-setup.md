@@ -48,3 +48,9 @@ make the bucket public.
   stored in Postgres and file bytes are stored in the private Storage bucket.
 - App records are not uploaded successfully until the schema/policies have
   been applied and tested.
+- The Supabase module shows connection status, account-visible row counts for
+  the sync tables, and object/byte usage for the private `momentum-files`
+  bucket. It does not show project billing quotas because those require the
+  Supabase dashboard or a server-side management credential. The module
+  displays this limitation in its storage usage card rather than showing an
+  inaccurate fixed quota.

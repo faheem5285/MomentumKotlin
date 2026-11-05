@@ -1,3 +1,5 @@
+@file:Suppress("NestedBlockDepth")
+
 package com.faheem.habits.features.network
 
 import android.app.usage.NetworkStats

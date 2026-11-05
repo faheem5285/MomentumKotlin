@@ -49,7 +49,7 @@ fun ManageScreen(vm: HabitViewModel) {
         HabitEditorSheet(null, onDismiss = { creating = false }, onSave = { habit, reminders -> vm.saveWithReminders(habit, reminders) })
     }
     confirmDelete?.let { h ->
-        AlertDialog(
+        MomentumDialog(
             onDismissRequest = { confirmDelete = null },
             title = { Text("Delete “${h.name}”?") },
             text = { Text("Its whole history is deleted too. This cannot be undone. Archive it instead to keep the history.") },
@@ -77,11 +77,11 @@ fun ManageScreen(vm: HabitViewModel) {
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+            contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
-                HeroCard {
+                HeroCard(contentPadding = 18.dp) {
                     Text("Manage habits", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
                     Text("$totalActive active", fontSize = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
                     Text(
@@ -91,9 +91,10 @@ fun ManageScreen(vm: HabitViewModel) {
                 }
             }
             item {
-                OutlinedTextField(
+                MomentumTextField(
                     value = query,
                     onValueChange = { query = it },
+                    modifier = Modifier.height(52.dp),
                     placeholder = { Text("Find a habit") },
                     leadingIcon = { Icon(Icons.Rounded.Search, null) },
                     singleLine = true,
@@ -103,9 +104,7 @@ fun ManageScreen(vm: HabitViewModel) {
                                 Icon(Icons.Rounded.Close, contentDescription = "Clear search")
                             }
                         }
-                    },
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    }
                 )
             }
             item {
@@ -146,18 +145,10 @@ fun ManageScreen(vm: HabitViewModel) {
                 }
             }
         }
-        ExtendedFloatingActionButton(
+        MomentumFab(
+            text = "New habit",
             onClick = { creating = true },
-            icon = { Icon(Icons.Rounded.Add, null) },
-            text = { Text("New habit", fontWeight = FontWeight.SemiBold) },
-            shape = RoundedCornerShape(20.dp),
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            elevation = FloatingActionButtonDefaults.elevation(
-                defaultElevation = MomentumTokens.elevationHigh,
-                pressedElevation = MomentumTokens.elevationMedium
-            ),
-            modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp)
+            modifier = Modifier.align(Alignment.BottomEnd).padding(MomentumTokens.screenPadding)
         )
     }
 }

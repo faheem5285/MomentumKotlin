@@ -28,12 +28,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Refresh
@@ -42,11 +44,15 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -64,6 +70,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -294,6 +301,7 @@ fun GlassCard(
     modifier: Modifier = Modifier,
     level: GlassLevel = GlassLevel.Medium,
     shape: RoundedCornerShape = RoundedCornerShape(MomentumTokens.radiusMedium),
+    contentPadding: PaddingValues = PaddingValues(MomentumTokens.cardPadding),
     content: @Composable ColumnScope.() -> Unit
 ) {
     val glass = LocalGlassPalette.current
@@ -309,7 +317,7 @@ fun GlassCard(
             .background(glassSheenBrush(glass))
             .background(neonWashBrush(glass, glow))
             .border(1.dp, neonEdgeBrush(glass, glow), shape)
-            .padding(MomentumTokens.cardPadding),
+            .padding(contentPadding),
         content = content
     )
 }
@@ -923,6 +931,192 @@ fun SecondaryButton(
     }
 }
 
+/**
+ * Shared text field. Frosted fill, soft accent border and a consistent radius
+ * so forms feel like part of the glass canvas rather than stock Material.
+ */
+@Composable
+fun MomentumTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: @Composable (() -> Unit)? = null,
+    placeholder: @Composable (() -> Unit)? = null,
+    leadingIcon: @Composable (() -> Unit)? = null,
+    trailingIcon: @Composable (() -> Unit)? = null,
+    prefix: @Composable (() -> Unit)? = null,
+    singleLine: Boolean = false,
+    minLines: Int = 1,
+    maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
+    readOnly: Boolean = false,
+    enabled: Boolean = true,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    isError: Boolean = false,
+    supportingText: @Composable (() -> Unit)? = null
+) {
+    val glass = LocalGlassPalette.current
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(MomentumTokens.radiusSmall + 2.dp)
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier.fillMaxWidth(),
+        label = label,
+        placeholder = placeholder,
+        leadingIcon = leadingIcon,
+        trailingIcon = trailingIcon,
+        prefix = prefix,
+        singleLine = singleLine,
+        minLines = minLines,
+        maxLines = maxLines,
+        readOnly = readOnly,
+        enabled = enabled,
+        keyboardOptions = keyboardOptions,
+        visualTransformation = visualTransformation,
+        isError = isError,
+        supportingText = supportingText,
+        shape = shape,
+        textStyle = MaterialTheme.typography.bodyMedium,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = glass.chip,
+            unfocusedContainerColor = glass.chip.copy(alpha = 0.55f),
+            disabledContainerColor = glass.chip.copy(alpha = 0.35f),
+            focusedBorderColor = colors.primary.copy(alpha = 0.85f),
+            unfocusedBorderColor = glass.panelBorder,
+            disabledBorderColor = glass.panelBorder.copy(alpha = 0.4f),
+            focusedLabelColor = colors.primary,
+            unfocusedLabelColor = colors.onSurfaceVariant,
+            focusedPlaceholderColor = colors.onSurfaceVariant.copy(alpha = 0.7f),
+            unfocusedPlaceholderColor = colors.onSurfaceVariant.copy(alpha = 0.7f),
+            cursorColor = colors.primary,
+            focusedLeadingIconColor = colors.primary,
+            unfocusedLeadingIconColor = colors.onSurfaceVariant,
+            focusedTrailingIconColor = colors.primary,
+            unfocusedTrailingIconColor = colors.onSurfaceVariant
+        )
+    )
+}
+
+/** Rounded selectable chip with a solid accent when active. */
+@Composable
+fun MomentumChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    enabled: Boolean = true
+) {
+    val glass = LocalGlassPalette.current
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(MomentumTokens.radiusSmall)
+    val background by animateColorAsState(
+        if (selected) colors.primary else glass.chip,
+        label = "chip-bg"
+    )
+    val contentColor by animateColorAsState(
+        if (selected) colors.onPrimary else colors.onSurfaceVariant,
+        label = "chip-content"
+    )
+    Row(
+        modifier
+            .alpha(if (enabled) 1f else 0.45f)
+            .then(
+                if (selected) {
+                    Modifier.shadow(
+                        10.dp,
+                        shape,
+                        clip = false,
+                        ambientColor = colors.primary.copy(alpha = 0.55f),
+                        spotColor = colors.primary.copy(alpha = 0.35f)
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .clip(shape)
+            .background(background)
+            .border(1.dp, if (selected) Color.Transparent else glass.panelBorder, shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (icon != null) {
+            Icon(icon, null, Modifier.size(16.dp), tint = contentColor)
+            Spacer(Modifier.width(MomentumTokens.space1))
+        }
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            color = contentColor,
+            maxLines = 1
+        )
+    }
+}
+
+/** Frosted outlined button for secondary actions that should not fill the row. */
+@Composable
+fun MomentumOutlinedButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    enabled: Boolean = true
+) {
+    val glass = LocalGlassPalette.current
+    val colors = MaterialTheme.colorScheme
+    val glow = neonGlow()
+    val shape = RoundedCornerShape(MomentumTokens.radiusSmall + 2.dp)
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(glass.chip, glass.chip.copy(alpha = 0.35f))))
+            .border(1.dp, neonEdgeBrush(glass, glow), shape),
+        enabled = enabled,
+        shape = shape,
+        border = null,
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = Color.Transparent,
+            contentColor = colors.onSurface,
+            disabledContentColor = colors.onSurfaceVariant.copy(alpha = 0.55f)
+        )
+    ) {
+        if (icon != null) {
+            Icon(icon, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(MomentumTokens.space2))
+        }
+        Text(text, style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+/** Shared extended FAB so every module floats the same action in the same way. */
+@Composable
+fun MomentumFab(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector = Icons.Rounded.Add
+) {
+    val reduce = LocalReduceEffects.current
+    ExtendedFloatingActionButton(
+        onClick = onClick,
+        icon = { Icon(icon, null, Modifier.size(20.dp)) },
+        text = { Text(text, style = MaterialTheme.typography.labelLarge) },
+        shape = RoundedCornerShape(MomentumTokens.radiusMedium),
+        containerColor = MaterialTheme.colorScheme.primary,
+        contentColor = MaterialTheme.colorScheme.onPrimary,
+        elevation = FloatingActionButtonDefaults.elevation(
+            defaultElevation = if (reduce) 0.dp else MomentumTokens.elevationHigh,
+            pressedElevation = if (reduce) 0.dp else MomentumTokens.elevationMedium
+        ),
+        modifier = modifier
+    )
+}
+
 /** Small glass status pill. */
 @Composable
 fun StatusPill(
@@ -1012,6 +1206,35 @@ fun SkeletonLoader(modifier: Modifier = Modifier) {
     )
 }
 
+/** Shared glass dialog shell so every modal matches the app surface. */
+@Composable
+fun MomentumDialog(
+    onDismissRequest: () -> Unit,
+    confirmButton: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    dismissButton: (@Composable () -> Unit)? = null,
+    icon: @Composable (() -> Unit)? = null,
+    title: @Composable (() -> Unit)? = null,
+    text: @Composable (() -> Unit)? = null
+) {
+    val glass = LocalGlassPalette.current
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        modifier = modifier,
+        confirmButton = confirmButton,
+        dismissButton = dismissButton,
+        icon = icon,
+        title = title,
+        text = text,
+        containerColor = glass.panel,
+        iconContentColor = MaterialTheme.colorScheme.primary,
+        titleContentColor = MaterialTheme.colorScheme.onSurface,
+        textContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = RoundedCornerShape(MomentumTokens.radiusLarge),
+        tonalElevation = 0.dp
+    )
+}
+
 @Composable
 fun ConfirmDialog(
     title: String,
@@ -1020,14 +1243,8 @@ fun ConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val glass = LocalGlassPalette.current
-    AlertDialog(
+    MomentumDialog(
         onDismissRequest = onDismiss,
-        containerColor = glass.panel,
-        titleContentColor = MaterialTheme.colorScheme.onSurface,
-        textContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        shape = RoundedCornerShape(MomentumTokens.radiusLarge),
-        tonalElevation = 0.dp,
         title = { Text(title) },
         text = { Text(message) },
         confirmButton = { Button(onClick = onConfirm) { Text(confirmLabel) } },

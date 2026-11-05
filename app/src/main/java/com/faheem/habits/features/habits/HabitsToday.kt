@@ -25,6 +25,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -48,18 +49,33 @@ fun StreakChip(count: Int) {
 private fun DayChip(day: Long, selected: Boolean, complete: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val dow = LocalDate.ofEpochDay(day).dayOfWeek.value
     val colors = MaterialTheme.colorScheme
+    val glass = LocalGlassPalette.current
+    val shape = RoundedCornerShape(MomentumTokens.radiusSmall + 2.dp)
     val background by animateColorAsState(
-        if (selected) colors.primary else colors.surface,
+        if (selected) colors.primary else glass.cardTop,
         label = "day-bg"
     )
     Column(
         modifier
-            .clip(RoundedCornerShape(18.dp))
+            .then(
+                if (selected) {
+                    Modifier.shadow(
+                        10.dp,
+                        shape,
+                        clip = false,
+                        ambientColor = colors.primary.copy(alpha = 0.55f),
+                        spotColor = colors.primary.copy(alpha = 0.35f)
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .clip(shape)
             .background(background)
             .border(
                 1.dp,
-                if (selected) Color.Transparent else colors.outlineVariant,
-                RoundedCornerShape(18.dp)
+                if (selected) Color.Transparent else glass.panelBorder,
+                shape
             )
             .clickable(onClick = onClick)
             .padding(vertical = 9.dp),
@@ -105,10 +121,9 @@ private fun HabitRow(
     val color = habitColor(h.colorIndex)
     val colors = MaterialTheme.colorScheme
     PremiumCard(
-        modifier = modifier
-            .clip(RoundedCornerShape(22.dp)),
+        modifier = modifier,
         onClick = onOpen,
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(MomentumTokens.radiusMedium),
         contentPadding = PaddingValues(start = 14.dp, end = 12.dp, top = 13.dp, bottom = 13.dp)
     ) {
         Row(
@@ -160,15 +175,16 @@ private fun HabitRow(
 
 @Composable
 private fun MiniStat(label: String, value: String, modifier: Modifier) {
-    Surface(
+    GlassCard(
         modifier = modifier,
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        level = GlassLevel.Low,
+        shape = RoundedCornerShape(MomentumTokens.radiusSmall + 2.dp),
+        contentPadding = PaddingValues(vertical = 12.dp, horizontal = 8.dp)
     ) {
         Column(
-            Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(value, fontSize = 21.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
             Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -250,16 +266,18 @@ fun HabitDetailSheet(ui: HabitUi, onDismiss: () -> Unit, onEdit: () -> Unit, onA
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedButton(
+            MomentumOutlinedButton(
+                text = "Edit",
+                icon = Icons.Rounded.Edit,
                 onClick = onEdit,
-                modifier = Modifier.weight(1f).height(50.dp),
-                shape = RoundedCornerShape(16.dp)
-            ) { Icon(Icons.Rounded.Edit, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Edit") }
-            OutlinedButton(
+                modifier = Modifier.weight(1f).height(50.dp)
+            )
+            MomentumOutlinedButton(
+                text = "Archive",
+                icon = Icons.Rounded.Archive,
                 onClick = onArchive,
-                modifier = Modifier.weight(1f).height(50.dp),
-                shape = RoundedCornerShape(16.dp)
-            ) { Icon(Icons.Rounded.Archive, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Archive") }
+                modifier = Modifier.weight(1f).height(50.dp)
+            )
         }
     }
 }
@@ -328,11 +346,11 @@ fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+            contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
-                HeroCard {
+                HeroCard(contentPadding = 18.dp) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(
@@ -454,18 +472,10 @@ fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -> Unit) {
                 }
             }
         }
-        ExtendedFloatingActionButton(
+        MomentumFab(
+            text = "New habit",
             onClick = { creating = true },
-            icon = { Icon(Icons.Rounded.Add, null) },
-            text = { Text("New habit", fontWeight = FontWeight.SemiBold) },
-            shape = RoundedCornerShape(20.dp),
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            elevation = FloatingActionButtonDefaults.elevation(
-                defaultElevation = MomentumTokens.elevationHigh,
-                pressedElevation = MomentumTokens.elevationMedium
-            ),
-            modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp)
+            modifier = Modifier.align(Alignment.BottomEnd).padding(MomentumTokens.screenPadding)
         )
     }
 }

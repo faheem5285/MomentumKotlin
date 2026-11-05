@@ -125,13 +125,17 @@ fun ToDoScreen(vm: ToDoViewModel = hiltViewModel()) {
         matchesFilter && (task.title.contains(query, true) || task.notes.contains(query, true) || task.category.contains(query, true))
     }.sortedWith(compareBy<ToDoItem> { it.dueEpochDay }.thenByDescending { it.priority }.thenByDescending { it.id })
     val doneCount = tasks.count { it.completed }
+    val categorySlices = chartSlices(openTasks.groupingBy { it.category }.eachCount().mapValues { it.value.toFloat() })
+    val weekDays = (0L..6L).map { today.plusDays(it) }
+    val weekLoad = weekDays.map { day -> openTasks.count { it.dueEpochDay == day.toEpochDay() }.toFloat() }
+    val weekLabels = weekDays.map { it.format(DateTimeFormatter.ofPattern("EEE")) }
 
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {
             when (tab) {
                 0 -> LazyColumn(
                     Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+                    contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     item {
@@ -149,6 +153,49 @@ fun ToDoScreen(vm: ToDoViewModel = hiltViewModel()) {
                             }
                         }
                     }
+                    if (openTasks.isNotEmpty()) item {
+                        PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                            Text("Open tasks by category", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Spacer(Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                DonutChart(
+                                    categorySlices,
+                                    Modifier.weight(1f),
+                                    centerValue = openTasks.size.toString(),
+                                    centerLabel = "open"
+                                )
+                                ChartLegend(categorySlices, Modifier.weight(1.1f))
+                            }
+                        }
+                    }
+                    if (openTasks.isNotEmpty()) item {
+                        PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Next 7 days", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                    Text(
+                                        "Open tasks by due date",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Text(
+                                    "${openTasks.count { it.dueEpochDay in weekDays.first().toEpochDay()..weekDays.last().toEpochDay() }} scheduled",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            BarChart(
+                                weekLoad,
+                                labels = weekLabels,
+                                colors = ChartPalette,
+                                height = 132.dp,
+                                valueFormatter = { it.toInt().toString() }
+                            )
+                        }
+                    }
                     if (tasks.any { !it.completed && it.reminderHour != null } && !MomentumNotificationSettings.masterEnabled(context)) {
                         item {
                             InfoBanner(
@@ -161,10 +208,9 @@ fun ToDoScreen(vm: ToDoViewModel = hiltViewModel()) {
                         }
                     }
                     item {
-                        OutlinedTextField(
+                        MomentumTextField(
                             value = query,
                             onValueChange = { query = it },
-                            modifier = Modifier.fillMaxWidth(),
                             placeholder = { Text("Search tasks, notes, categories") },
                             leadingIcon = { Icon(Icons.Rounded.Search, null) },
                             trailingIcon = {
@@ -174,8 +220,7 @@ fun ToDoScreen(vm: ToDoViewModel = hiltViewModel()) {
                                     }
                                 }
                             },
-                            singleLine = true,
-                            shape = RoundedCornerShape(18.dp)
+                            singleLine = true
                         )
                     }
                     item {
@@ -184,7 +229,7 @@ fun ToDoScreen(vm: ToDoViewModel = hiltViewModel()) {
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             listOf("All", "Today", "Upcoming", "Overdue").forEach { label ->
-                                FilterChip(selected = filter == label, onClick = { filter = label }, label = { Text(label) })
+                                MomentumChip(selected = filter == label, onClick = { filter = label }, label = label)
                             }
                         }
                     }
@@ -225,14 +270,10 @@ fun ToDoScreen(vm: ToDoViewModel = hiltViewModel()) {
                     onDelete = vm::delete
                 )
             }
-            ExtendedFloatingActionButton(
+            MomentumFab(
+                text = "Add task",
                 onClick = { creating = true },
-                icon = { Icon(Icons.Rounded.Add, null) },
-                text = { Text("Add task", fontWeight = FontWeight.SemiBold) },
-                shape = RoundedCornerShape(20.dp),
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp)
+                modifier = Modifier.align(Alignment.BottomEnd).padding(MomentumTokens.screenPadding)
             )
         }
         MomentumTabs(
@@ -272,7 +313,7 @@ private fun CompletedList(tasks: List<ToDoItem>, onEdit: (ToDoItem) -> Unit, onT
     }
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+        contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item { SectionHeader("${tasks.size} completed task${if (tasks.size == 1) "" else "s"}") }
@@ -288,7 +329,7 @@ private fun CalendarAgenda(
     Column(Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+            contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
@@ -398,15 +439,13 @@ private fun ToDoCard(task: ToDoItem, onClick: () -> Unit, onToggle: () -> Unit, 
         overdue -> MaterialTheme.colorScheme.error
         else -> priorityColor
     }
-    Surface(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).clickable(onClick = onClick),
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        shadowElevation = if (LocalReduceEffects.current) 0.dp else MomentumTokens.elevationLow
+    PremiumCard(
+        onClick = onClick,
+        shape = RoundedCornerShape(MomentumTokens.radiusMedium),
+        contentPadding = PaddingValues(start = 12.dp, end = 6.dp, top = 12.dp, bottom = 12.dp)
     ) {
         Row(
-            Modifier.padding(start = 12.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
+            Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             CompletionToggle(
@@ -467,31 +506,30 @@ private fun ToDoEditorSheet(initial: ToDoItem?, onDismiss: () -> Unit, onSave: (
     }
 
     FormSheet(if (initial == null) "New task" else "Edit task", onDismiss) {
-        OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Task or appointment") }, singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes, location, or details") }, minLines = 2, maxLines = 4, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth())
+        MomentumTextField(value = title, onValueChange = { title = it }, label = { Text("Task or appointment") }, singleLine = true)
+        MomentumTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes, location, or details") }, minLines = 2, maxLines = 4)
         SectionHeader("Date")
-        OutlinedButton(
+        MomentumOutlinedButton(
+            text = date.format(DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy")),
+            icon = Icons.Rounded.CalendarMonth,
             onClick = {
                 DatePickerDialog(context, { _, year, month, day -> date = LocalDate.of(year, month + 1, day) }, date.year, date.monthValue - 1, date.dayOfMonth).show()
             },
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Icon(Icons.Rounded.CalendarMonth, null, Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(date.format(DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy")))
-        }
+            modifier = Modifier.fillMaxWidth().height(50.dp)
+        )
         SectionHeader("Category")
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            todoCategories.forEach { value -> FilterChip(category == value, onClick = { category = value }, label = { Text(value) }) }
+            todoCategories.forEach { value -> MomentumChip(selected = category == value, onClick = { category = value }, label = value) }
         }
         SectionHeader("Priority")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            priorityLabels.forEachIndexed { index, value -> FilterChip(priority == index, onClick = { priority = index }, label = { Text(value) }) }
+            priorityLabels.forEachIndexed { index, value -> MomentumChip(selected = priority == index, onClick = { priority = index }, label = value) }
         }
         SectionHeader("Reminder")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(
+            MomentumOutlinedButton(
+                text = if (reminderHour != null && reminderMinute != null) String.format("%02d:%02d", reminderHour, reminderMinute) else "Add time",
+                icon = Icons.Rounded.NotificationsActive,
                 onClick = {
                     TimePickerDialog(context, { _, hour, minute ->
                         reminderHour = hour; reminderMinute = minute
@@ -500,13 +538,8 @@ private fun ToDoEditorSheet(initial: ToDoItem?, onDismiss: () -> Unit, onSave: (
                         }
                     }, reminderHour ?: 9, reminderMinute ?: 0, DateFormat.is24HourFormat(context)).show()
                 },
-                modifier = Modifier.weight(1f).height(50.dp),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(Icons.Rounded.NotificationsActive, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(if (reminderHour != null && reminderMinute != null) String.format("%02d:%02d", reminderHour, reminderMinute) else "Add time")
-            }
+                modifier = Modifier.weight(1f).height(50.dp)
+            )
             if (reminderHour != null) TextButton(onClick = { reminderHour = null; reminderMinute = null }) { Text("Remove") }
         }
         if (reminderHour != null && !MomentumNotificationSettings.masterEnabled(context)) {

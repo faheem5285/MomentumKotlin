@@ -16,9 +16,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Alarm
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.NotificationsActive
@@ -61,19 +59,14 @@ fun ReminderSettingsScreen(onBack: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back to settings")
-            }
-            Text("Reminders", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-        }
+        GlassTopBar("Reminders", onBack = onBack)
         key(revision) {
             androidx.compose.foundation.lazy.LazyColumn(
                 Modifier.weight(1f),
-                contentPadding = PaddingValues(18.dp, 4.dp, 18.dp, 32.dp),
+                contentPadding = PaddingValues(
+                    horizontal = MomentumTokens.screenPadding,
+                    vertical = MomentumTokens.space1
+                ),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {
@@ -321,8 +314,12 @@ private fun ReminderCard(kind: ReminderKind, context: Context, enabled: Boolean,
         }
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
-                enabled = enabled,
+            MomentumOutlinedButton(
+                text = DateFormat.getTimeFormat(context).format(
+                    Calendar.getInstance().apply {
+                        set(Calendar.HOUR_OF_DAY, hour); set(Calendar.MINUTE, minute)
+                    }.time
+                ),
                 onClick = {
                     TimePickerDialog(
                         context,
@@ -333,29 +330,20 @@ private fun ReminderCard(kind: ReminderKind, context: Context, enabled: Boolean,
                         hour, minute, DateFormat.is24HourFormat(context)
                     ).show()
                 },
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Icon(Icons.Rounded.Alarm, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    DateFormat.getTimeFormat(context).format(
-                        Calendar.getInstance().apply {
-                            set(Calendar.HOUR_OF_DAY, hour); set(Calendar.MINUTE, minute)
-                        }.time
-                    )
-                )
-            }
+                icon = Icons.Rounded.Alarm,
+                enabled = enabled
+            )
             Text(if (kind.weekly) "on the selected day" else "every day", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (kind.weekly) {
             Spacer(Modifier.height(8.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 days.forEach { (day, label) ->
-                    FilterChip(
+                    MomentumChip(
                         selected = weekday == day,
                         enabled = enabled,
                         onClick = { MomentumNotificationSettings.setWeekday(context, kind.id, day); onChanged() },
-                        label = { Text(label) }
+                        label = label
                     )
                 }
             }

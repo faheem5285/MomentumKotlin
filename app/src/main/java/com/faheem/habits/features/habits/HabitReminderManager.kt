@@ -19,7 +19,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddAlarm
 import androidx.compose.material.icons.rounded.Delete
@@ -152,9 +151,12 @@ private fun ReminderTimeCard(
     PremiumCard(contentPadding = PaddingValues(14.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(onClick = {
-                    TimePickerDialog(context, { _, hour, minute -> onUpdate(reminder.copy(hour = hour, minute = minute)) }, reminder.hour, reminder.minute, DateFormat.is24HourFormat(context)).show()
-                }, shape = RoundedCornerShape(14.dp)) { Text(DateFormat.getTimeFormat(context).format(current.time), fontWeight = FontWeight.SemiBold) }
+                MomentumOutlinedButton(
+                    text = DateFormat.getTimeFormat(context).format(current.time),
+                    onClick = {
+                        TimePickerDialog(context, { _, hour, minute -> onUpdate(reminder.copy(hour = hour, minute = minute)) }, reminder.hour, reminder.minute, DateFormat.is24HourFormat(context)).show()
+                    }
+                )
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick = onDelete) { Icon(Icons.Rounded.Delete, "Delete reminder", tint = MaterialTheme.colorScheme.error) }
             }
@@ -173,13 +175,13 @@ private fun ReminderTimeCard(
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     days.forEach { (label, bit) ->
                         val selected = ((reminder.daysMask shr bit) and 1) == 1
-                        FilterChip(
+                        MomentumChip(
                             selected = selected,
                             onClick = {
                                 val newMask = reminder.daysMask xor (1 shl bit)
                                 if (newMask != 0) onUpdate(reminder.copy(daysMask = newMask))
                             },
-                            label = { Text(label) }
+                            label = label
                         )
                     }
                 }

@@ -63,8 +63,8 @@ class FileViewModel @Inject constructor(
     private val repository: FileRepository
 ) : ViewModel() {
     val files: StateFlow<List<FileItem>> = repository.files.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    fun add(name: String, uri: String, mime: String) {
-        viewModelScope.launch { repository.add(name, uri, mime) }
+    fun add(name: String, uri: String, mime: String, folder: String = "") {
+        viewModelScope.launch { repository.add(name, uri, mime, folder) }
     }
     fun remove(file: FileItem) { viewModelScope.launch { repository.delete(file) } }
 }
@@ -91,6 +91,8 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
     var preview by remember { mutableStateOf<FileItem?>(null) }
     var removeTarget by remember { mutableStateOf<FileItem?>(null) }
     var pendingText by remember { mutableStateOf("") }
+    var folderPath by remember { mutableStateOf("") }
+    var editingFolder by remember { mutableStateOf(false) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
@@ -102,7 +104,7 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
                     if (column >= 0) name = cursor.getString(column) ?: name
                 }
             }
-            vm.add(name, uri.toString(), context.contentResolver.getType(uri) ?: "*/*")
+            vm.add(name, uri.toString(), context.contentResolver.getType(uri) ?: "*/*", folderPath)
         }
     }
     val saveCopy = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
@@ -129,7 +131,7 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
         )
     }
     removeTarget?.let { file ->
-        AlertDialog(
+        MomentumDialog(
             onDismissRequest = { removeTarget = null }, title = { Text("Remove from library?") },
             text = { Text("${file.name} will be removed from Zylo. The original file will stay on your device.") },
             confirmButton = { TextButton(onClick = { vm.remove(file); removeTarget = null }) { Text("Remove", color = MaterialTheme.colorScheme.error) } },
@@ -137,11 +139,33 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
         )
     }
 
-    val shown = files.filter { (kind == FileKind.All || fileKind(it) == kind) && it.name.contains(query, ignoreCase = true) }
+    if (editingFolder) {
+        AlertDialog(
+            onDismissRequest = { editingFolder = false },
+            title = { Text("Create folder or subfolder") },
+            text = {
+                MomentumTextField(
+                    value = folderPath,
+                    onValueChange = { folderPath = it },
+                    label = { Text("Path (example: Work/Receipts)") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { folderPath = folderPath.trim('/'); editingFolder = false }) { Text("Use folder") }
+            },
+            dismissButton = { TextButton(onClick = { editingFolder = false }) { Text("Cancel") } }
+        )
+    }
+    val shown = files.filter {
+        (kind == FileKind.All || fileKind(it) == kind) &&
+            (folderPath.isBlank() || it.folder == folderPath) &&
+            it.name.contains(query, ignoreCase = true)
+    }
     Box(Modifier.fillMaxSize()) {
         androidx.compose.foundation.lazy.LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+            contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
@@ -174,16 +198,34 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
                 }
             }
             item {
-                OutlinedTextField(
-                    query, { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                MomentumTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
                     placeholder = { Text("Search your files") },
-                    leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                    shape = RoundedCornerShape(18.dp)
+                    leadingIcon = { Icon(Icons.Rounded.Search, null) }
                 )
             }
             item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MomentumChip(
+                        selected = folderPath.isBlank(),
+                        onClick = { folderPath = "" },
+                        label = "All folders"
+                    )
+                    MomentumChip(
+                        selected = folderPath.isNotBlank(),
+                        onClick = { editingFolder = true },
+                        label = folderPath.ifBlank { "Create folder" },
+                        icon = Icons.Rounded.CreateNewFolder
+                    )
+                }
+            }
+            item {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FileKind.entries.forEach { type -> FilterChip(selected = kind == type, onClick = { kind = type }, label = { Text(type.label) }) }
+                    FileKind.entries.forEach { type ->
+                        MomentumChip(selected = kind == type, onClick = { kind = type }, label = type.label)
+                    }
                 }
             }
             if (files.isNotEmpty()) {
@@ -295,14 +337,10 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
                 }
             }
         }
-        ExtendedFloatingActionButton(
+        MomentumFab(
+            text = "Add file",
             onClick = { picker.launch(arrayOf("*/*")) },
-            icon = { Icon(Icons.Rounded.Add, null) },
-            text = { Text("Add file", fontWeight = FontWeight.SemiBold) },
-            shape = RoundedCornerShape(20.dp),
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp)
+            modifier = Modifier.align(Alignment.BottomEnd).padding(MomentumTokens.screenPadding)
         )
     }
 }
@@ -409,6 +447,7 @@ private fun renderPdfPage(context: android.content.Context, uri: Uri, index: Int
 @Composable
 private fun TextFilePreview(file: FileItem, onSaveCopy: (String) -> Unit) {
     val context = LocalContext.current
+    val glass = LocalGlassPalette.current
     var editing by remember(file.uri) { mutableStateOf(false) }
     var text by remember(file.uri) { mutableStateOf<String?>(null) }
     var error by remember(file.uri) { mutableStateOf<String?>(null) }
@@ -441,11 +480,15 @@ private fun TextFilePreview(file: FileItem, onSaveCopy: (String) -> Unit) {
                 TextButton(onClick = { if (editing) onSaveCopy(text ?: "") else editing = true }) { Text(if (editing) "Save copy" else "Edit") }
             }
             if (editing) {
-                OutlinedTextField(value = text ?: "", onValueChange = { text = it }, modifier = Modifier.fillMaxWidth().weight(1f),
-                    shape = RoundedCornerShape(14.dp), textStyle = MaterialTheme.typography.bodySmall)
+                MomentumTextField(
+                    value = text ?: "",
+                    onValueChange = { text = it },
+                    modifier = Modifier.weight(1f),
+                    minLines = 6
+                )
                 Text("The original stays unchanged. Save creates an edited copy.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(14.dp)) {
+                Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).clip(RoundedCornerShape(MomentumTokens.radiusSmall)).background(glass.chip).padding(14.dp)) {
                     Text(text ?: "", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
                 }
                 Text("Text files up to 1 MB can be edited. Save creates a separate copy.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)

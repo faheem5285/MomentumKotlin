@@ -84,7 +84,10 @@ fun InsightsScreen(vm: HabitViewModel) {
 
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+        contentPadding = PaddingValues(
+            horizontal = MomentumTokens.screenPadding,
+            vertical = MomentumTokens.space2
+        ),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {

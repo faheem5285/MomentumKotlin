@@ -1,3 +1,5 @@
+@file:Suppress("CyclomaticComplexMethod", "ReturnCount")
+
 package com.faheem.habits.features.battery
 
 import android.app.usage.UsageStatsManager
@@ -170,17 +172,11 @@ internal object BatteryUsageEstimator {
         } catch (_: Exception) {
             return emptyList()
         }
-        val pm = context.packageManager
         return stats.values.asSequence()
             .filter { it.packageName != context.packageName && it.totalTimeInForeground >= MIN_FOREGROUND_MS }
             .sortedByDescending { it.totalTimeInForeground }
             .take(30)
             .map { usage ->
-                val label = try {
-                    pm.getApplicationLabel(pm.getApplicationInfo(usage.packageName, 0)).toString()
-                } catch (_: Exception) {
-                    usage.packageName
-                }
                 val identity = installedAppIdentity(context, usage.packageName)
                 ForegroundApp(usage.packageName, identity.label, identity.icon, usage.totalTimeInForeground / 60_000L)
             }

@@ -12,16 +12,9 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.Intent
-import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
-import android.graphics.LinearGradient
-import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.PixelFormat
-import android.graphics.RadialGradient
-import android.graphics.Shader
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.BatteryManager
 import android.os.Build
 import android.app.KeyguardManager
@@ -141,7 +134,7 @@ private object ChargeAnimationOverlay {
     private var window: View? = null
     private var manager: WindowManager? = null
     private var percentView: TextView? = null
-    private var chargingGraphic: ChargingGraphic? = null
+    private var chargingGraphic: ChargingAnimationView? = null
     private var percentEstimator: BatteryPercentEstimator? = null
     private var percentTicker: Runnable? = null
     private var batteryReceiver: BroadcastReceiver? = null
@@ -161,68 +154,86 @@ private object ChargeAnimationOverlay {
             val reading = currentBattery(appContext)
             val estimator = BatteryPercentEstimator(reading.first, true, SystemClock.elapsedRealtime())
             val initialPercent = estimator.estimate(SystemClock.elapsedRealtime())
-                val root = FrameLayout(appContext).apply {
-                setBackgroundColor(AndroidColor.argb(96, 16, 6, 36))
+            val style = BatteryAnimationPreferences.style(appContext)
+            val root = FrameLayout(appContext).apply {
+                setBackgroundColor(AndroidColor.TRANSPARENT)
                 isClickable = true
                 setOnClickListener { dismissInternal() }
             }
-            val card = LinearLayout(appContext).apply {
+            val graphic = ChargingAnimationView(appContext, initialPercent, style)
+            root.addView(graphic, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+
+            val status = LinearLayout(appContext).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_HORIZONTAL
-                setPadding(dp(appContext, 26), dp(appContext, 22), dp(appContext, 26), dp(appContext, 22))
-                background = GradientDrawable(
-                    GradientDrawable.Orientation.TL_BR,
-                    intArrayOf(AndroidColor.rgb(26, 12, 48), AndroidColor.rgb(8, 47, 74))
-                ).apply {
-                    cornerRadius = dp(appContext, 30).toFloat()
-                    setStroke(dp(appContext, 1), AndroidColor.argb(120, 139, 92, 246))
-                }
-                elevation = dp(appContext, 16).toFloat()
             }
-            val top = LinearLayout(appContext).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-            top.addView(TextView(appContext).apply {
-                text = "CHARGING"
-                textSize = 13f
-                letterSpacing = .12f
-                setTextColor(AndroidColor.rgb(165, 243, 252))
-                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            }, LinearLayout.LayoutParams(0, dp(appContext, 32), 1f))
-            top.addView(TextView(appContext).apply {
-                text = "×"
-                textSize = 28f
-                gravity = Gravity.CENTER
-                setTextColor(AndroidColor.WHITE)
-                setOnClickListener { dismissInternal() }
-            }, LinearLayout.LayoutParams(dp(appContext, 36), dp(appContext, 36)))
-            card.addView(top)
-            val graphic = ChargingGraphic(appContext, initialPercent, BatteryAnimationPreferences.style(appContext))
-            card.addView(graphic, LinearLayout.LayoutParams(dp(appContext, 190), dp(appContext, 174)).apply { gravity = Gravity.CENTER_HORIZONTAL })
             val percentage = TextView(appContext).apply {
                 text = formatEstimatedPercent(initialPercent)
-                textSize = 38f
+                textSize = 36f
                 gravity = Gravity.CENTER
                 setTextColor(AndroidColor.WHITE)
                 typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                setShadowLayer(dp(appContext, 10).toFloat(), 0f, 0f, AndroidColor.argb(180, 0, 0, 0))
                 contentDescription = "Estimated battery level. Android reports whole percentages."
             }
-            card.addView(percentage, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(appContext, 48)))
-            card.addView(TextView(appContext).apply {
-                text = "${reading.second} · ${BatteryAnimationPreferences.style(appContext)} animation"
+            status.addView(percentage, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            status.addView(TextView(appContext).apply {
+                text = "${reading.second} · $style"
                 textSize = 13f
                 gravity = Gravity.CENTER
-                setTextColor(AndroidColor.argb(220, 255, 255, 255))
-            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(appContext, 28)))
-            root.addView(card, FrameLayout.LayoutParams(dp(appContext, 330), WindowManager.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+                setTextColor(AndroidColor.argb(225, 255, 255, 255))
+                setShadowLayer(dp(appContext, 8).toFloat(), 0f, 0f, AndroidColor.argb(180, 0, 0, 0))
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            status.addView(TextView(appContext).apply {
+                text = "Tap anywhere to dismiss"
+                textSize = 10.5f
+                gravity = Gravity.CENTER
+                letterSpacing = 0.08f
+                setTextColor(AndroidColor.argb(160, 255, 255, 255))
+                setShadowLayer(dp(appContext, 6).toFloat(), 0f, 0f, AndroidColor.argb(160, 0, 0, 0))
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            root.addView(
+                status,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                ).apply { bottomMargin = dp(appContext, 72) }
+            )
+            root.addView(
+                TextView(appContext).apply {
+                    text = "×"
+                    textSize = 26f
+                    gravity = Gravity.CENTER
+                    setTextColor(AndroidColor.argb(220, 255, 255, 255))
+                    setShadowLayer(dp(appContext, 8).toFloat(), 0f, 0f, AndroidColor.argb(180, 0, 0, 0))
+                    setOnClickListener { dismissInternal() }
+                },
+                FrameLayout.LayoutParams(
+                    dp(appContext, 48),
+                    dp(appContext, 48),
+                    Gravity.TOP or Gravity.END
+                ).apply {
+                    topMargin = dp(appContext, 32)
+                    marginEnd = dp(appContext, 18)
+                }
+            )
+
             val layoutParams = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT
-            ).apply { gravity = Gravity.CENTER }
+            ).apply {
+                gravity = Gravity.CENTER
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+            }
                 wm.addView(root, layoutParams)
                 window = root
                 manager = wm
@@ -253,7 +264,7 @@ private object ChargeAnimationOverlay {
                 percentTicker = ticker
                 handler.post(ticker)
                 handler.removeCallbacks(dismissTask)
-                handler.postDelayed(dismissTask, 6_500)
+                handler.postDelayed(dismissTask, 10_000)
                 BatteryAnimationDiagnostics.record(appContext, "Charging overlay shown", "WindowManager added the ${BatteryAnimationPreferences.style(appContext)} animation. Screen interactive=true, overlay permission=true, battery=${reading.first}%, source=${reading.second}.")
             } catch (error: Throwable) {
                 BatteryAnimationDiagnostics.error(appContext, "Charging overlay failed", error)
@@ -290,178 +301,6 @@ private object ChargeAnimationOverlay {
     private fun formatEstimatedPercent(percent: Float) = String.format(Locale.ROOT, "%.2f%%", percent.coerceIn(0f, 100f))
 }
 
-private class ChargingGraphic(context: Context, private var percent: Float, private val style: String) : View(context) {
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val handler = Handler(Looper.getMainLooper())
-    private var phase = 0f
-    private val frame = object : Runnable {
-        override fun run() {
-            phase = (phase + .035f) % 1f
-            invalidate()
-            handler.postDelayed(this, 32)
-        }
-    }
-
-    init { handler.post(frame) }
-
-    fun updatePercent(value: Float) {
-        percent = value.coerceIn(0f, 100f)
-        invalidate()
-    }
-
-    override fun onDetachedFromWindow() {
-        handler.removeCallbacks(frame)
-        super.onDetachedFromWindow()
-    }
-
-    @Suppress("CyclomaticComplexMethod", "LongMethod")
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val cx = width / 2f
-        val cy = height / 2f
-        val radius = dp(context, 68).toFloat()
-        val pulse = (.5f + .5f * kotlin.math.sin(phase * Math.PI * 2)).toFloat()
-        if (style == "Glow") {
-            paint.style = Paint.Style.FILL
-            paint.shader = RadialGradient(cx, cy, radius * (1.25f + .28f * pulse), intArrayOf(AndroidColor.argb(78, 74, 255, 161), AndroidColor.TRANSPARENT), null, Shader.TileMode.CLAMP)
-            canvas.drawCircle(cx, cy, radius * (1.25f + .28f * pulse), paint)
-            paint.shader = null
-        }
-        if (style == "Liquid Glass") {
-            val cellWidth = dp(context, 62).toFloat()
-            val cellHeight = dp(context, 102).toFloat()
-            val left = cx - cellWidth / 2
-            val top = cy - cellHeight / 2 + dp(context, 6)
-            val corner = dp(context, 16).toFloat()
-            val cell = Path().apply {
-                addRoundRect(left, top, left + cellWidth, top + cellHeight, corner, corner, Path.Direction.CW)
-            }
-            paint.style = Paint.Style.FILL
-            paint.color = AndroidColor.argb(120, 255, 255, 255)
-            canvas.drawRoundRect(
-                cx - dp(context, 20), top - dp(context, 7),
-                cx + dp(context, 20), top,
-                dp(context, 4).toFloat(), dp(context, 4).toFloat(), paint
-            )
-            paint.color = AndroidColor.argb(26, 255, 255, 255)
-            canvas.drawPath(cell, paint)
-            val inset = dp(context, 8).toFloat()
-            val inner = Path().apply {
-                addRoundRect(
-                    left + inset, top + inset,
-                    left + cellWidth - inset, top + cellHeight - inset,
-                    corner * .7f, corner * .7f, Path.Direction.CW
-                )
-            }
-            val innerHeight = cellHeight - inset * 2
-            val liquidTop = top + inset + innerHeight * (1f - percent / 100f)
-            val wave = dp(context, 4).toFloat()
-            val liquid = Path().apply {
-                moveTo(left + inset, top + cellHeight - inset)
-                lineTo(left + inset, liquidTop)
-                val steps = 24
-                for (step in 0..steps) {
-                    val t = step / steps.toFloat()
-                    lineTo(
-                        left + inset + (cellWidth - inset * 2) * t,
-                        liquidTop + kotlin.math.sin(t * Math.PI * 3 + phase * Math.PI * 2).toFloat() * wave
-                    )
-                }
-                lineTo(left + cellWidth - inset, top + cellHeight - inset)
-                close()
-            }
-            canvas.save()
-            canvas.clipPath(inner)
-            paint.shader = LinearGradient(
-                0f, liquidTop, 0f, top + cellHeight,
-                intArrayOf(
-                    AndroidColor.rgb(103, 232, 249),
-                    AndroidColor.rgb(139, 92, 246),
-                    AndroidColor.rgb(192, 38, 211)
-                ),
-                null, Shader.TileMode.CLAMP
-            )
-            paint.color = AndroidColor.WHITE
-            canvas.drawPath(liquid, paint)
-            paint.shader = null
-            canvas.restore()
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = dp(context, 2).toFloat()
-            paint.color = AndroidColor.argb(200, 255, 255, 255)
-            canvas.drawPath(cell, paint)
-            return
-        }
-        if (style == "Plasma Storm") {
-            paint.style = Paint.Style.FILL
-            paint.shader = RadialGradient(
-                cx, cy, radius * (1.15f + .25f * pulse),
-                intArrayOf(AndroidColor.argb(96, 34, 211, 238), AndroidColor.TRANSPARENT),
-                null, Shader.TileMode.CLAMP
-            )
-            canvas.drawCircle(cx, cy, radius * (1.15f + .25f * pulse), paint)
-            paint.shader = null
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = dp(context, 10).toFloat()
-            paint.strokeCap = Paint.Cap.ROUND
-            paint.color = AndroidColor.argb(60, 255, 255, 255)
-            canvas.drawArc(cx - radius, cy - radius, cx + radius, cy + radius, 0f, 360f, false, paint)
-            paint.color = AndroidColor.rgb(34, 211, 238)
-            canvas.drawArc(cx - radius, cy - radius, cx + radius, cy + radius, -90f, 360f * percent / 100f, false, paint)
-            paint.strokeWidth = dp(context, 2).toFloat()
-            paint.color = AndroidColor.rgb(165, 243, 252)
-            repeat(6) { boltIndex ->
-                val baseAngle = (boltIndex * 60f + phase * 150f) * (Math.PI / 180)
-                val bolt = Path()
-                val segments = 8
-                for (segment in 0..segments) {
-                    val t = segment / segments.toFloat()
-                    val angle = baseAngle + (t - .5f) * .55f
-                    val jitter = (
-                        kotlin.math.sin((boltIndex * 3 + segment * 5).toDouble() + phase * 8) * .5 + .5
-                        ).toFloat() * dp(context, 6)
-                    val r = radius * .82f + if (segment % 2 == 0) jitter else -jitter
-                    val x = cx + kotlin.math.cos(angle).toFloat() * r
-                    val y = cy + kotlin.math.sin(angle).toFloat() * r
-                    if (segment == 0) bolt.moveTo(x, y) else bolt.lineTo(x, y)
-                }
-                canvas.drawPath(bolt, paint)
-            }
-            paint.style = Paint.Style.FILL
-            paint.color = AndroidColor.argb(140, 224, 242, 254)
-            canvas.drawCircle(cx, cy, dp(context, 8) * pulse, paint)
-            return
-        }
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = dp(context, 11).toFloat()
-        paint.strokeCap = Paint.Cap.ROUND
-        paint.color = AndroidColor.argb(70, 255, 255, 255)
-        canvas.drawArc(cx - radius, cy - radius, cx + radius, cy + radius, 0f, 360f, false, paint)
-        paint.color = AndroidColor.rgb(117, 255, 177)
-        if (style == "Pulse") paint.alpha = (176 + pulse * 79).toInt() else paint.alpha = 255
-        canvas.drawArc(cx - radius, cy - radius, cx + radius, cy + radius, -90f, 360f * percent / 100f, false, paint)
-        if (style == "Flow") {
-            paint.style = Paint.Style.FILL
-            paint.color = AndroidColor.WHITE
-            for (i in 0..2) {
-                val angle = phase * Math.PI * 2 + i * Math.PI * 2 / 3
-                canvas.drawCircle(cx + kotlin.math.cos(angle).toFloat() * radius, cy + kotlin.math.sin(angle).toFloat() * radius, dp(context, 4).toFloat(), paint)
-            }
-        }
-        val bolt = Path().apply {
-            moveTo(cx + dp(context, 5), cy - dp(context, 29))
-            lineTo(cx - dp(context, 19), cy + dp(context, 4))
-            lineTo(cx - dp(context, 2), cy + dp(context, 4))
-            lineTo(cx - dp(context, 7), cy + dp(context, 29))
-            lineTo(cx + dp(context, 20), cy - dp(context, 2))
-            lineTo(cx + dp(context, 3), cy - dp(context, 2))
-            close()
-        }
-        paint.style = Paint.Style.FILL
-        paint.color = AndroidColor.WHITE
-        canvas.drawPath(bolt, paint)
-        paint.alpha = 255
-    }
-}
 
 private fun postChargingNotification(context: Context) {
     if (!MomentumNotificationSettings.notificationsAllowed(context)) {
@@ -486,7 +325,7 @@ private fun postChargingNotification(context: Context) {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
     val notification = NotificationCompat.Builder(context, BatteryAnimationPreferences.NOTIFICATION_CHANNEL)
-        .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
+        .setSmallIcon(R.drawable.ic_stat_zylo)
         .setContentTitle("Charging animation")
         .setContentText("Tap to view your ${BatteryAnimationPreferences.style(context)} charging animation.")
         .setCategory(NotificationCompat.CATEGORY_STATUS)

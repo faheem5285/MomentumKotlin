@@ -21,7 +21,7 @@ object MomentumBackup {
     private const val APP_PREFS = "momentum_app_settings"
     private const val MONEY_PREFS = "momentum"
 
-    data class Preview(val habits: Int, val expenses: Int, val todos: Int, val files: Int, val loans: Int, val replace: Boolean = false)
+    data class Preview(val habits: Int, val expenses: Int, val todos: Int, val files: Int, val loans: Int, val rules: Int = 0, val notifications: Int = 0, val replace: Boolean = false)
 
     suspend fun export(context: Context, destination: Uri) = withContext(Dispatchers.IO) {
         val bytes = exportBytes(context)
@@ -70,8 +70,23 @@ object MomentumBackup {
                 .put("title",t.title).put("notes",t.notes).put("dueEpochDay",t.dueEpochDay).put("completed",t.completed)
                 .put("category",t.category).put("priority",t.priority)
                 .put("reminderHour",t.reminderHour ?: JSONObject.NULL).put("reminderMinute",t.reminderMinute ?: JSONObject.NULL)) }
+            val lifeRules = lifeRulesJson(db)
+            val customNotifications = JSONArray()
+            db.customNotificationDao().getAllForBackup().forEach { n ->
+                customNotifications.put(
+                    meta(n.uuid, n.updatedAt, n.deleted, n.dirty)
+                        .put("title", n.title).put("message", n.message)
+                        .put("repeatMode", n.repeatMode).put("hour", n.hour).put("minute", n.minute)
+                        .put("dateEpochDay", n.dateEpochDay ?: JSONObject.NULL)
+                        .put("daysMask", n.daysMask).put("dayOfMonth", n.dayOfMonth)
+                        .put("enabled", n.enabled)
+                        .put("lastDeliveredEpochMillis", n.lastDeliveredEpochMillis)
+                )
+            }
             result.put("habits",habits).put("completions",completions).put("reminders",reminders)
                 .put("expenses",expenses).put("loans",loans).put("files",files).put("todos",todos)
+                .put("lifeRules", lifeRules)
+                .put("customNotifications", customNotifications)
                 .put("budgets", exportPreferences(context.getSharedPreferences(MONEY_PREFS, Context.MODE_PRIVATE), setOf("budget", "budget_minor_units"), "money_limit_"))
                 .put("settings", exportPreferences(context.getSharedPreferences(APP_PREFS, Context.MODE_PRIVATE), emptySet(), "module_enabled_").put("permission_setup_seen", context.getSharedPreferences(APP_PREFS, Context.MODE_PRIVATE).getBoolean("permission_setup_seen", false)))
             result
@@ -83,8 +98,15 @@ object MomentumBackup {
 
     suspend fun preview(context: Context, source: Uri): Preview = withContext(Dispatchers.IO) {
         val root = readRoot(context, source)
-        Preview(root.getJSONArray("habits").length(), root.getJSONArray("expenses").length(), root.getJSONArray("todos").length(),
-            root.getJSONArray("files").length(), root.getJSONArray("loans").length())
+        Preview(
+            habits = root.getJSONArray("habits").length(),
+            expenses = root.getJSONArray("expenses").length(),
+            todos = root.getJSONArray("todos").length(),
+            files = root.getJSONArray("files").length(),
+            loans = root.getJSONArray("loans").length(),
+            rules = root.optJSONArray("lifeRules")?.length() ?: 0,
+            notifications = root.optJSONArray("customNotifications")?.length() ?: 0
+        )
     }
 
     suspend fun restore(context: Context, source: Uri, replace: Boolean): String = withContext(Dispatchers.IO) {
@@ -100,6 +122,8 @@ object MomentumBackup {
         db.withTransaction {
             if (replace) {
                 db.toDoDao().deleteAll(); db.fileDao().deleteAll(); db.loanDao().deleteAll(); db.expenseDao().deleteAll()
+                db.lifeRuleDao().deleteAll()
+                db.customNotificationDao().deleteAll()
                 db.habitDao().deleteAllReminders(); db.habitDao().deleteAllCompletions(); db.habitDao().deleteAllHabits()
                 clearExportedPreferences(context.getSharedPreferences(MONEY_PREFS, Context.MODE_PRIVATE), setOf("budget", "budget_minor_units"), "money_limit_")
                 clearExportedPreferences(context.getSharedPreferences(APP_PREFS, Context.MODE_PRIVATE), setOf("permission_setup_seen"), "module_enabled_")
@@ -143,10 +167,42 @@ object MomentumBackup {
             for(i in 0 until todos.length()) { val o=todos.getJSONObject(i); val uuid=validUuid(o); val hour=if(o.isNull("reminderHour")) null else o.getInt("reminderHour"); val minute=if(o.isNull("reminderMinute")) null else o.getInt("reminderMinute")
                 require((hour==null || hour in 0..23)&&(minute==null || minute in 0..59)) { "Invalid task reminder time." }
                 if(db.toDoDao().getByUuid(uuid)==null) { db.toDoDao().insertImported(ToDoItem(title=o.getString("title"),notes=o.optString("notes"),dueEpochDay=o.getLong("dueEpochDay"),completed=o.optBoolean("completed"),category=o.optString("category","Personal"),priority=o.optInt("priority",1),reminderHour=hour,reminderMinute=minute,uuid=uuid,updatedAt=o.optLong("updatedAt"),deleted=o.optBoolean("deleted"),dirty=o.optBoolean("dirty",true))); added++ } }
+            val lifeRules=root.optJSONArray("lifeRules")
+            if (lifeRules != null) for(i in 0 until lifeRules.length()) { val o=lifeRules.getJSONObject(i); val uuid=validUuid(o)
+                require(o.getString("title").isNotBlank() && o.getString("title").length<=300) { "Invalid life rule title." }
+                if(db.lifeRuleDao().getByUuid(uuid)==null) { db.lifeRuleDao().upsertForSync(LifeRule(title=o.getString("title"),body=o.optString("body"),kind=o.optString("kind","Rule"),pinned=o.optBoolean("pinned"),createdEpochDay=o.optLong("createdEpochDay"),uuid=uuid,updatedAt=o.optLong("updatedAt"),deleted=o.optBoolean("deleted"),dirty=o.optBoolean("dirty",true))); added++ } }
+            val customNotifications=root.optJSONArray("customNotifications")
+            if (customNotifications != null) for(i in 0 until customNotifications.length()) {
+                val o=customNotifications.getJSONObject(i); val uuid=validUuid(o)
+                val title=o.getString("title"); val hour=o.getInt("hour"); val minute=o.getInt("minute")
+                val repeatMode=o.optString("repeatMode","once")
+                require(title.isNotBlank() && title.length<=300) { "Invalid notification title." }
+                require(hour in 0..23 && minute in 0..59) { "Invalid notification time." }
+                require(repeatMode in setOf("once","daily","weekly","monthly")) { "Invalid notification repeat mode." }
+                if(db.customNotificationDao().getByUuid(uuid)==null) {
+                    val date=if(o.isNull("dateEpochDay")) null else o.getLong("dateEpochDay")
+                    db.customNotificationDao().insert(CustomNotification(title=title,message=o.optString("message"),repeatMode=repeatMode,hour=hour,minute=minute,dateEpochDay=date,daysMask=o.optInt("daysMask",ALL_DAYS),dayOfMonth=o.optInt("dayOfMonth",1).coerceIn(1,31),enabled=o.optBoolean("enabled",true),lastDeliveredEpochMillis=o.optLong("lastDeliveredEpochMillis",0),uuid=uuid,updatedAt=o.optLong("updatedAt"),deleted=o.optBoolean("deleted"),dirty=o.optBoolean("dirty",true)))
+                    added++
+                }
+            }
             importPreferences(root.optJSONObject("budgets"), context.getSharedPreferences(MONEY_PREFS, Context.MODE_PRIVATE), setOf("budget", "budget_minor_units"), "money_limit_")
             importPreferences(root.optJSONObject("settings"), context.getSharedPreferences(APP_PREFS, Context.MODE_PRIVATE), setOf("permission_setup_seen"), "module_enabled_")
         }
         return "${if(replace) "Replaced with" else "Added"} $added new records. Repeating an import will not duplicate UUIDs. Vault entries are kept separately and were not imported."
+    }
+
+    private suspend fun lifeRulesJson(db: AppDatabase): JSONArray {
+        val rules = JSONArray()
+        db.lifeRuleDao().getAllForBackup().forEach { r ->
+            rules.put(
+                JSONObject()
+                    .put("uuid", r.uuid).put("updatedAt", r.updatedAt)
+                    .put("deleted", r.deleted).put("dirty", r.dirty)
+                    .put("title", r.title).put("body", r.body).put("kind", r.kind)
+                    .put("pinned", r.pinned).put("createdEpochDay", r.createdEpochDay)
+            )
+        }
+        return rules
     }
 
     private fun exportPreferences(prefs: android.content.SharedPreferences, exact: Set<String>, prefix: String): JSONObject = JSONObject().apply {

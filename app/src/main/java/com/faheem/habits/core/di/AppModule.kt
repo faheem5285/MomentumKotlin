@@ -3,8 +3,10 @@ package com.faheem.habits.core.di
 import android.content.Context
 import androidx.room.Room
 import com.faheem.habits.core.data.AppDatabase
+import com.faheem.habits.core.data.CustomNotificationDao
 import com.faheem.habits.core.data.ExpenseDao
 import com.faheem.habits.core.data.FileDao
+import com.faheem.habits.core.data.LifeRuleDao
 import com.faheem.habits.core.data.ToDoDao
 import dagger.Module
 import dagger.Provides
@@ -28,4 +30,10 @@ object AppModule {
 
     @Provides
     fun provideFileDao(database: AppDatabase): FileDao = database.fileDao()
+
+    @Provides
+    fun provideLifeRuleDao(database: AppDatabase): LifeRuleDao = database.lifeRuleDao()
+
+    @Provides
+    fun provideCustomNotificationDao(database: AppDatabase): CustomNotificationDao = database.customNotificationDao()
 }

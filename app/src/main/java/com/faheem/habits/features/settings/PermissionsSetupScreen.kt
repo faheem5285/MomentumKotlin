@@ -12,30 +12,23 @@ import android.os.Process
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -53,8 +46,11 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.faheem.habits.core.ui.GlassTopBar
 import com.faheem.habits.core.ui.HeroCard
+import com.faheem.habits.core.ui.IconBubble
 import com.faheem.habits.core.ui.InfoBanner
+import com.faheem.habits.core.ui.MomentumTokens
 import com.faheem.habits.core.ui.PremiumCard
 import com.faheem.habits.core.ui.PrimaryButton
 import com.faheem.habits.core.ui.Positive
@@ -154,65 +150,62 @@ fun PermissionsSetupScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val fraction = if (total == 0) 0f else configured.toFloat() / total
 
     ScreenBackground(modifier = modifier, tint = MaterialTheme.colorScheme.primary) {
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back to settings")
-            }
-            Text("Permissions", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-        }
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(18.dp, 4.dp, 18.dp, 36.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            item {
-                HeroCard {
-                    Text("Optional access", fontSize = 13.sp, color = Color.White.copy(alpha = .84f))
-                    Text("$configured of $total enabled", fontSize = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp)
-                    Spacer(Modifier.height(12.dp))
-                    ProgressBar(fraction, Color.White, Color.White.copy(alpha = .25f))
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Grant access only for features you want. You can change these choices later in Settings.",
-                        fontSize = 12.5.sp, color = Color.White.copy(alpha = .9f)
+        Column(Modifier.fillMaxSize()) {
+            GlassTopBar("Permissions", onBack = onBack)
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    horizontal = MomentumTokens.screenPadding,
+                    vertical = MomentumTokens.space1
+                ),
+                verticalArrangement = Arrangement.spacedBy(MomentumTokens.space2)
+            ) {
+                item {
+                    HeroCard {
+                        Text("Optional access", fontSize = 13.sp, color = Color.White.copy(alpha = .84f))
+                        Text("$configured of $total enabled", fontSize = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp)
+                        Spacer(Modifier.height(12.dp))
+                        ProgressBar(fraction, Color.White, Color.White.copy(alpha = .25f))
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Grant access only for features you want. You can change these choices later in Settings.",
+                            fontSize = 12.5.sp, color = Color.White.copy(alpha = .9f)
+                        )
+                    }
+                }
+                item {
+                    InfoBanner(
+                        icon = Icons.Rounded.Info,
+                        text = "Settings names vary by Android version and manufacturer. If a page does not open, find Zylo under Settings → Apps and review Autostart, Battery saver and Background restrictions.",
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
-            }
-            item {
-                InfoBanner(
-                    icon = Icons.Rounded.Info,
-                    text = "Settings names vary by Android version and manufacturer. If a page does not open, find Zylo under Settings → Apps and review Autostart, Battery saver and Background restrictions.",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-            item { SectionHeader("Android access", subtitle = "Tap a card to configure it") }
-            items(permissions.size) { index ->
-                PermissionSetupCard(permissions[index])
-            }
-            item {
-                Text(
-                    "You can continue without enabling anything. Habits, to-dos, money, loans, files and the password vault remain available; related features may be limited until you enable their access.",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp)
-                )
-            }
-            item {
-                PrimaryButton("Continue to Zylo", onClick = onBack, icon = Icons.Rounded.CheckCircle)
-            }
-            if (openingSettings > 0) item {
-                Text(
-                    "Could not open that settings page. Open Android Settings → Apps → Zylo and locate the setting manually.",
-                    color = MaterialTheme.colorScheme.error,
-                    fontSize = 12.sp
-                )
+                item { SectionHeader("Android access", subtitle = "Tap a card to configure it") }
+                items(permissions.size) { index ->
+                    PermissionSetupCard(permissions[index])
+                }
+                item {
+                    Text(
+                        "You can continue without enabling anything. Habits, to-dos, money, loans, files and the password vault remain available; related features may be limited until you enable their access.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp)
+                    )
+                }
+                item {
+                    PrimaryButton("Continue to Zylo", onClick = onBack, icon = Icons.Rounded.CheckCircle)
+                }
+                if (openingSettings > 0) {
+                    item {
+                        Text(
+                            "Could not open that settings page. Open Android Settings → Apps → Zylo and locate the setting manually.",
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
             }
         }
-    }
     }
 }
 
@@ -225,18 +218,11 @@ private fun PermissionSetupCard(item: SetupPermission) {
     }
     PremiumCard(contentPadding = PaddingValues(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = tint.copy(alpha = 0.12f),
-                border = BorderStroke(1.dp, tint.copy(alpha = 0.18f))
-            ) {
-                Icon(
-                    if (item.state == PermissionState.ENABLED) Icons.Rounded.CheckCircle else Icons.Rounded.Security,
-                    contentDescription = null,
-                    tint = tint,
-                    modifier = Modifier.padding(8.dp).width(20.dp).height(20.dp)
-                )
-            }
+            IconBubble(
+                if (item.state == PermissionState.ENABLED) Icons.Rounded.CheckCircle else Icons.Rounded.Security,
+                tint,
+                40.dp
+            )
             Spacer(Modifier.width(12.dp))
             Text(item.title, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
             StatusPill(
@@ -256,15 +242,7 @@ private fun PermissionSetupCard(item: SetupPermission) {
         when (item.state) {
             PermissionState.UNAVAILABLE -> SecondaryButton("View app settings", onClick = item.action)
             PermissionState.ENABLED -> SecondaryButton("Manage setting", onClick = item.action)
-            PermissionState.DISABLED -> Button(
-                onClick = item.action,
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                )
-            ) { Text("Enable / configure", style = MaterialTheme.typography.labelLarge) }
+            PermissionState.DISABLED -> PrimaryButton("Enable / configure", onClick = item.action)
         }
     }
 }

@@ -72,6 +72,13 @@ import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
 
+enum class VaultImportAction(val label: String, val description: String) {
+    Insert("Insert", "Add only records that do not already exist"),
+    Update("Update", "Replace matching records; ignore new records"),
+    Upsert("Upsert", "Add new records and update matching records"),
+    Overwrite("Overwrite", "Delete the current vault records, then import")
+}
+
 class VaultViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = AppDatabase.get(app).vaultDao()
     private val prefs = app.getSharedPreferences("momentum_vault", Context.MODE_PRIVATE)
@@ -277,7 +284,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
         output.use { it.write(bytes) }
     }
 
-    suspend fun importEncrypted(source: Uri, key: ByteArray): Int = withContext(Dispatchers.IO) {
+    suspend fun importEncrypted(source: Uri, key: ByteArray, action: VaultImportAction): Int = withContext(Dispatchers.IO) {
         val resolver = getApplication<android.app.Application>().contentResolver
         val bytes = resolver.openInputStream(source)?.use { input ->
             input.readBytes().also {
@@ -310,11 +317,10 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                 add(record)
             }
         }
-        dao.upsertAll(imported)
-        imported.size
+        applyImport(imported, action)
     }
 
-    suspend fun importCsv(source: Uri, key: ByteArray): Int = withContext(Dispatchers.IO) {
+    suspend fun importCsv(source: Uri, key: ByteArray, action: VaultImportAction): Int = withContext(Dispatchers.IO) {
         val resolver = getApplication<android.app.Application>().contentResolver
         val text = resolver.openInputStream(source)?.use { input ->
             input.readBytes().also {
@@ -359,8 +365,24 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         require(records.isNotEmpty()) { "No usable records were found in the CSV file." }
-        dao.upsertAll(records)
-        records.size
+        applyImport(records, action)
+    }
+
+    private suspend fun applyImport(records: List<VaultRecord>, action: VaultImportAction): Int {
+        when (action) {
+            VaultImportAction.Insert -> dao.insertImportedAll(records.map { it.copy(id = 0) })
+            VaultImportAction.Update -> records.forEach { incoming ->
+                dao.getByUuid(incoming.uuid)?.let { existing ->
+                    dao.update(incoming.copy(id = existing.id))
+                }
+            }
+            VaultImportAction.Upsert -> dao.upsertAll(records)
+            VaultImportAction.Overwrite -> {
+                dao.deleteAll()
+                dao.upsertAll(records.map { it.copy(id = 0) })
+            }
+        }
+        return records.size
     }
 
     private fun parseCsv(text: String): List<List<String>> {
@@ -431,6 +453,7 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
     var selected by remember { mutableStateOf<VaultListItem?>(null) }
     var deleteTarget by remember { mutableStateOf<VaultListItem?>(null) }
     var exportMessage by remember { mutableStateOf<String?>(null) }
+    var pendingImport by remember { mutableStateOf<Pair<Uri, Boolean>?>(null) }
     var externalFilePickerOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val vaultExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
@@ -445,31 +468,52 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
     }
     val vaultImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         externalFilePickerOpen = false
-        val key = sessionKey
-        if (uri != null && key != null) scope.launch {
-            busy = true
-            exportMessage = try {
-                val count = vm.importEncrypted(uri, key)
-                refresh++
-                "Imported $count encrypted vault record${if (count == 1) "" else "s"}."
-            } catch (e: Exception) {
-                "Vault import failed: ${e.message ?: "unknown error"}"
-            } finally { busy = false }
+        if (uri != null && sessionKey != null) {
+            pendingImport = uri to true
         }
     }
     val csvImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         externalFilePickerOpen = false
-        val key = sessionKey
-        if (uri != null && key != null) scope.launch {
-            busy = true
-            exportMessage = try {
-                val count = vm.importCsv(uri, key)
-                refresh++
-                "Imported $count CSV record${if (count == 1) "" else "s"}."
-            } catch (e: Exception) {
-                "CSV import failed: ${e.message ?: "unknown error"}"
-            } finally { busy = false }
+        if (uri != null) {
+            pendingImport = uri to false
         }
+    }
+    pendingImport?.let { (uri, encrypted) ->
+        MomentumDialog(
+            onDismissRequest = { pendingImport = null },
+            title = { Text("Import action") },
+            text = { Text("Choose how the selected vault records should be imported.") },
+            confirmButton = {
+                Column {
+                    VaultImportAction.entries.forEach { action ->
+                        TextButton(onClick = {
+                            pendingImport = null
+                            val key = sessionKey ?: return@TextButton
+                            scope.launch {
+                                busy = true
+                                exportMessage = try {
+                                    val count = if (encrypted) {
+                                        vm.importEncrypted(uri, key, action)
+                                    } else {
+                                        vm.importCsv(uri, key, action)
+                                    }
+                                    refresh++
+                                    "${action.label}: imported $count vault record${if (count == 1) "" else "s"}."
+                                } catch (e: Exception) {
+                                    "Vault import failed: ${e.message ?: "unknown error"}"
+                                } finally { busy = false }
+                            }
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Column(horizontalAlignment = Alignment.Start) {
+                                Text(action.label)
+                                Text(action.description, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            },
+            dismissButton = { TextButton(onClick = { pendingImport = null }) { Text("Cancel") } }
+        )
     }
 
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
@@ -646,7 +690,7 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
         if (key != null) VaultDetailSheet(item, onDismiss = { selected = null }, onEdit = { editing = item; editorOpen = true; selected = null }, onDelete = { deleteTarget = item; selected = null })
     }
     deleteTarget?.let { item ->
-        AlertDialog(
+        MomentumDialog(
             onDismissRequest = { deleteTarget = null }, title = { Text("Delete secure item?") },
             text = { Text("${item.secret.title} will be permanently removed from this vault.") },
             confirmButton = {
@@ -673,7 +717,7 @@ private fun VaultGate(
     var showPassword by remember { mutableStateOf(false) }
     var localError by remember(configured) { mutableStateOf<String?>(null) }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.Center) {
+    Column(Modifier.fillMaxSize().padding(horizontal = MomentumTokens.screenPadding, vertical = 16.dp), verticalArrangement = Arrangement.Center) {
         LazyColumn(
             contentPadding = PaddingValues(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -702,15 +746,27 @@ private fun VaultGate(
                 }
             }
             item {
-                OutlinedTextField(master, { master = it.take(128); localError = null }, modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Master password") }, singleLine = true, shape = RoundedCornerShape(16.dp),
+                MomentumTextField(
+                    value = master,
+                    onValueChange = { master = it.take(128); localError = null },
+                    label = { Text("Master password") },
+                    singleLine = true,
                     visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = { IconButton(onClick = { showPassword = !showPassword }) { Icon(if (showPassword) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, "Show or hide master password") } })
+                    trailingIcon = {
+                        IconButton(onClick = { showPassword = !showPassword }) {
+                            Icon(if (showPassword) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, "Show or hide master password")
+                        }
+                    }
+                )
             }
             if (!configured) item {
-                OutlinedTextField(confirm, { confirm = it.take(128); localError = null }, modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Confirm master password") }, singleLine = true, shape = RoundedCornerShape(16.dp),
-                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation())
+                MomentumTextField(
+                    value = confirm,
+                    onValueChange = { confirm = it.take(128); localError = null },
+                    label = { Text("Confirm master password") },
+                    singleLine = true,
+                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation()
+                )
             }
             if (localError != null || error != null) item {
                 InfoBanner(icon = Icons.Rounded.Warning, text = localError ?: error.orEmpty(), tint = MaterialTheme.colorScheme.error)
@@ -769,10 +825,31 @@ private fun VaultHome(
         }
     }
     val health = vaultHealthReport(items)
+    val logins = items.count { it.secret.type != "note" }
+    val notes = items.size - logins
+    val typeSlices = buildList {
+        if (logins > 0) add(ChartSlice("Logins", logins.toFloat(), chartColor(0)))
+        if (notes > 0) add(ChartSlice("Secure notes", notes.toFloat(), chartColor(1)))
+    }
+    val healthSlices = if (logins > 0) {
+        val issues = health.weak + health.reused + health.duplicates
+        val strong = (logins - issues).coerceAtLeast(0)
+        buildList {
+            if (strong > 0) add(ChartSlice("Healthy", strong.toFloat(), chartColor(3)))
+            if (health.weak > 0) add(ChartSlice("Weak", health.weak.toFloat(), chartColor(4)))
+            if (health.reused > 0) add(ChartSlice("Reused", health.reused.toFloat(), chartColor(2)))
+            if (health.duplicates > 0) add(ChartSlice("Duplicate", health.duplicates.toFloat(), chartColor(6)))
+        }
+    } else {
+        emptyList()
+    }
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
-                HeroCard(modifier = Modifier.padding(horizontal = 2.dp), contentPadding = 14.dp) {
+                HeroCard(
+                    modifier = Modifier.padding(horizontal = 2.dp).height(118.dp),
+                    contentPadding = 10.dp
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Private password vault", fontSize = 12.sp, color = Color.White.copy(alpha = .84f))
@@ -807,11 +884,42 @@ private fun VaultHome(
                     tint = if (issues > 0) MaterialTheme.colorScheme.tertiary else Positive
                 )
             }
+            if (items.isNotEmpty()) item {
+                PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                    Text("Vault mix", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text(
+                        "$logins login${if (logins == 1) "" else "s"} · $notes secure note${if (notes == 1) "" else "s"}",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        DonutChart(
+                            typeSlices,
+                            Modifier.weight(1f),
+                            centerValue = items.size.toString(),
+                            centerLabel = "items"
+                        )
+                        ChartLegend(typeSlices, Modifier.weight(1.1f))
+                    }
+                }
+            }
+            if (healthSlices.isNotEmpty()) item {
+                PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                    Text("Password health", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text(
+                        "How saved logins score across weak, reused and duplicate checks.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    CompositionBar(healthSlices) { it.toInt().toString() }
+                }
+            }
             item {
-                OutlinedTextField(
-                    query,
-                    { query = it },
-                    modifier = Modifier.fillMaxWidth(),
+                MomentumTextField(
+                    value = query,
+                    onValueChange = { query = it },
                     singleLine = true,
                     placeholder = { Text("Search passwords and notes") },
                     leadingIcon = { Icon(Icons.Rounded.Search, null) },
@@ -821,19 +929,20 @@ private fun VaultHome(
                                 Icon(Icons.Rounded.Clear, "Clear search")
                             }
                         }
-                    },
-                    shape = RoundedCornerShape(18.dp)
+                    }
                 )
             }
             item {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("All", "Logins", "Secure notes").forEach { label -> FilterChip(type == label, { type = label }, label = { Text(label) }) }
+                    listOf("All", "Logins", "Secure notes").forEach { label ->
+                        MomentumChip(selected = type == label, onClick = { type = label }, label = label)
+                    }
                 }
             }
             item {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     vaultCategories.forEach { label ->
-                        FilterChip(category == label, { category = label }, label = { Text(label) })
+                        MomentumChip(selected = category == label, onClick = { category = label }, label = label)
                     }
                 }
             }
@@ -843,21 +952,21 @@ private fun VaultHome(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FilterChip(
+                    MomentumChip(
                         selected = favoritesOnly,
                         onClick = { favoritesOnly = !favoritesOnly },
-                        label = { Text("Favorites") },
-                        leadingIcon = { Icon(Icons.Rounded.Star, null) }
+                        label = "Favorites",
+                        icon = Icons.Rounded.Star
                     )
-                    FilterChip(
+                    MomentumChip(
                         selected = attentionOnly,
                         onClick = { attentionOnly = !attentionOnly },
-                        label = { Text("Needs attention") },
-                        leadingIcon = { Icon(Icons.Rounded.Warning, null) }
+                        label = "Needs attention",
+                        icon = Icons.Rounded.Warning
                     )
                     Text("Sort", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     listOf("Recent", "Name", "Favorites").forEach { option ->
-                        FilterChip(sort == option, { sort = option }, label = { Text(option) })
+                        MomentumChip(selected = sort == option, onClick = { sort = option }, label = option)
                     }
                 }
             }
@@ -884,14 +993,11 @@ private fun VaultHome(
                 )
             }
         }
-        ExtendedFloatingActionButton(onClick = onAdd, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text("Add secure item", fontWeight = FontWeight.SemiBold) },
-            shape = RoundedCornerShape(20.dp),
-            containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary,
-            elevation = FloatingActionButtonDefaults.elevation(
-                defaultElevation = MomentumTokens.elevationHigh,
-                pressedElevation = MomentumTokens.elevationMedium
-            ),
-            modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp))
+        MomentumFab(
+            text = "Add secure item",
+            onClick = onAdd,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(MomentumTokens.screenPadding)
+        )
     }
 }
 
@@ -961,14 +1067,20 @@ private fun VaultDetailSheet(item: VaultListItem, onDismiss: () -> Unit, onEdit:
             if (secret.website.isNotBlank()) VaultValue("Website", secret.website) { copySensitive(context, secret.website) }
             if (secret.username.isNotBlank()) VaultValue("Username", secret.username) { copySensitive(context, secret.username) }
             if (secret.password.isNotBlank()) {
-                OutlinedTextField(value = secret.password, onValueChange = {}, readOnly = true, label = { Text("Password") }, singleLine = true,
-                    visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+                MomentumTextField(
+                    value = secret.password,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
                     trailingIcon = {
                         Row {
                             IconButton(onClick = { reveal = !reveal }) { Icon(if (reveal) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, "Show or hide password") }
                             IconButton(onClick = { copySensitive(context, secret.password) }) { Icon(Icons.Rounded.ContentCopy, "Copy password") }
                         }
-                    })
+                    }
+                )
             }
             if (secret.totp.isNotBlank()) VaultValue("TOTP secret", secret.totp) { copySensitive(context, secret.totp) }
         }
@@ -986,8 +1098,14 @@ private fun VaultDetailSheet(item: VaultListItem, onDismiss: () -> Unit, onEdit:
 
 @Composable
 private fun VaultValue(label: String, value: String, onCopy: () -> Unit) {
-    OutlinedTextField(value = value, onValueChange = {}, readOnly = true, label = { Text(label) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-        trailingIcon = { IconButton(onClick = onCopy) { Icon(Icons.Rounded.ContentCopy, "Copy $label") } })
+    MomentumTextField(
+        value = value,
+        onValueChange = {},
+        readOnly = true,
+        label = { Text(label) },
+        singleLine = true,
+        trailingIcon = { IconButton(onClick = onCopy) { Icon(Icons.Rounded.ContentCopy, "Copy $label") } }
+    )
 }
 
 @Composable
@@ -998,6 +1116,7 @@ private fun VaultEntryEditor(initial: VaultListItem?, onDismiss: () -> Unit, onS
     var username by remember(initial?.id) { mutableStateOf(initial?.secret?.username ?: "") }
     var password by remember(initial?.id) { mutableStateOf(initial?.secret?.password ?: "") }
     var notes by remember(initial?.id) { mutableStateOf(initial?.secret?.notes ?: "") }
+    var folder by remember(initial?.id) { mutableStateOf(initial?.secret?.folder ?: "") }
     var favorite by remember(initial?.id) { mutableStateOf(initial?.secret?.favorite ?: false) }
     var category by remember(initial?.id) {
         mutableStateOf(initial?.secret?.let(::inferredVaultCategory) ?: "Other")
@@ -1007,25 +1126,59 @@ private fun VaultEntryEditor(initial: VaultListItem?, onDismiss: () -> Unit, onS
 
     FormSheet(if (initial == null) "Add secure item" else "Edit secure item", onDismiss) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(type == "login", { type = "login" }, label = { Text("Login") }, leadingIcon = { Icon(Icons.Rounded.Key, null) })
-            FilterChip(type == "note", { type = "note" }, label = { Text("Secure note") }, leadingIcon = { Icon(Icons.AutoMirrored.Rounded.StickyNote2, null) })
+            MomentumChip(selected = type == "login", onClick = { type = "login" }, label = "Login", icon = Icons.Rounded.Key)
+            MomentumChip(selected = type == "note", onClick = { type = "note" }, label = "Secure note", icon = Icons.AutoMirrored.Rounded.StickyNote2)
         }
-        OutlinedTextField(title, { title = it; error = null }, modifier = Modifier.fillMaxWidth(), label = { Text("Title") }, placeholder = { Text(if (type == "login") "e.g. Email, Bank" else "e.g. Recovery codes") }, singleLine = true, shape = RoundedCornerShape(14.dp))
+        MomentumTextField(
+            value = title,
+            onValueChange = { title = it; error = null },
+            label = { Text("Title") },
+            placeholder = { Text(if (type == "login") "e.g. Email, Bank" else "e.g. Recovery codes") },
+            singleLine = true
+        )
+        MomentumTextField(
+            value = folder,
+            onValueChange = { folder = it.trimStart('/') },
+            label = { Text("Folder / subfolder (optional)") },
+            placeholder = { Text("Personal/Accounts") },
+            singleLine = true
+        )
         if (type == "login") {
             Text("Section", style = MaterialTheme.typography.labelLarge)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 vaultCategories.drop(1).forEach { label ->
-                    FilterChip(category == label, { category = label }, label = { Text(label) })
+                    MomentumChip(selected = category == label, onClick = { category = label }, label = label)
                 }
             }
-            OutlinedTextField(website, { website = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Website (optional)") }, singleLine = true, shape = RoundedCornerShape(14.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-            OutlinedTextField(username, { username = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Username or email") }, singleLine = true, shape = RoundedCornerShape(14.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email))
-            OutlinedTextField(password, { password = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true,
-                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(), shape = RoundedCornerShape(14.dp),
-                trailingIcon = { IconButton(onClick = { showPassword = !showPassword }) { Icon(if (showPassword) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, "Show or hide password") } })
-            OutlinedTextField(notes, { notes = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Notes (optional)") }, minLines = 2, maxLines = 5, shape = RoundedCornerShape(14.dp))
+            MomentumTextField(
+                value = website,
+                onValueChange = { website = it },
+                label = { Text("Website (optional)") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
+            )
+            MomentumTextField(
+                value = username,
+                onValueChange = { username = it },
+                label = { Text("Username or email") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+            )
+            MomentumTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Password") },
+                singleLine = true,
+                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { showPassword = !showPassword }) {
+                        Icon(if (showPassword) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, "Show or hide password")
+                    }
+                }
+            )
+            MomentumTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes (optional)") }, minLines = 2, maxLines = 5)
         } else {
-            OutlinedTextField(notes, { notes = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Secure note") }, minLines = 5, maxLines = 12, shape = RoundedCornerShape(14.dp))
+            MomentumTextField(value = notes, onValueChange = { notes = it }, label = { Text("Secure note") }, minLines = 5, maxLines = 12)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = favorite, onCheckedChange = { favorite = it })
@@ -1038,12 +1191,12 @@ private fun VaultEntryEditor(initial: VaultListItem?, onDismiss: () -> Unit, onS
             else onSave(
                 if (type == "login") VaultSecret(
                     title.trim(), type, username.trim(), password, website.trim(), notes.trim(),
-                    initial?.secret?.folder ?: "", initial?.secret?.tags ?: "", favorite,
+                    folder.trim('/'), initial?.secret?.tags ?: "", favorite,
                     initial?.secret?.totp ?: "", category
                 )
                 else VaultSecret(
                     title.trim(), type, "", "", "", notes.trim(),
-                    initial?.secret?.folder ?: "", initial?.secret?.tags ?: "", favorite,
+                    folder.trim('/'), initial?.secret?.tags ?: "", favorite,
                     category = "Other"
                 )
             )

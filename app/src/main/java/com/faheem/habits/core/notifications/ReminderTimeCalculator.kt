@@ -28,4 +28,24 @@ internal object ReminderTimeCalculator {
         return LocalDate.ofEpochDay(item.dueEpochDay).atTime(hour, minute).atZone(now.zone)
             .takeIf { it.isAfter(now) }
     }
+
+    /** Next occurrence of one of the built-in reminder types. */
+    fun nextScheduled(
+        hour: Int,
+        minute: Int,
+        weekly: Boolean,
+        calendarWeekday: Int,
+        now: ZonedDateTime
+    ): ZonedDateTime? {
+        val targetDay = if (weekly) {
+            java.time.DayOfWeek.of(((calendarWeekday + 5) % 7) + 1)
+        } else {
+            null
+        }
+        return (0L..7L).asSequence()
+            .map { now.toLocalDate().plusDays(it).atTime(hour, minute).atZone(now.zone) }
+            .firstOrNull { candidate ->
+                candidate.isAfter(now) && (targetDay == null || candidate.dayOfWeek == targetDay)
+            }
+    }
 }

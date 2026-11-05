@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -75,42 +76,44 @@ fun HeroCard(
                     )
                 )
         )
-        // Decorative glass rings.
-        Box(
-            Modifier
-                .align(Alignment.TopEnd)
-                .offset(x = 66.dp, y = (-104).dp)
-                .size(228.dp)
-                .border(1.dp, colors.last().copy(alpha = 0.42f), CircleShape)
-        )
-        Box(
-            Modifier
-                .align(Alignment.TopEnd)
-                .offset(x = 98.dp, y = (-72).dp)
-                .size(150.dp)
-                .border(1.dp, Color.White.copy(alpha = 0.20f), CircleShape)
-        )
-        // Soft light bloom plus a darker corner for depth.
-        Box(
-            Modifier
-                .align(Alignment.TopEnd)
-                .offset(x = 58.dp, y = (-84).dp)
-                .size(210.dp)
-                .background(
-                    Brush.radialGradient(listOf(Color.White.copy(alpha = 0.24f), Color.White.copy(alpha = 0f))),
-                    CircleShape
-                )
-        )
-        Box(
-            Modifier
-                .align(Alignment.BottomStart)
-                .offset(x = (-64).dp, y = 74.dp)
-                .size(190.dp)
-                .background(
-                    Brush.radialGradient(listOf(Color.Black.copy(alpha = 0.16f), Color.Black.copy(alpha = 0f))),
-                    CircleShape
-                )
-        )
+        Box(Modifier.matchParentSize()) {
+            // Decorative glass rings.
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 66.dp, y = (-104).dp)
+                    .size(228.dp)
+                    .border(1.dp, colors.last().copy(alpha = 0.42f), CircleShape)
+            )
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 98.dp, y = (-72).dp)
+                    .size(150.dp)
+                    .border(1.dp, Color.White.copy(alpha = 0.20f), CircleShape)
+            )
+            // Soft light bloom plus a darker corner for depth.
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 58.dp, y = (-84).dp)
+                    .size(210.dp)
+                    .background(
+                        Brush.radialGradient(listOf(Color.White.copy(alpha = 0.24f), Color.White.copy(alpha = 0f))),
+                        CircleShape
+                    )
+            )
+            Box(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .offset(x = (-64).dp, y = 74.dp)
+                    .size(190.dp)
+                    .background(
+                        Brush.radialGradient(listOf(Color.Black.copy(alpha = 0.16f), Color.Black.copy(alpha = 0f))),
+                        CircleShape
+                    )
+            )
+        }
         // Neon light drifting across the pane.
         Box(
             Modifier
@@ -287,7 +290,12 @@ fun ProgressBar(
 }
 
 @Composable
-fun ProgressRing(progress: Float, label: String, modifier: Modifier = Modifier) {
+fun ProgressRing(
+    progress: Float,
+    label: String,
+    modifier: Modifier = Modifier,
+    caption: String = "today"
+) {
     val anim by animateFloatAsState(progress.coerceIn(0f, 1f), tween(700), label = "ring")
     Box(
         modifier
@@ -327,7 +335,7 @@ fun ProgressRing(progress: Float, label: String, modifier: Modifier = Modifier) 
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(label, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White)
-            Text("today", fontSize = 10.sp, color = Color.White.copy(alpha = 0.75f))
+            Text(caption, fontSize = 10.sp, color = Color.White.copy(alpha = 0.75f))
         }
     }
 }
@@ -355,25 +363,42 @@ val categories = listOf(
 
 fun catOf(name: String): Cat = categories.firstOrNull { it.name == name } ?: categories.last()
 
-val BrandGradient = listOf(Color(0xFF4C1D95), Color(0xFF6D28D9), Color(0xFF0E7490))
+val BrandGradient = listOf(
+    Color(0xFF2E1065),
+    Color(0xFF6D28D9),
+    Color(0xFF0891B2),
+    Color(0xFF22D3EE)
+)
 
 // Each module provides its own gradient; HeroCard reads it automatically.
 val LocalGradient = compositionLocalOf { BrandGradient }
 
 /**
  * Module identity: label, icon and signature gradient.
- * Gradients are deep, electric neon tones so white hero content stays readable
- * while the card still throws coloured light onto the glass around it.
+ *
+ * Every gradient runs deep -> vivid -> bright so it works in three ways:
+ *  - the deep stop anchors hero panels and screen backgrounds,
+ *  - the vivid middle stop is the readable accent for text, charts and glows,
+ *  - the bright stop catches the light on glass edges and card corners.
  */
 enum class AppModule(val label: String, val icon: ImageVector, val gradient: List<Color>) {
-    Habits("Habits", Icons.Rounded.CheckCircle, listOf(Color(0xFF6D28D9), Color(0xFFA855F7))),
-    ToDos("To-dos", Icons.Rounded.CalendarMonth, listOf(Color(0xFF0E7490), Color(0xFF06B6D4))),
-    Money("Money", Icons.Rounded.AccountBalanceWallet, listOf(Color(0xFF047857), Color(0xFF10B981))),
-    Loans("Loans", Icons.Rounded.SwapHoriz, listOf(Color(0xFFBE123C), Color(0xFFFB7185))),
-    Files("Files", Icons.Rounded.Folder, listOf(Color(0xFF1D4ED8), Color(0xFF6366F1))),
-    Screen("Screen time", Icons.Rounded.Timer, listOf(Color(0xFF7E22CE), Color(0xFFD946EF))),
-    Vault("Vault", Icons.Rounded.Lock, listOf(Color(0xFF0F766E), Color(0xFF14B8A6))),
-    Battery("Battery", Icons.Rounded.BatteryChargingFull, listOf(Color(0xFF4D7C0F), Color(0xFF84CC16))),
-    Network("Network", Icons.Rounded.Wifi, listOf(Color(0xFF3730A3), Color(0xFF6366F1))),
-    Settings("Settings", Icons.Rounded.Settings, listOf(Color(0xFF334155), Color(0xFF475569)))
+    Habits("Habits", Icons.Rounded.CheckCircle, listOf(Color(0xFF4C1D95), Color(0xFF8B5CF6), Color(0xFFD8B4FE))),
+    ToDos("To-dos", Icons.Rounded.CalendarMonth, listOf(Color(0xFF155E75), Color(0xFF06B6D4), Color(0xFF67E8F9))),
+    Money("Money", Icons.Rounded.AccountBalanceWallet, listOf(Color(0xFF064E3B), Color(0xFF10B981), Color(0xFF6EE7B7))),
+    Loans("Loans", Icons.Rounded.SwapHoriz, listOf(Color(0xFF881337), Color(0xFFF43F5E), Color(0xFFFDA4AF))),
+    Contacts("Contacts", Icons.Rounded.People, listOf(Color(0xFF164E63), Color(0xFF0891B2), Color(0xFF67E8F9))),
+    Files("Files", Icons.Rounded.Folder, listOf(Color(0xFF1E3A8A), Color(0xFF3B82F6), Color(0xFF93C5FD))),
+    LifeRules("Life rules", Icons.AutoMirrored.Rounded.MenuBook, listOf(Color(0xFF78350F), Color(0xFFF59E0B), Color(0xFFFDE68A))),
+    Screen("Screen time", Icons.Rounded.Timer, listOf(Color(0xFF581C87), Color(0xFFA855F7), Color(0xFFE879F9))),
+    Vault("Vault", Icons.Rounded.Lock, listOf(Color(0xFF134E4A), Color(0xFF14B8A6), Color(0xFF5EEAD4))),
+    Battery("Battery", Icons.Rounded.BatteryChargingFull, listOf(Color(0xFF365314), Color(0xFF84CC16), Color(0xFFBEF264))),
+    Network("Network", Icons.Rounded.Wifi, listOf(Color(0xFF312E81), Color(0xFF6366F1), Color(0xFFA5B4FC))),
+    Supabase("Supabase", Icons.Rounded.Cloud, listOf(Color(0xFF14532D), Color(0xFF22C55E), Color(0xFF86EFAC))),
+    Settings("Settings", Icons.Rounded.Settings, listOf(Color(0xFF1E293B), Color(0xFF64748B), Color(0xFFCBD5E1)));
+
+    /** Readable, saturated accent for text, charts and small icons. */
+    val accent: Color get() = gradient.getOrElse(1) { gradient.first() }
+
+    /** Deepest tone, used for screen washes and hero backgrounds. */
+    val deep: Color get() = gradient.first()
 }

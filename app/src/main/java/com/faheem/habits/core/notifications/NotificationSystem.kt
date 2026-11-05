@@ -1,18 +1,14 @@
 @file:Suppress("LongParameterList", "CyclomaticComplexMethod", "ComplexCondition")
 
 package com.faheem.habits.core.notifications
-import com.faheem.habits.app.MainActivity
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.ui.*
 
 import android.app.AlarmManager
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -39,7 +35,11 @@ data class ReminderKind(
     val weekly: Boolean
 )
 
-data class ScheduledReminderPreview(val title: String, val triggerAtMillis: Long)
+data class ScheduledReminderPreview(
+    val title: String,
+    val triggerAtMillis: Long,
+    val source: String = "reminder"
+)
 
 val ReminderKinds = listOf(
     ReminderKind("habits", "Habit check-in", "Take a moment to check in with today's habits.", AppModule.Habits, false),
@@ -63,6 +63,8 @@ private const val ACTION_TEST = "com.faheem.habits.REMINDER_TEST"
 private fun enabledKey(id: String) = "enabled_$id"
 private fun alarmCode(id: String) = 5400 + (ReminderKinds.indexOfFirst { it.id == id }.coerceAtLeast(0))
 private fun channelId(id: String) = "reminder_$id"
+private fun groupId(id: String) = "zylo.$id"
+private fun targetModule(module: AppModule) = module.name.lowercase()
 
 private fun actionPendingIntent(
     context: Context,
@@ -146,22 +148,7 @@ object MomentumNotificationSettings {
 
 object MomentumReminderScheduler {
     fun createChannels(context: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        ReminderKinds.forEach { kind ->
-            manager.createNotificationChannel(
-                NotificationChannel(channelId(kind.id), kind.title, NotificationManager.IMPORTANCE_DEFAULT).apply {
-                    description = "Scheduled ${kind.title.lowercase()} notifications from Zylo."
-                    lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
-                }
-            )
-        }
-        manager.createNotificationChannel(
-            NotificationChannel("todo_reminders", "To-do reminders", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Reminders for tasks scheduled in Zylo."
-                lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
-            }
-        )
+        ZyloNotifications.ensureChannels(context)
         scheduleSafetyNet(context)
     }
 
@@ -180,30 +167,50 @@ object MomentumReminderScheduler {
         ReminderKinds.forEach { schedule(context, it.id) }
         HabitReminderScheduler.rescheduleAll(context)
         ToDoReminderScheduler.rescheduleAll(context)
+        CustomNotificationScheduler.rescheduleAll(context)
     }
 
     suspend fun rescheduleAllNow(context: Context) {
         ReminderKinds.forEach { schedule(context, it.id) }
         HabitReminderScheduler.rescheduleAllNow(context)
         ToDoReminderScheduler.rescheduleAllNow(context)
+        CustomNotificationScheduler.rescheduleAllNow(context)
     }
 
     suspend fun nextTen(context: Context): List<ScheduledReminderPreview> {
+        if (!MomentumNotificationSettings.masterEnabled(context)) return emptyList()
         val now = ZonedDateTime.now()
         val db = AppDatabase.get(context)
         val habitDao = db.habitDao()
         val habits = habitDao.getRemindersForScheduling().mapNotNull { reminder ->
             val habit = habitDao.getHabit(reminder.habitId) ?: return@mapNotNull null
             ReminderTimeCalculator.nextHabit(reminder, now)?.let {
-                ScheduledReminderPreview(habit.name, it.toInstant().toEpochMilli())
+                ScheduledReminderPreview(habit.name, it.toInstant().toEpochMilli(), "habit")
             }
         }
         val todos = db.toDoDao().getItemsForScheduling().mapNotNull { item ->
             ReminderTimeCalculator.nextTodo(item, now)?.let {
-                ScheduledReminderPreview(item.title, it.toInstant().toEpochMilli())
+                ScheduledReminderPreview(item.title, it.toInstant().toEpochMilli(), "todo")
             }
         }
-        return (habits + todos).sortedBy { it.triggerAtMillis }.take(10)
+        val customs = db.customNotificationDao().getForScheduling().mapNotNull { notification ->
+            CustomNotificationTimeCalculator.next(notification, now)?.let {
+                ScheduledReminderPreview(notification.title, it.toInstant().toEpochMilli(), "custom")
+            }
+        }
+        val builtIns = ReminderKinds.mapNotNull { kind ->
+            if (!MomentumNotificationSettings.isEnabled(context, kind.id)) return@mapNotNull null
+            ReminderTimeCalculator.nextScheduled(
+                MomentumNotificationSettings.hour(context, kind.id),
+                MomentumNotificationSettings.minute(context, kind.id),
+                kind.weekly,
+                MomentumNotificationSettings.weekday(context, kind.id),
+                now
+            )?.let {
+                ScheduledReminderPreview(kind.title, it.toInstant().toEpochMilli(), kind.id)
+            }
+        }
+        return (habits + todos + customs + builtIns).sortedBy { it.triggerAtMillis }.take(10)
     }
 
     fun scheduleTestReminder(context: Context) {
@@ -226,47 +233,33 @@ object MomentumReminderScheduler {
             alarms.cancel(pendingIntent)
             return
         }
-        val now = Calendar.getInstance()
-        val next = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, MomentumNotificationSettings.hour(context, kind.id))
-            set(Calendar.MINUTE, MomentumNotificationSettings.minute(context, kind.id))
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-            if (kind.weekly) {
-                set(Calendar.DAY_OF_WEEK, MomentumNotificationSettings.weekday(context, kind.id))
-                if (timeInMillis <= now.timeInMillis) add(Calendar.WEEK_OF_YEAR, 1)
-            } else if (timeInMillis <= now.timeInMillis) add(Calendar.DAY_OF_YEAR, 1)
+        val now = ZonedDateTime.now()
+        val next = ReminderTimeCalculator.nextScheduled(
+            MomentumNotificationSettings.hour(context, kind.id),
+            MomentumNotificationSettings.minute(context, kind.id),
+            kind.weekly,
+            MomentumNotificationSettings.weekday(context, kind.id),
+            now
+        )
+        if (next == null) {
+            alarms.cancel(pendingIntent)
+            return
         }
-        setAlarm(alarms, next.timeInMillis, pendingIntent)
+        setAlarm(alarms, next.toInstant().toEpochMilli(), pendingIntent)
     }
 
     fun postAndReschedule(context: Context, id: String) {
         val kind = ReminderKinds.firstOrNull { it.id == id } ?: return
         if (MomentumNotificationSettings.masterEnabled(context) && MomentumNotificationSettings.isEnabled(context, id) && MomentumNotificationSettings.notificationsAllowed(context)) {
-            createChannels(context)
-            val openApp = PendingIntent.getActivity(
-                context, alarmCode(id), Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val notification = NotificationCompat.Builder(context, channelId(id))
-                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            ZyloNotifications.ensureChannels(context)
+            val notification = ZyloNotifications.base(context, channelId(id))
                 .setContentTitle(kind.title)
                 .setContentText(kind.message)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(kind.message))
-                .setCategory(NotificationCompat.CATEGORY_REMINDER)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-                .setAutoCancel(true)
-                .setContentIntent(openApp)
-                .setGroup("momentum_${kind.id}")
+                .setContentIntent(ZyloNotifications.openApp(context, alarmCode(id), targetModule(kind.module)))
+                .setGroup(groupId(id))
                 .build()
-            if (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(
-                    context,
-                    android.Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED
-            ) {
-                runCatching { NotificationManagerCompat.from(context).notify(alarmCode(id), notification) }
-            }
+            ZyloNotifications.post(context, alarmCode(id), notification)
         }
         schedule(context, id)
     }
@@ -345,26 +338,26 @@ object HabitReminderScheduler {
             MomentumNotificationSettings.isEnabled(context, "habits") && MomentumNotificationSettings.notificationsAllowed(context)
         ) {
             MomentumReminderScheduler.createChannels(context)
-            val notification = NotificationCompat.Builder(context, channelId("habits"))
-                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            val notification = ZyloNotifications.base(context, channelId("habits"))
                 .setContentTitle(habit.name)
                 .setContentText("Your habit reminder is ready.")
-                .setCategory(NotificationCompat.CATEGORY_REMINDER)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-                .setAutoCancel(true)
-                .setContentIntent(PendingIntent.getActivity(
-                    context, requestCode(reminderId), Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                ))
-                .setGroup("momentum_habits")
+                .setContentIntent(ZyloNotifications.openApp(context, requestCode(reminderId), targetModule(AppModule.Habits)))
+                .setGroup(ZyloNotifications.GROUP_HABITS)
                 .addAction(0, "Done", actionPendingIntent(context, ACTION_DONE, requestCode(reminderId), "reminder_id", reminderId))
                 .addAction(0, "Snooze 5m", actionPendingIntent(context, ACTION_SNOOZE, requestCode(reminderId) + 1, "reminder_id", reminderId, 5))
                 .addAction(0, "Snooze 15m", actionPendingIntent(context, ACTION_SNOOZE, requestCode(reminderId) + 2, "reminder_id", reminderId, 15))
                 .addAction(0, "Snooze 60m", actionPendingIntent(context, ACTION_SNOOZE, requestCode(reminderId) + 3, "reminder_id", reminderId, 60))
                 .addAction(0, "Skip", actionPendingIntent(context, ACTION_SKIP, requestCode(reminderId) + 4, "reminder_id", reminderId))
                 .build()
-            runCatching { NotificationManagerCompat.from(context).notify(requestCode(reminderId), notification) }
+            ZyloNotifications.postGrouped(
+                context,
+                ZyloNotifications.GROUP_HABITS,
+                channelId("habits"),
+                requestCode(reminderId),
+                notification,
+                ZyloNotifications.SUMMARY_HABITS,
+                "Habit reminders"
+            )
         }
         if (reminder.dateEpochDay != null) {
             dao.updateReminder(reminder.copy(enabled = false))
@@ -448,27 +441,26 @@ object ToDoReminderScheduler {
         if (!item.completed && !MomentumNotificationSettings.isQuietHours(context) &&
             MomentumNotificationSettings.masterEnabled(context) && MomentumNotificationSettings.notificationsAllowed(context)) {
             MomentumReminderScheduler.createChannels(context)
-            val openApp = PendingIntent.getActivity(
-                context, requestCode(id), Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val notification = NotificationCompat.Builder(context, "todo_reminders")
-                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            val notification = ZyloNotifications.base(context, ZyloNotifications.CHANNEL_TODOS)
                 .setContentTitle(item.title)
                 .setContentText("Scheduled for today")
-                .setCategory(NotificationCompat.CATEGORY_REMINDER)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-                .setAutoCancel(true)
-                .setContentIntent(openApp)
-                .setGroup("momentum_todos")
+                .setContentIntent(ZyloNotifications.openApp(context, requestCode(id), targetModule(AppModule.ToDos)))
+                .setGroup(ZyloNotifications.GROUP_TODOS)
                 .addAction(0, "Done", actionPendingIntent(context, ACTION_DONE, requestCode(id), "todo_id", id))
                 .addAction(0, "Snooze 5m", actionPendingIntent(context, ACTION_SNOOZE, requestCode(id) + 1, "todo_id", id, 5))
                 .addAction(0, "Snooze 15m", actionPendingIntent(context, ACTION_SNOOZE, requestCode(id) + 2, "todo_id", id, 15))
                 .addAction(0, "Snooze 60m", actionPendingIntent(context, ACTION_SNOOZE, requestCode(id) + 3, "todo_id", id, 60))
                 .addAction(0, "Skip", actionPendingIntent(context, ACTION_SKIP, requestCode(id) + 4, "todo_id", id))
                 .build()
-            runCatching { NotificationManagerCompat.from(context).notify(requestCode(id), notification) }
+            ZyloNotifications.postGrouped(
+                context,
+                ZyloNotifications.GROUP_TODOS,
+                ZyloNotifications.CHANNEL_TODOS,
+                requestCode(id),
+                notification,
+                ZyloNotifications.SUMMARY_TODOS,
+                "To-do reminders"
+            )
         }
         dao.update(item.copy(reminderHour = null, reminderMinute = null))
         cancel(context, id)
@@ -496,35 +488,34 @@ class MomentumReminderReceiver : BroadcastReceiver() {
         when (intent?.action) {
             ACTION_TEST -> {
                 MomentumReminderScheduler.createChannels(context)
-                if (MomentumNotificationSettings.notificationsAllowed(context) &&
-                    (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                        ContextCompat.checkSelfPermission(
-                            context,
-                            "android.permission.POST_NOTIFICATIONS"
-                        ) == PackageManager.PERMISSION_GRANTED)
-                ) {
-                    NotificationManagerCompat.from(context).notify(
-                        59_999,
-                        NotificationCompat.Builder(context, channelId("habits"))
-                            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                            .setContentTitle("Zylo test reminder")
-                            .setContentText("Reminder delivery is working.")
-                            .setCategory(NotificationCompat.CATEGORY_REMINDER)
-                            .setAutoCancel(true)
-                            .build()
-                    )
-                }
+                val test = ZyloNotifications.base(context, ZyloNotifications.CHANNEL_STATUS)
+                    .setContentTitle("Zylo test reminder")
+                    .setContentText("Reminder delivery is working.")
+                    .setContentIntent(ZyloNotifications.openApp(context, 59_999))
+                    .setGroup(ZyloNotifications.GROUP_STATUS)
+                    .build()
+                ZyloNotifications.post(context, 59_999, test)
             }
             ACTION_DONE, ACTION_SNOOZE, ACTION_SKIP -> {
                 val pending = goAsync()
                 CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                     try {
+                        val customId = intent.getIntExtra("custom_id", -1)
                         val reminderId = intent.getIntExtra("reminder_id", -1)
                         val todoId = intent.getIntExtra("todo_id", -1)
                         val minutes = intent.getIntExtra("snooze_minutes", 15)
                         when {
+                            customId >= 0 -> when (intent.action) {
+                                ACTION_SNOOZE -> {
+                                    CustomNotificationScheduler.cancelNotification(context, customId)
+                                    CustomNotificationScheduler.snooze(context, customId, minutes)
+                                }
+
+                                else -> CustomNotificationScheduler.dismiss(context, customId)
+                            }
+
                             reminderId >= 0 -> {
-                                NotificationManagerCompat.from(context).cancel(20_000 + reminderId)
+                                ZyloNotifications.cancel(context, 20_000 + reminderId)
                                 when (intent.action) {
                                     ACTION_DONE -> {
                                         val dao = AppDatabase.get(context).habitDao()
@@ -540,9 +531,14 @@ class MomentumReminderReceiver : BroadcastReceiver() {
                                     ACTION_SNOOZE -> HabitReminderScheduler.snooze(context, reminderId, minutes)
                                     ACTION_SKIP -> HabitReminderScheduler.skip(context, reminderId)
                                 }
+                                ZyloNotifications.syncSummary(
+                                    context, ZyloNotifications.GROUP_HABITS,
+                                    ZyloNotifications.CHANNEL_HABITS,
+                                    ZyloNotifications.SUMMARY_HABITS, "Habit reminders"
+                                )
                             }
                             todoId >= 0 -> {
-                                NotificationManagerCompat.from(context).cancel(40_000 + todoId)
+                                ZyloNotifications.cancel(context, 40_000 + todoId)
                                 when (intent.action) {
                                     ACTION_DONE -> {
                                         val dao = AppDatabase.get(context).toDoDao()
@@ -554,6 +550,11 @@ class MomentumReminderReceiver : BroadcastReceiver() {
                                     ACTION_SNOOZE -> ToDoReminderScheduler.snooze(context, todoId, minutes)
                                     ACTION_SKIP -> ToDoReminderScheduler.skip(context, todoId)
                                 }
+                                ZyloNotifications.syncSummary(
+                                    context, ZyloNotifications.GROUP_TODOS,
+                                    ZyloNotifications.CHANNEL_TODOS,
+                                    ZyloNotifications.SUMMARY_TODOS, "To-do reminders"
+                                )
                             }
                         }
                     } finally {
@@ -589,6 +590,16 @@ class MomentumReminderReceiver : BroadcastReceiver() {
                     val pending = goAsync()
                     CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                         try { ToDoReminderScheduler.deliver(context, taskId) }
+                        finally { pending.finish() }
+                    }
+                }
+            }
+            "com.faheem.habits.CUSTOM_NOTIFICATION", "com.faheem.habits.CUSTOM_SNOOZE" -> {
+                val customId = intent.getIntExtra("custom_id", -1)
+                if (customId >= 0) {
+                    val pending = goAsync()
+                    CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                        try { CustomNotificationScheduler.deliver(context, customId) }
                         finally { pending.finish() }
                     }
                 }

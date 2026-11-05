@@ -1,3 +1,5 @@
+@file:Suppress("LongParameterList", "TooManyFunctions")
+
 package com.faheem.habits.core.data
 
 import android.content.Context
@@ -125,7 +127,41 @@ data class Expense(
     ,@ColumnInfo(defaultValue = "0") val categoryColor: Int = 0
 )
 
-@Entity(tableName = "loans", indices = [Index("settled"), Index("epochDay"), Index(value = ["uuid"], unique = true)])
+@Entity(tableName = "loan_people", indices = [Index("archived"), Index(value = ["uuid"], unique = true)])
+data class LoanPerson(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val name: String,
+    val phone: String = "",
+    val address: String = "",
+    val profileImageUri: String = "",
+    val notes: String = "",
+    val archived: Boolean = false,
+    @ColumnInfo(defaultValue = "''") val uuid: String = UUID.randomUUID().toString(),
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    @ColumnInfo(defaultValue = "1") val dirty: Boolean = true
+)
+
+@Entity(tableName = "contacts", indices = [Index("name"), Index(value = ["uuid"], unique = true)])
+data class Contact(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val name: String,
+    @ColumnInfo(defaultValue = "''") val phone: String = "",
+    @ColumnInfo(defaultValue = "''") val email: String = "",
+    @ColumnInfo(defaultValue = "''") val address: String = "",
+    @ColumnInfo(defaultValue = "''") val notes: String = "",
+    @ColumnInfo(defaultValue = "''") val profileImageUri: String = "",
+    @ColumnInfo(defaultValue = "''") val uuid: String = UUID.randomUUID().toString(),
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    @ColumnInfo(defaultValue = "1") val dirty: Boolean = true
+)
+
+@Entity(
+    tableName = "loans",
+    indices = [Index("settled"), Index("epochDay"), Index("personId"), Index("status"), Index(value = ["uuid"], unique = true)],
+    foreignKeys = [ForeignKey(entity = LoanPerson::class, parentColumns = ["id"], childColumns = ["personId"], onDelete = ForeignKey.SET_NULL)]
+)
 data class Loan(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val person: String,
@@ -139,6 +175,27 @@ data class Loan(
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
     @ColumnInfo(defaultValue = "1") val dirty: Boolean = true
     ,val dueEpochDay: Long? = null
+    ,@ColumnInfo(defaultValue = "''") val title: String = ""
+    ,@ColumnInfo(defaultValue = "'pending'") val status: String = "pending"
+    ,val personId: Int? = null
+)
+
+@Entity(
+    tableName = "loan_attachments",
+    indices = [Index("loanId"), Index(value = ["uuid"], unique = true)],
+    foreignKeys = [ForeignKey(entity = Loan::class, parentColumns = ["id"], childColumns = ["loanId"], onDelete = ForeignKey.CASCADE)]
+)
+data class LoanAttachment(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val loanId: Int,
+    val name: String,
+    val uri: String,
+    val mime: String = "",
+    @ColumnInfo(defaultValue = "0") val addedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "''") val uuid: String = UUID.randomUUID().toString(),
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    @ColumnInfo(defaultValue = "1") val dirty: Boolean = true
 )
 
 @Entity(
@@ -219,6 +276,71 @@ data class ToDoItem(
     ,@ColumnInfo(defaultValue = "''") val labels: String = ""
     ,val parentId: Int? = null
     ,@ColumnInfo(defaultValue = "0") val sortOrder: Long = 0
+)
+
+/** A user-written life rule, best habit or quote. */
+@Entity(
+    tableName = "life_rules",
+    indices = [Index("kind"), Index("pinned"), Index(value = ["uuid"], unique = true)]
+)
+data class LifeRule(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val title: String,
+    val body: String = "",
+    val kind: String = "Rule",        // Rule, Habit or Quote
+    val pinned: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val createdEpochDay: Long = 0,
+    @ColumnInfo(defaultValue = "''") val uuid: String = UUID.randomUUID().toString(),
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    @ColumnInfo(defaultValue = "1") val dirty: Boolean = true
+)
+
+@Entity(
+    tableName = "life_rule_files",
+    indices = [Index("ruleId"), Index(value = ["uuid"], unique = true)],
+    foreignKeys = [ForeignKey(entity = LifeRule::class, parentColumns = ["id"], childColumns = ["ruleId"], onDelete = ForeignKey.CASCADE)]
+)
+data class LifeRuleFile(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val ruleId: Int,
+    val name: String,
+    val uri: String,
+    val mime: String = "",
+    val folderPath: String = "",
+    @ColumnInfo(defaultValue = "0") val addedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "''") val uuid: String = UUID.randomUUID().toString(),
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    @ColumnInfo(defaultValue = "1") val dirty: Boolean = true
+)
+
+/**
+ * A notification written by the user and scheduled at a time they choose.
+ *
+ * Repeat modes are stored as plain strings so the local database stays easy to
+ * inspect and older backups remain readable.
+ */
+@Entity(
+    tableName = "custom_notifications",
+    indices = [Index("enabled"), Index("repeatMode"), Index(value = ["uuid"], unique = true)]
+)
+data class CustomNotification(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val title: String,
+    val message: String = "",
+    val repeatMode: String = "once",   // once, daily, weekly or monthly
+    val hour: Int = 9,
+    val minute: Int = 0,
+    val dateEpochDay: Long? = null,    // used by one-off notifications
+    val daysMask: Int = ALL_DAYS,      // bit0 = Mon ... bit6 = Sun, used by weekly
+    val dayOfMonth: Int = 1,           // used by monthly
+    val enabled: Boolean = true,
+    @ColumnInfo(defaultValue = "0") val lastDeliveredEpochMillis: Long = 0,
+    @ColumnInfo(defaultValue = "''") val uuid: String = UUID.randomUUID().toString(),
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    @ColumnInfo(defaultValue = "1") val dirty: Boolean = true
 )
 
 @Entity(
@@ -340,6 +462,7 @@ interface HabitDao {
 }
 
 @Dao
+@Suppress("TooManyFunctions")
 interface ExpenseDao {
     @Query("SELECT * FROM expenses")
     suspend fun getAllForSync(): List<Expense>
@@ -375,6 +498,37 @@ interface ExpenseDao {
 @Dao
 @Suppress("TooManyFunctions")
 interface LoanDao {
+    @Query("SELECT * FROM loan_people WHERE archived = 0 AND deleted = 0 ORDER BY name COLLATE NOCASE")
+    fun getPeople(): Flow<List<LoanPerson>>
+    @Insert suspend fun insertPerson(person: LoanPerson): Long
+    @Update suspend fun updatePerson(person: LoanPerson)
+    @Query("UPDATE loan_people SET archived = 1, updatedAt = :updatedAt, dirty = 1 WHERE id = :id")
+    suspend fun archivePerson(id: Int, updatedAt: Long = System.currentTimeMillis())
+    @Query("SELECT * FROM loan_people WHERE id = :id LIMIT 1")
+    suspend fun getPerson(id: Int): LoanPerson?
+    @Query("SELECT * FROM loan_people ORDER BY id")
+    suspend fun getAllPeopleForSync(): List<LoanPerson>
+    @Query("SELECT * FROM loan_people WHERE uuid = :uuid LIMIT 1")
+    suspend fun getPersonByUuid(uuid: String): LoanPerson?
+    @Query("UPDATE loan_people SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markPeopleClean(uuids: List<String>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertPersonForSync(person: LoanPerson)
+    @Query("SELECT * FROM loan_attachments ORDER BY id")
+    suspend fun getAllAttachmentsForSync(): List<LoanAttachment>
+    @Query("SELECT * FROM loan_attachments WHERE uuid = :uuid LIMIT 1")
+    suspend fun getAttachmentByUuid(uuid: String): LoanAttachment?
+    @Query("UPDATE loan_attachments SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markAttachmentsClean(uuids: List<String>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAttachmentForSync(attachment: LoanAttachment)
+    @Update suspend fun updateAttachment(attachment: LoanAttachment)
+    @Query("UPDATE loan_people SET archived = 1, deleted = 1, updatedAt = :updatedAt, dirty = 1 WHERE id = :id")
+    suspend fun deletePerson(id: Int, updatedAt: Long = System.currentTimeMillis())
+    @Query("SELECT * FROM loan_attachments WHERE loanId = :loanId ORDER BY addedAt DESC")
+    fun getAttachments(loanId: Int): Flow<List<LoanAttachment>>
+    @Insert suspend fun insertAttachment(attachment: LoanAttachment): Long
+    @Delete suspend fun deleteAttachment(attachment: LoanAttachment)
     @Query("SELECT * FROM loans")
     suspend fun getAllForSync(): List<Loan>
     @Query("SELECT * FROM loan_payments")
@@ -395,7 +549,7 @@ interface LoanDao {
     @Query("SELECT * FROM loans ORDER BY id")
     suspend fun getAllForBackup(): List<Loan>
 
-    @Insert suspend fun insert(loan: Loan)
+    @Insert suspend fun insert(loan: Loan): Long
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertImported(loan: Loan): Long
     @Query("SELECT * FROM loans WHERE uuid = :uuid LIMIT 1") suspend fun getByUuid(uuid: String): Loan?
     @Query("DELETE FROM loans") suspend fun deleteAll()
@@ -412,6 +566,7 @@ interface LoanDao {
 }
 
 @Dao
+@Suppress("TooManyFunctions")
 interface FileDao {
     @Query("SELECT * FROM library_files")
     suspend fun getAllForSync(): List<FileItem>
@@ -437,6 +592,9 @@ interface VaultDao {
     @Query("SELECT * FROM vault_entries ORDER BY updatedAt DESC")
     suspend fun getAll(): List<VaultRecord>
 
+    @Query("SELECT updatedAt FROM vault_entries ORDER BY updatedAt DESC")
+    fun observeUpdatedAt(): Flow<List<Long>>
+
     @Query("SELECT * FROM vault_entries WHERE uuid = :uuid LIMIT 1")
     suspend fun getByUuid(uuid: String): VaultRecord?
 
@@ -449,11 +607,21 @@ interface VaultDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(records: List<VaultRecord>)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertImportedAll(records: List<VaultRecord>)
+
+    @Update
+    suspend fun update(record: VaultRecord)
+
+    @Query("DELETE FROM vault_entries")
+    suspend fun deleteAll()
+
     @Query("DELETE FROM vault_entries WHERE id = :id")
     suspend fun delete(id: Int)
 }
 
 @Dao
+@Suppress("TooManyFunctions")
 interface ToDoDao {
     @Query("SELECT * FROM todo_items")
     suspend fun getAllForSync(): List<ToDoItem>
@@ -482,6 +650,90 @@ interface ToDoDao {
 }
 
 @Dao
+interface LifeRuleDao {
+    @Query("SELECT * FROM life_rules ORDER BY id")
+    suspend fun getAllForSync(): List<LifeRule>
+    @Query("SELECT * FROM life_rules WHERE deleted = 0 ORDER BY pinned DESC, kind ASC, id DESC")
+    fun getAll(): Flow<List<LifeRule>>
+
+    @Query("SELECT * FROM life_rules ORDER BY id")
+    suspend fun getAllForBackup(): List<LifeRule>
+
+    @Query("SELECT * FROM life_rules WHERE uuid = :uuid LIMIT 1")
+    suspend fun getByUuid(uuid: String): LifeRule?
+
+    @Insert suspend fun insert(rule: LifeRule): Long
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertForSync(rule: LifeRule): Long
+    @Query("UPDATE life_rules SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markClean(uuids: List<String>)
+    @Update suspend fun update(rule: LifeRule)
+    @Delete suspend fun delete(rule: LifeRule)
+    @Query("SELECT * FROM life_rule_files WHERE ruleId = :ruleId AND deleted = 0 ORDER BY addedAt DESC")
+    fun getFiles(ruleId: Int): Flow<List<LifeRuleFile>>
+    @Insert suspend fun insertFile(file: LifeRuleFile): Long
+    @Query("SELECT * FROM life_rule_files ORDER BY id")
+    suspend fun getAllFilesForSync(): List<LifeRuleFile>
+    @Query("SELECT * FROM life_rule_files WHERE uuid = :uuid LIMIT 1")
+    suspend fun getFileByUuid(uuid: String): LifeRuleFile?
+    @Query("UPDATE life_rule_files SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markFilesClean(uuids: List<String>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertFileForSync(file: LifeRuleFile)
+    @Update suspend fun updateFile(file: LifeRuleFile)
+    @Delete suspend fun deleteFile(file: LifeRuleFile)
+    @Query("DELETE FROM life_rules") suspend fun deleteAll()
+}
+
+@Dao
+interface CustomNotificationDao {
+    @Query("SELECT * FROM custom_notifications ORDER BY id")
+    suspend fun getAllForSync(): List<CustomNotification>
+    @Query("UPDATE custom_notifications SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markClean(uuids: List<String>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertForSync(notification: CustomNotification)
+    @Query("SELECT * FROM custom_notifications WHERE deleted = 0 ORDER BY enabled DESC, hour ASC, minute ASC, id DESC")
+    fun getAll(): Flow<List<CustomNotification>>
+
+    @Query("SELECT * FROM custom_notifications ORDER BY id")
+    suspend fun getAllForBackup(): List<CustomNotification>
+
+    @Query("SELECT * FROM custom_notifications WHERE deleted = 0 AND enabled = 1 ORDER BY hour ASC, minute ASC")
+    suspend fun getForScheduling(): List<CustomNotification>
+
+    @Query("SELECT * FROM custom_notifications WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Int): CustomNotification?
+
+    @Query("SELECT * FROM custom_notifications WHERE uuid = :uuid LIMIT 1")
+    suspend fun getByUuid(uuid: String): CustomNotification?
+
+    @Insert suspend fun insert(notification: CustomNotification): Long
+    @Update suspend fun update(notification: CustomNotification)
+    @Delete suspend fun delete(notification: CustomNotification)
+    @Query("DELETE FROM custom_notifications") suspend fun deleteAll()
+}
+
+@Dao
+interface ContactDao {
+    @Query("SELECT * FROM contacts WHERE deleted = 0 ORDER BY name COLLATE NOCASE")
+    fun getAll(): Flow<List<Contact>>
+    @Query("SELECT * FROM contacts ORDER BY id")
+    suspend fun getAllForSync(): List<Contact>
+    @Query("SELECT * FROM contacts WHERE uuid = :uuid LIMIT 1")
+    suspend fun getByUuid(uuid: String): Contact?
+    @Query("UPDATE contacts SET dirty = 0 WHERE uuid IN (:uuids)")
+    suspend fun markClean(uuids: List<String>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertForSync(contact: Contact)
+    @Insert
+    suspend fun insert(contact: Contact): Long
+    @Update
+    suspend fun update(contact: Contact)
+    @Query("UPDATE contacts SET deleted = 1, updatedAt = :updatedAt, dirty = 1 WHERE id = :id")
+    suspend fun softDelete(id: Int, updatedAt: Long = System.currentTimeMillis())
+}
+
+@Dao
 interface SyncStateDao {
     @Query("SELECT * FROM sync_state ORDER BY tableName")
     fun observeAll(): Flow<List<SyncState>>
@@ -494,17 +746,20 @@ interface SyncStateDao {
 }
 
 @Database(
-    entities = [Habit::class, Completion::class, HabitSkip::class, HabitReminder::class, Expense::class, CategoryBudget::class, Loan::class, LoanPayment::class, FileItem::class, VaultRecord::class, ToDoItem::class, SyncState::class],
-    version = 14,
+    entities = [Habit::class, Completion::class, HabitSkip::class, HabitReminder::class, Expense::class, CategoryBudget::class, LoanPerson::class, Contact::class, Loan::class, LoanPayment::class, LoanAttachment::class, FileItem::class, VaultRecord::class, ToDoItem::class, LifeRule::class, LifeRuleFile::class, CustomNotification::class, SyncState::class],
+    version = 20,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun habitDao(): HabitDao
     abstract fun expenseDao(): ExpenseDao
     abstract fun loanDao(): LoanDao
+    abstract fun contactDao(): ContactDao
     abstract fun fileDao(): FileDao
     abstract fun vaultDao(): VaultDao
     abstract fun toDoDao(): ToDoDao
+    abstract fun lifeRuleDao(): LifeRuleDao
+    abstract fun customNotificationDao(): CustomNotificationDao
     abstract fun syncStateDao(): SyncStateDao
 
     companion object {
@@ -749,6 +1004,140 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `life_rules` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`title` TEXT NOT NULL, " +
+                        "`body` TEXT NOT NULL, " +
+                        "`kind` TEXT NOT NULL, " +
+                        "`pinned` INTEGER NOT NULL, " +
+                        "`createdEpochDay` INTEGER NOT NULL DEFAULT 0, " +
+                        "`uuid` TEXT NOT NULL DEFAULT '', " +
+                        "`updatedAt` INTEGER NOT NULL DEFAULT 0, " +
+                        "`deleted` INTEGER NOT NULL DEFAULT 0, " +
+                        "`dirty` INTEGER NOT NULL DEFAULT 1)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_life_rules_kind` ON `life_rules` (`kind`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_life_rules_pinned` ON `life_rules` (`pinned`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_life_rules_uuid` ON `life_rules` (`uuid`)")
+            }
+        }
+
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `custom_notifications` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`title` TEXT NOT NULL, " +
+                        "`message` TEXT NOT NULL, " +
+                        "`repeatMode` TEXT NOT NULL, " +
+                        "`hour` INTEGER NOT NULL, " +
+                        "`minute` INTEGER NOT NULL, " +
+                        "`dateEpochDay` INTEGER, " +
+                        "`daysMask` INTEGER NOT NULL, " +
+                        "`dayOfMonth` INTEGER NOT NULL, " +
+                        "`enabled` INTEGER NOT NULL, " +
+                        "`lastDeliveredEpochMillis` INTEGER NOT NULL DEFAULT 0, " +
+                        "`uuid` TEXT NOT NULL DEFAULT '', " +
+                        "`updatedAt` INTEGER NOT NULL DEFAULT 0, " +
+                        "`deleted` INTEGER NOT NULL DEFAULT 0, " +
+                        "`dirty` INTEGER NOT NULL DEFAULT 1)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_custom_notifications_enabled` ON `custom_notifications` (`enabled`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_custom_notifications_repeatMode` ON `custom_notifications` (`repeatMode`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_custom_notifications_uuid` ON `custom_notifications` (`uuid`)")
+            }
+        }
+
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `loan_people` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, `phone` TEXT NOT NULL DEFAULT '', " +
+                        "`address` TEXT NOT NULL DEFAULT '', `profileImageUri` TEXT NOT NULL DEFAULT '', " +
+                        "`notes` TEXT NOT NULL DEFAULT '', `archived` INTEGER NOT NULL DEFAULT 0, " +
+                        "`uuid` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL DEFAULT 0, " +
+                        "`deleted` INTEGER NOT NULL DEFAULT 0, `dirty` INTEGER NOT NULL DEFAULT 1)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_loan_people_archived` ON `loan_people` (`archived`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_loan_people_uuid` ON `loan_people` (`uuid`)")
+                db.execSQL("ALTER TABLE `loans` ADD COLUMN `title` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `loans` ADD COLUMN `status` TEXT NOT NULL DEFAULT 'pending'")
+                db.execSQL("ALTER TABLE `loans` ADD COLUMN `personId` INTEGER")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_loans_personId` ON `loans` (`personId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_loans_status` ON `loans` (`status`)")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `loan_attachments` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `loanId` INTEGER NOT NULL, " +
+                        "`name` TEXT NOT NULL, `uri` TEXT NOT NULL, `mime` TEXT NOT NULL DEFAULT '', " +
+                        "`addedAt` INTEGER NOT NULL DEFAULT 0, `uuid` TEXT NOT NULL, " +
+                        "`updatedAt` INTEGER NOT NULL DEFAULT 0, `deleted` INTEGER NOT NULL DEFAULT 0, " +
+                        "`dirty` INTEGER NOT NULL DEFAULT 1, FOREIGN KEY(`loanId`) REFERENCES `loans`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_loan_attachments_loanId` ON `loan_attachments` (`loanId`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_loan_attachments_uuid` ON `loan_attachments` (`uuid`)")
+                db.execSQL("INSERT INTO loan_people (name, uuid) SELECT DISTINCT TRIM(person), lower(hex(randomblob(16))) FROM loans WHERE TRIM(person) <> ''")
+                db.execSQL("UPDATE loans SET personId = (SELECT id FROM loan_people p WHERE p.name = TRIM(loans.person) LIMIT 1)")
+            }
+        }
+
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `life_rule_files` (" +
+                            "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `ruleId` INTEGER NOT NULL, " +
+                            "`name` TEXT NOT NULL, `uri` TEXT NOT NULL, `mime` TEXT NOT NULL DEFAULT '', " +
+                            "`folderPath` TEXT NOT NULL DEFAULT '', `addedAt` INTEGER NOT NULL DEFAULT 0, " +
+                            "`uuid` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL DEFAULT 0, " +
+                            "`deleted` INTEGER NOT NULL DEFAULT 0, `dirty` INTEGER NOT NULL DEFAULT 1, " +
+                            "FOREIGN KEY(`ruleId`) REFERENCES `life_rules`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)"
+                    )
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_life_rule_files_ruleId` ON `life_rule_files` (`ruleId`)")
+                    db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_life_rule_files_uuid` ON `life_rule_files` (`uuid`)")
+            }
+        }
+
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("PRAGMA foreign_keys=OFF")
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `loans_repaired` (" +
+                            "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `person` TEXT NOT NULL, " +
+                            "`amountMinorUnits` INTEGER NOT NULL, `lent` INTEGER NOT NULL, `note` TEXT NOT NULL, " +
+                            "`epochDay` INTEGER NOT NULL, `settled` INTEGER NOT NULL, `uuid` TEXT NOT NULL DEFAULT '', " +
+                            "`updatedAt` INTEGER NOT NULL DEFAULT 0, `deleted` INTEGER NOT NULL DEFAULT 0, " +
+                            "`dirty` INTEGER NOT NULL DEFAULT 1, `dueEpochDay` INTEGER, `title` TEXT NOT NULL DEFAULT '', " +
+                            "`status` TEXT NOT NULL DEFAULT 'pending', `personId` INTEGER, " +
+                            "FOREIGN KEY(`personId`) REFERENCES `loan_people`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL)"
+                    )
+                    db.execSQL(
+                        "INSERT INTO `loans_repaired` (id, person, amountMinorUnits, lent, note, epochDay, settled, uuid, " +
+                            "updatedAt, deleted, dirty, dueEpochDay, title, status, personId) " +
+                            "SELECT id, person, amountMinorUnits, lent, note, epochDay, settled, uuid, updatedAt, deleted, dirty, " +
+                            "dueEpochDay, title, status, personId FROM `loans`"
+                    )
+                    db.execSQL("DROP TABLE `loans`")
+                    db.execSQL("ALTER TABLE `loans_repaired` RENAME TO `loans`")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_loans_settled` ON `loans` (`settled`)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_loans_epochDay` ON `loans` (`epochDay`)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_loans_personId` ON `loans` (`personId`)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_loans_status` ON `loans` (`status`)")
+                    db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_loans_uuid` ON `loans` (`uuid`)")
+                    db.execSQL("PRAGMA foreign_keys=ON")
+                }
+        }
+
+        val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `contacts` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `phone` TEXT NOT NULL DEFAULT '', `email` TEXT NOT NULL DEFAULT '', `address` TEXT NOT NULL DEFAULT '', `notes` TEXT NOT NULL DEFAULT '', `profileImageUri` TEXT NOT NULL DEFAULT '', `uuid` TEXT NOT NULL DEFAULT '', `updatedAt` INTEGER NOT NULL DEFAULT 0, `deleted` INTEGER NOT NULL DEFAULT 0, `dirty` INTEGER NOT NULL DEFAULT 1)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_contacts_name` ON `contacts` (`name`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_contacts_uuid` ON `contacts` (`uuid`)")
+            }
+        }
+
         private fun Double.toMinorUnitsForMigration(): Long {
             require(isFinite()) { "A stored money value is not finite; database migration was stopped to protect data." }
             return BigDecimal.valueOf(this).setScale(2, RoundingMode.HALF_UP).movePointRight(2).longValueExact()
@@ -772,6 +1161,12 @@ abstract class AppDatabase : RoomDatabase() {
                     .addMigrations(MIGRATION_11_12)
                     .addMigrations(MIGRATION_12_13)
                     .addMigrations(MIGRATION_13_14)
+                    .addMigrations(MIGRATION_14_15)
+                    .addMigrations(MIGRATION_15_16)
+                    .addMigrations(MIGRATION_16_17)
+                    .addMigrations(MIGRATION_17_18)
+                    .addMigrations(MIGRATION_18_19)
+                    .addMigrations(MIGRATION_19_20)
                     .build().also { instance = it }
             }
     }

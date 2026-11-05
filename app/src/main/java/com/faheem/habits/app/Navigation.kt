@@ -17,13 +17,16 @@ import androidx.navigation.navDeepLink
 import com.faheem.habits.core.ui.*
 import com.faheem.habits.features.battery.BatteryScreen
 import com.faheem.habits.features.files.FilesScreen
+import com.faheem.habits.features.contacts.ContactsScreen
 import com.faheem.habits.features.habits.HabitScreen
 import com.faheem.habits.features.home.HomeScreen
 import com.faheem.habits.features.loans.LoansScreen
+import com.faheem.habits.features.liferules.LifeRulesScreen
 import com.faheem.habits.features.money.ExpensesScreen
 import com.faheem.habits.features.network.NetworkScreen
 import com.faheem.habits.features.screen_time.ScreenTimeScreen
 import com.faheem.habits.features.settings.AppSettingsScreen
+import com.faheem.habits.features.supabase.SupabaseScreen
 import com.faheem.habits.features.todos.ToDoScreen
 import com.faheem.habits.features.vault.VaultScreen
 
@@ -73,7 +76,7 @@ fun MomentumNavigationHost(
 @Composable
 private fun ModuleScreen(module: AppModule, onBack: () -> Unit) {
     BackHandler(onBack = onBack)
-    val accent = module.gradient.first()
+    val accent = module.accent
     CompositionLocalProvider(LocalGradient provides module.gradient) {
         MaterialTheme(
             colorScheme = MaterialTheme.colorScheme.copy(
@@ -100,11 +103,14 @@ private fun ModuleScreen(module: AppModule, onBack: () -> Unit) {
                             AppModule.ToDos -> ToDoScreen()
                             AppModule.Money -> ExpensesScreen()
                             AppModule.Loans -> LoansScreen()
+                            AppModule.Contacts -> ContactsScreen()
                             AppModule.Files -> FilesScreen()
+                            AppModule.LifeRules -> LifeRulesScreen()
                             AppModule.Screen -> ScreenTimeScreen()
                             AppModule.Vault -> VaultScreen()
                             AppModule.Battery -> BatteryScreen()
                             AppModule.Network -> NetworkScreen()
+                            AppModule.Supabase -> SupabaseScreen()
                             AppModule.Settings -> AppSettingsScreen()
                         }
                     }

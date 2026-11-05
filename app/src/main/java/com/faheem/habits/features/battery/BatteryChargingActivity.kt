@@ -1,102 +1,161 @@
 package com.faheem.habits.features.battery
-import com.faheem.habits.core.data.*
-import com.faheem.habits.core.notifications.*
-import com.faheem.habits.core.ui.*
-import com.faheem.habits.R
 
-
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.BatteryManager
+import android.graphics.Color as AndroidColor
+import android.graphics.Typeface
 import android.os.Bundle
+import android.view.Gravity
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 
+/**
+ * Full-screen preview of the selected charging animation. The window itself is transparent,
+ * so the animation floats over whatever screen was open behind it.
+ */
 class BatteryChargingActivity : ComponentActivity() {
+
+    private var graphic: ChargingAnimationView? = null
+    private var percentView: TextView? = null
+    private var sourceView: TextView? = null
+    private var receiver: BroadcastReceiver? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        window.setBackgroundDrawableResource(android.R.color.transparent)
+
         val preview = intent.getBooleanExtra(EXTRA_PREVIEW, false)
-        setContent { MomentumTheme { BatteryChargingAnimationScreen(preview, onClose = { finish() }) } }
-    }
-
-    companion object { const val EXTRA_PREVIEW = "preview_animation" }
-}
-
-@Composable
-private fun BatteryChargingAnimationScreen(preview: Boolean, onClose: () -> Unit) {    val context = LocalContext.current
-    var reading by remember { mutableStateOf(BatteryReading(0, false, "Charging")) }
-    DisposableEffect(context) {
-        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        fun update(intent: Intent?) { reading = batteryReading(intent) }
-        update(context.registerReceiver(null, filter))
-        val receiver = object : android.content.BroadcastReceiver() {
-            override fun onReceive(context: android.content.Context?, intent: Intent?) { update(intent) }
-        }
-        androidx.core.content.ContextCompat.registerReceiver(
-            context, receiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        val style = BatteryAnimationPreferences.style(this)
+        val reading = batteryReading(
+            registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         )
-        onDispose { runCatching { context.unregisterReceiver(receiver) } }
-    }
-    val style = BatteryAnimationPreferences.style(context)
-    val estimate = rememberBatteryEstimate(reading.percent, preview || reading.charging)
-    val displayPercent = estimate.percent
-    Box(
-        Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(Color(0xFF120A2A), Color(0xFF0B2A3D), Color(0xFF05060E)))
-        ).padding(24.dp)
-    ) {
-        IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd)) {
-            Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White)
+
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(AndroidColor.TRANSPARENT)
+            isClickable = true
+            setOnClickListener { finish() }
         }
-        Column(
-            Modifier.align(Alignment.Center),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(if (preview) "ANIMATION PREVIEW" else "POWER CONNECTED", color = Color(0xFFBDF9D3), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.5.sp)
-            Spacer(Modifier.height(32.dp))
-            BatteryOrb(displayPercent, preview || reading.charging, style, Modifier.size(210.dp))
-            Spacer(Modifier.height(22.dp))
-            AnimatedBatteryPercent(displayPercent)
-            Text(reading.source, color = Color.White.copy(alpha = .82f), fontSize = 16.sp)
-            estimate.minutesToFull?.let { minutes ->
-                Spacer(Modifier.height(6.dp))
-                Text(etaText(minutes), color = Color(0xFFC4B5FD), fontSize = 14.sp)
+        val animation = ChargingAnimationView(this, reading.percent.toFloat(), style)
+        root.addView(
+            animation,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        graphic = animation
+
+        val status = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        val percentage = TextView(this).apply {
+            text = "${reading.percent}%"
+            textSize = 36f
+            gravity = Gravity.CENTER
+            setTextColor(AndroidColor.WHITE)
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            setShadowLayer(dp(10).toFloat(), 0f, 0f, AndroidColor.argb(180, 0, 0, 0))
+            contentDescription = "Battery level"
+        }
+        percentView = percentage
+        status.addView(
+            percentage,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+        val source = TextView(this).apply {
+            text = "${reading.source} · $style"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(AndroidColor.argb(225, 255, 255, 255))
+            setShadowLayer(dp(8).toFloat(), 0f, 0f, AndroidColor.argb(180, 0, 0, 0))
+        }
+        sourceView = source
+        status.addView(
+            source,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+        if (preview) {
+            status.addView(TextView(this).apply {
+                text = "ANIMATION PREVIEW"
+                textSize = 10.5f
+                letterSpacing = 0.12f
+                gravity = Gravity.CENTER
+                setTextColor(AndroidColor.argb(160, 255, 255, 255))
+                setShadowLayer(dp(6).toFloat(), 0f, 0f, AndroidColor.argb(160, 0, 0, 0))
+            })
+        }
+        root.addView(
+            status,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            ).apply { bottomMargin = dp(72) }
+        )
+
+        root.addView(
+            TextView(this).apply {
+                text = "×"
+                textSize = 26f
+                gravity = Gravity.CENTER
+                setTextColor(AndroidColor.argb(220, 255, 255, 255))
+                setShadowLayer(dp(8).toFloat(), 0f, 0f, AndroidColor.argb(180, 0, 0, 0))
+                setOnClickListener { finish() }
+            },
+            FrameLayout.LayoutParams(
+                dp(48),
+                dp(48),
+                Gravity.TOP or Gravity.END
+            ).apply {
+                topMargin = dp(32)
+                marginEnd = dp(18)
             }
-            Spacer(Modifier.height(28.dp))
-            Text("$style animation${if (preview) " · change it in Battery" else ""}", color = Color(0xFFBDF9D3), fontSize = 14.sp)
+        )
+
+        setContentView(root)
+        registerBatteryUpdates()
+    }
+
+    private fun registerBatteryUpdates() {
+        val updates = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                val current = batteryReading(intent)
+                percentView?.text = "${current.percent}%"
+                graphic?.updatePercent(current.percent.toFloat())
+            }
         }
+        ContextCompat.registerReceiver(
+            this,
+            updates,
+            IntentFilter(Intent.ACTION_BATTERY_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        receiver = updates
+    }
+
+    override fun onDestroy() {
+        receiver?.let { runCatching { unregisterReceiver(it) } }
+        receiver = null
+        super.onDestroy()
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    companion object {
+        const val EXTRA_PREVIEW = "preview_animation"
     }
 }

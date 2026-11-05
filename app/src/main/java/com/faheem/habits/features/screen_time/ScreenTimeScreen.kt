@@ -1,3 +1,5 @@
+@file:Suppress("FunctionNaming", "LongParameterList", "CyclomaticComplexMethod")
+
 package com.faheem.habits.features.screen_time
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.notifications.*
@@ -11,7 +13,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Process
 import android.provider.Settings
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -59,7 +60,6 @@ private fun loadUsage(ctx: Context, days: Long = 1): List<AppUsage> {
     val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
     val startDay = LocalDate.now().minusDays(days - 1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
     val stats = usm.queryAndAggregateUsageStats(startDay, System.currentTimeMillis())
-    val pm = ctx.packageManager
     return stats.values
         .filter { it.packageName != ctx.packageName && it.totalTimeInForeground >= 60_000 }
         .sortedByDescending { it.totalTimeInForeground }
@@ -102,22 +102,44 @@ fun ScreenTimeScreen() {
     var reelCount by remember { mutableIntStateOf(0) }
     var reelLimit by remember { mutableIntStateOf(0) }
     var screenLimit by remember { mutableIntStateOf(0) }
+    var screenLimitPeriod by remember { mutableStateOf(ScreenTimePeriod.DAILY) }
+    var screenLimitUsed by remember { mutableIntStateOf(0) }
     var tick by remember { mutableIntStateOf(0) }
     var showReelLimit by remember { mutableStateOf(false) }
     var showScreenLimit by remember { mutableStateOf(false) }
+    var showScreenAlarm by remember { mutableStateOf(false) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { tick++ }
     LaunchedEffect(tick, range) {
         granted = hasUsageAccess(context)
         accessibilityOn = InstagramScrollCounterService.isEnabled(context)
-        val prefs = context.getSharedPreferences(InstagramScrollCounterService.PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(SCREEN_TIME_PREFS, Context.MODE_PRIVATE)
         reelCount = prefs.getInt(InstagramScrollCounterService.countKey(LocalDate.now()), 0)
         reelLimit = prefs.getInt(InstagramScrollCounterService.PREF_LIMIT, 0)
         screenLimit = prefs.getInt(PREF_SCREEN_LIMIT, 0)
+        screenLimitPeriod = ScreenTimePeriod.fromKey(prefs.getString(PREF_SCREEN_LIMIT_PERIOD, null))
         usage = if (granted) withContext(Dispatchers.IO) { loadUsage(context, range.days) } else emptyList()
         weekMinutes = if (granted) withContext(Dispatchers.IO) { loadDailyMinutes(context, 7) } else emptyList()
+        screenLimitUsed = if (granted) withContext(Dispatchers.IO) {
+            screenTimeMinutes(context, screenLimitPeriod)?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0
+        } else 0
+        withContext(Dispatchers.IO) { checkScreenTimeAlarm(context) }
     }
 
+    if (showScreenAlarm) DurationLimitSheet(
+        title = "Screen time alarm",
+        currentMinutes = context.getSharedPreferences(SCREEN_TIME_PREFS, Context.MODE_PRIVATE).getInt(PREF_SCREEN_ALARM, 0),
+        currentPeriod = ScreenTimePeriod.fromKey(context.getSharedPreferences(SCREEN_TIME_PREFS, Context.MODE_PRIVATE).getString(PREF_SCREEN_ALARM_PERIOD, null)),
+        helper = "Alert when screen time reaches this amount",
+        onSave = { minutes, period ->
+            context.getSharedPreferences(SCREEN_TIME_PREFS, Context.MODE_PRIVATE).edit()
+                .putInt(PREF_SCREEN_ALARM, minutes).putString(PREF_SCREEN_ALARM_PERIOD, period.key)
+                .remove("screen_time_alarm_last_period").apply()
+            showScreenAlarm = false
+            tick++
+        },
+        onDismiss = { showScreenAlarm = false }
+    )
     if (showReelLimit) NumberLimitSheet(
         title = "Daily Reels scroll limit", current = reelLimit, helper = "Maximum daily scroll events",
         onSave = {
@@ -126,11 +148,18 @@ fun ScreenTimeScreen() {
         },
         onDismiss = { showReelLimit = false }
     )
-    if (showScreenLimit) NumberLimitSheet(
-        title = "Daily screen time goal", current = screenLimit, helper = "Minutes per day",
-        onSave = {
-            context.getSharedPreferences(InstagramScrollCounterService.PREFS_NAME, Context.MODE_PRIVATE).edit().putInt(PREF_SCREEN_LIMIT, it).apply()
-            screenLimit = it; showScreenLimit = false
+    if (showScreenLimit) DurationLimitSheet(
+        title = "Screen time limit",
+        currentMinutes = screenLimit,
+        currentPeriod = screenLimitPeriod,
+        helper = "Usage time allowed for this period",
+        onSave = { minutes, period ->
+            context.getSharedPreferences(SCREEN_TIME_PREFS, Context.MODE_PRIVATE).edit()
+                .putInt(PREF_SCREEN_LIMIT, minutes).putString(PREF_SCREEN_LIMIT_PERIOD, period.key).apply()
+            screenLimit = minutes
+            screenLimitPeriod = period
+            showScreenLimit = false
+            tick++
         },
         onDismiss = { showScreenLimit = false }
     )
@@ -138,7 +167,7 @@ fun ScreenTimeScreen() {
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {
             when (tab) {
-                TimeTab.Overview -> ScreenOverview(usage, weekMinutes, granted, screenLimit, reelCount, accessibilityOn, onUsageSettings = { openUsageSettings(context) }, onSetLimit = { showScreenLimit = true }, onOpenReels = { tab = TimeTab.Reels }, onRefresh = { tick++ })
+                TimeTab.Overview -> ScreenOverview(usage, weekMinutes, granted, screenLimit, screenLimitPeriod, screenLimitUsed, reelCount, accessibilityOn, onUsageSettings = { openUsageSettings(context) }, onSetLimit = { showScreenLimit = true }, onSetAlarm = { showScreenAlarm = true }, onOpenReels = { tab = TimeTab.Reels }, onRefresh = { tick++ })
                 TimeTab.Apps -> UsageAppsScreen(usage, granted, range, onRange = { range = it }, onUsageSettings = { openUsageSettings(context) }, onRefresh = { tick++ })
                 TimeTab.Reels -> ReelsCounterScreen(reelCount, reelLimit, accessibilityOn, onSettings = { openAccessibilitySettings(context) }, onSetLimit = { showReelLimit = true }, onRefresh = { tick++ })
             }
@@ -160,22 +189,21 @@ fun ScreenTimeScreen() {
     }
 }
 
-private const val PREF_SCREEN_LIMIT = "daily_screen_limit_minutes"
-
 private fun openUsageSettings(context: Context) { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
 private fun openAccessibilitySettings(context: Context) { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
 
 @Composable
 private fun ScreenOverview(
-    usage: List<AppUsage>, weekMinutes: List<Long>, granted: Boolean, screenLimit: Int, reelCount: Int, accessibilityOn: Boolean,
-    onUsageSettings: () -> Unit, onSetLimit: () -> Unit, onOpenReels: () -> Unit, onRefresh: () -> Unit
+    usage: List<AppUsage>, weekMinutes: List<Long>, granted: Boolean, screenLimit: Int,
+    screenLimitPeriod: ScreenTimePeriod, screenLimitUsed: Int, reelCount: Int, accessibilityOn: Boolean,
+    onUsageSettings: () -> Unit, onSetLimit: () -> Unit, onSetAlarm: () -> Unit, onOpenReels: () -> Unit, onRefresh: () -> Unit
 ) {
     val total = usage.sumOf { it.minutes }
     val maxMin = (usage.maxOfOrNull { it.minutes } ?: 1L).coerceAtLeast(1)
-    val fraction = if (screenLimit > 0) total.toFloat() / screenLimit else 0f
+    val fraction = if (screenLimit > 0) screenLimitUsed.toFloat() / screenLimit else 0f
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+        contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
@@ -191,15 +219,18 @@ private fun ScreenOverview(
                     ProgressBar(fraction, Color.White, Color.White.copy(alpha = .25f))
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        if (total >= screenLimit) "Daily time limit reached"
-                        else "${durationText((screenLimit - total).coerceAtLeast(0))} left of ${durationText(screenLimit.toLong())}",
+                        if (screenLimitUsed >= screenLimit) "${screenLimitPeriod.label} time limit reached"
+                        else "${durationText((screenLimit - screenLimitUsed).coerceAtLeast(0).toLong())} left of ${durationText(screenLimit.toLong())} ${screenLimitPeriod.label.lowercase()}",
                         fontSize = 12.5.sp,
                         color = Color.White.copy(alpha = .9f)
                     )
                 }
                 Spacer(Modifier.height(6.dp))
                 TextButton(onClick = if (granted) onSetLimit else onUsageSettings) {
-                    Text(if (granted) "${if (screenLimit > 0) "Adjust" else "Set"} daily limit" else "Open Usage access settings", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text(if (granted) "${if (screenLimit > 0) "Adjust" else "Set"} ${screenLimitPeriod.label.lowercase()} limit" else "Open Usage access settings", color = Color.White, fontWeight = FontWeight.SemiBold)
+                }
+                TextButton(onClick = onSetAlarm) {
+                    Text("Set alarm", color = Color.White, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -307,7 +338,7 @@ private fun UsageAppsScreen(usage: List<AppUsage>, granted: Boolean, range: Usag
     }
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+        contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
@@ -325,7 +356,9 @@ private fun UsageAppsScreen(usage: List<AppUsage>, granted: Boolean, range: Usag
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                UsageRange.entries.forEach { FilterChip(selected = range == it, onClick = { onRange(it) }, label = { Text(it.title) }) }
+                UsageRange.entries.forEach { rangeOption ->
+                    MomentumChip(selected = range == rangeOption, onClick = { onRange(rangeOption) }, label = rangeOption.title)
+                }
             }
         }
         item { SectionHeader("Most used", subtitle = "${usage.size} apps") }
@@ -338,11 +371,7 @@ private fun UsageAppsScreen(usage: List<AppUsage>, granted: Boolean, range: Usag
 private fun UsageRow(app: AppUsage, maxMin: Long) {
     PremiumCard(contentPadding = PaddingValues(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (app.icon != null) {
-                Image(app.icon, null, Modifier.size(44.dp).clip(RoundedCornerShape(13.dp)))
-            } else {
-                IconBubble(Icons.Rounded.PhoneAndroid, MaterialTheme.colorScheme.primary, 44.dp)
-            }
+            AppIcon(app.icon, app.label, 44.dp, cornerRadius = 13.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -360,7 +389,7 @@ private fun UsageRow(app: AppUsage, maxMin: Long) {
 private fun ReelsCounterScreen(count: Int, limit: Int, enabled: Boolean, onSettings: () -> Unit, onSetLimit: () -> Unit, onRefresh: () -> Unit) {
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+        contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
@@ -433,7 +462,7 @@ private fun ReelsCounterScreen(count: Int, limit: Int, enabled: Boolean, onSetti
 
 @Composable
 private fun PermissionInfoCard(title: String, description: String, onClick: () -> Unit) {
-    PremiumCard(contentPadding = PaddingValues(18.dp)) {
+    PremiumCard(contentPadding = PaddingValues(MomentumTokens.cardPadding)) {
         IconBubble(Icons.Rounded.Security, MaterialTheme.colorScheme.primary, 44.dp)
         Spacer(Modifier.height(10.dp))
         Text(title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
@@ -448,17 +477,73 @@ private fun PermissionInfoCard(title: String, description: String, onClick: () -
 private fun NumberLimitSheet(title: String, current: Int, helper: String, onSave: (Int) -> Unit, onDismiss: () -> Unit) {
     var input by remember(title, current) { mutableStateOf(if (current > 0) current.toString() else "") }
     FormSheet(title, onDismiss) {
-        OutlinedTextField(
-            input,
-            { input = it.filter { character -> character.isDigit() }.take(5) },
+        MomentumTextField(
+            value = input,
+            onValueChange = { input = it.filter { character -> character.isDigit() }.take(5) },
             label = { Text(helper) },
             singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth()
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
         )
         Text("Leave the field empty or enter 0 to remove the limit.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         PrimaryButton("Save limit", onClick = { onSave(input.toIntOrNull() ?: 0) })
+    }
+}
+
+@Composable
+private fun DurationLimitSheet(
+    title: String,
+    currentMinutes: Int,
+    currentPeriod: ScreenTimePeriod,
+    helper: String,
+    onSave: (Int, ScreenTimePeriod) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var hours by remember(title, currentMinutes) {
+        mutableStateOf(if (currentMinutes > 0) (currentMinutes / 60).toString() else "")
+    }
+    var minutes by remember(title, currentMinutes) {
+        mutableStateOf(if (currentMinutes > 0) (currentMinutes % 60).toString() else "")
+    }
+    var period by remember(title, currentPeriod) { mutableStateOf(currentPeriod) }
+    FormSheet(title, onDismiss) {
+        Text(helper, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MomentumTextField(
+                value = hours,
+                onValueChange = { hours = it.filter(Char::isDigit).take(3) },
+                modifier = Modifier.weight(1f),
+                label = { Text("Hours") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
+            MomentumTextField(
+                value = minutes,
+                onValueChange = { minutes = it.filter(Char::isDigit).take(2) },
+                modifier = Modifier.weight(1f),
+                label = { Text("Minutes (0–59)") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
+        }
+        Text("Limit period", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            ScreenTimePeriod.entries.forEachIndexed { index, option ->
+                SegmentedButton(
+                    selected = period == option,
+                    onClick = { period = option },
+                    shape = SegmentedButtonDefaults.itemShape(index, ScreenTimePeriod.entries.size)
+                ) { Text(option.label, fontSize = 11.sp, maxLines = 1) }
+            }
+        }
+        Text("Enter 0 hours and 0 minutes to remove the limit.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        PrimaryButton(
+            "Save limit",
+            onClick = {
+                val hourValue = hours.toIntOrNull() ?: 0
+                val minuteValue = (minutes.toIntOrNull() ?: 0).coerceIn(0, 59)
+                onSave((hourValue * 60 + minuteValue).coerceAtMost(Int.MAX_VALUE), period)
+            }
+        )
     }
 }
 
@@ -470,4 +555,23 @@ fun todayScreenMinutes(ctx: Context): Long? {
     return usm.queryAndAggregateUsageStats(start, System.currentTimeMillis()).values
         .filter { it.packageName != ctx.packageName && it.totalTimeInForeground >= 60_000 }
         .sumOf { it.totalTimeInForeground / 60_000 }
+}
+
+/** Minutes of screen time for each of the last [days] days, oldest first. */
+fun screenWeekMinutes(ctx: Context, days: Int = 7): List<Float> {
+    if (!hasUsageAccess(ctx)) return emptyList()
+    val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+    val today = LocalDate.now()
+    val now = System.currentTimeMillis()
+    return (days - 1 downTo 0).map { offset ->
+        val day = today.minusDays(offset.toLong())
+        val start = day.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val end = day.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        runCatching {
+            usm.queryAndAggregateUsageStats(start, end.coerceAtMost(now)).values
+                .filter { it.packageName != ctx.packageName && it.totalTimeInForeground >= 60_000 }
+                .sumOf { it.totalTimeInForeground / 60_000 }
+                .toFloat()
+        }.getOrDefault(0f)
+    }
 }

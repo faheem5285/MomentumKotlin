@@ -1,4 +1,12 @@
-@file:Suppress("TooManyFunctions")
+@file:Suppress(
+    "TooManyFunctions",
+    "CyclomaticComplexMethod",
+    "TooGenericExceptionCaught",
+    "ReturnCount",
+    "WildcardImport",
+    "LoopWithTooManyJumpStatements",
+    "UnusedParameter"
+)
 
 package com.faheem.habits.core.data.sync
 
@@ -11,14 +19,25 @@ import androidx.work.WorkManager
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.data.backup.MomentumBackup
 import com.faheem.habits.core.data.supabase.SupabaseRestClient
+import com.faheem.habits.core.ui.AppModule
 import java.io.File
 import java.time.Instant
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeParseException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 
-private val SYNC_EPOCH = "1970-01-01T00:00:00Z"
+private const val SYNC_EPOCH = "1970-01-01T00:00:00Z"
+private const val PULL_PAGE = 200
+private val allCloudTables = listOf(
+    "momentum_habits", "momentum_completions", "momentum_habit_skips", "momentum_habit_reminders",
+    "momentum_expenses", "momentum_category_budgets", "momentum_loan_people", "momentum_loans",
+    "momentum_loan_attachments", "momentum_loan_payments", "momentum_contacts", "momentum_files",
+    "momentum_todos", "momentum_life_rules", "momentum_life_rule_files", "momentum_custom_notifications",
+    "momentum_vault_entries"
+)
 
 class SupabaseSyncRepository(
     private val context: Context,
@@ -30,12 +49,23 @@ class SupabaseSyncRepository(
         val paused = db.syncStateDao().get("momentum_vault_entries")?.paused == true
         if (paused) return@withContext SyncRunResult()
         createFirstSyncBackup()
-        fileStorage.uploadPending()
         val device = DeviceIdentity.get(context)
         var pushed = 0
         var pulled = 0
         var conflicts = 0
-        var pending = 0
+        val failures = mutableListOf<Throwable>()
+        suspend fun attempt(table: String? = null, block: suspend () -> Unit) {
+            try {
+                block()
+            } catch (failure: Throwable) {
+                failures += failure
+                if (table != null) {
+                    val stateDao = db.syncStateDao()
+                    val state = stateDao.get(table) ?: SyncState(table)
+                    stateDao.upsert(state.copy(lastError = failure.message?.take(300)))
+                }
+            }
+        }
         suspend fun syncEntity(
             table: String,
             rows: List<JsonObject>,
@@ -47,62 +77,130 @@ class SupabaseSyncRepository(
             val old = stateDao.get(table) ?: SyncState(table)
             pushed += client.upsert(table, buildJsonArray { rows.forEach { add(it) } })
             if (uuids.isNotEmpty()) markClean(uuids)
-            val remote = client.pull(table, old.cursor.ifBlank { SYNC_EPOCH })
             var cursor = old.cursor
-            remote.forEach { element ->
-                val json = element.jsonObject
-                cursor = maxOf(cursor, json.string("updated_at"))
-                conflicts += apply(json)
+            var tableConflicts = 0
+            var tablePulled = 0
+            while (true) {
+                val batch = client.pull(table, cursor.ifBlank { SYNC_EPOCH }, PULL_PAGE)
+                if (batch.isEmpty()) break
+                val previousCursor = cursor
+                batch.forEach { element ->
+                    val json = element.jsonObject
+                    cursor = maxOf(cursor, json.string("updated_at"))
+                    tableConflicts += apply(json)
+                }
+                tablePulled += batch.size
+                if (batch.size < PULL_PAGE || cursor == previousCursor) break
             }
-            pulled += remote.size
-            val remaining = rows.count { it["id"]?.jsonPrimitive?.contentOrNull in uuids }
-            pending += remaining
-            stateDao.upsert(old.copy(cursor = cursor, pendingCount = remaining,
-                conflictCount = old.conflictCount + conflicts, lastSyncEpochMillis = System.currentTimeMillis(),
+            conflicts += tableConflicts
+            pulled += tablePulled
+            stateDao.upsert(old.copy(cursor = cursor, pendingCount = 0,
+                conflictCount = old.conflictCount + tableConflicts, lastSyncEpochMillis = System.currentTimeMillis(),
                 lastError = null))
         }
 
+        attempt { fileStorage.uploadPending() }
+
         val habits = db.habitDao().getAllForSync()
         val habitIds = habits.associate { it.id to it.uuid }
-        syncEntity("momentum_habits", habits.filter { it.dirty }.map { it.toCloud(device) }, habits.filter { it.dirty }.map { it.uuid },
-            db.habitDao()::markHabitsClean) { applyHabit(it) }
+        attempt("momentum_habits") {
+            syncEntity("momentum_habits", habits.filter { it.dirty }.map { it.toCloud(device) }, habits.filter { it.dirty }.map { it.uuid },
+                db.habitDao()::markHabitsClean) { applyHabit(it) }
+        }
         val completions = db.habitDao().getCompletionsForBackup()
-        syncEntity("momentum_completions", completions.filter { it.dirty }.map { it.toCloud(device, habitIds[it.habitId].orEmpty()) },
-            completions.filter { it.dirty }.map { it.uuid }, db.habitDao()::markCompletionsClean) { applyCompletion(it) }
+        attempt("momentum_completions") {
+            syncEntity("momentum_completions", completions.filter { it.dirty }.map { it.toCloud(device, habitIds[it.habitId].orEmpty()) },
+                completions.filter { it.dirty }.map { it.uuid }, db.habitDao()::markCompletionsClean) { applyCompletion(it) }
+        }
         val skips = db.habitDao().getAllSkipsForSync()
-        syncEntity("momentum_habit_skips", skips.filter { it.dirty }.map { it.toCloud(device, habitIds[it.habitId].orEmpty()) },
-            skips.filter { it.dirty }.map { it.uuid }, db.habitDao()::markSkipsClean) { applySkip(it) }
+        attempt("momentum_habit_skips") {
+            syncEntity("momentum_habit_skips", skips.filter { it.dirty }.map { it.toCloud(device, habitIds[it.habitId].orEmpty()) },
+                skips.filter { it.dirty }.map { it.uuid }, db.habitDao()::markSkipsClean) { applySkip(it) }
+        }
         val reminders = db.habitDao().getAllRemindersForSync()
-        syncEntity("momentum_habit_reminders", reminders.filter { it.dirty }.map { it.toCloud(device, habitIds[it.habitId].orEmpty()) },
-            reminders.filter { it.dirty }.map { it.uuid }, db.habitDao()::markRemindersClean) { applyReminder(it) }
+        attempt("momentum_habit_reminders") {
+            syncEntity("momentum_habit_reminders", reminders.filter { it.dirty }.map { it.toCloud(device, habitIds[it.habitId].orEmpty()) },
+                reminders.filter { it.dirty }.map { it.uuid }, db.habitDao()::markRemindersClean) { applyReminder(it) }
+        }
 
         val expenses = db.expenseDao().getAllForSync()
-        syncEntity("momentum_expenses", expenses.filter { it.dirty }.map { it.toCloud(device) },
-            expenses.filter { it.dirty }.map { it.uuid }, db.expenseDao()::markClean) { applyExpense(it) }
-        val budgets = db.expenseDao().getAllBudgetsForSync()
-        syncEntity("momentum_category_budgets", budgets.filter { it.dirty }.map { it.toCloud(device) },
-            budgets.filter { it.dirty }.map { it.uuid }, db.expenseDao()::markBudgetsClean) { applyBudget(it) }
+        attempt("momentum_expenses") {
+            syncEntity("momentum_expenses", expenses.filter { it.dirty }.map { it.toCloud(device) },
+                expenses.filter { it.dirty }.map { it.uuid }, db.expenseDao()::markClean) { applyExpense(it) }
+        }
 
+        val contacts = db.contactDao().getAllForSync()
+        attempt("momentum_contacts") {
+            syncEntity("momentum_contacts", contacts.filter { it.dirty }.map { it.toCloud(device) },
+                contacts.filter { it.dirty }.map { it.uuid }, db.contactDao()::markClean) { applyContact(it) }
+        }
+        val budgets = db.expenseDao().getAllBudgetsForSync()
+        attempt("momentum_category_budgets") {
+            syncEntity("momentum_category_budgets", budgets.filter { it.dirty }.map { it.toCloud(device) },
+                budgets.filter { it.dirty }.map { it.uuid }, db.expenseDao()::markBudgetsClean) { applyBudget(it) }
+        }
+
+        val people = db.loanDao().getAllPeopleForSync()
+        attempt("momentum_loan_people") {
+            syncEntity("momentum_loan_people", people.filter { it.dirty }.map { it.toCloud(device) },
+                people.filter { it.dirty }.map { it.uuid }, db.loanDao()::markPeopleClean) { applyLoanPerson(it) }
+        }
+        val syncedPeople = db.loanDao().getAllPeopleForSync()
+        val personIds = syncedPeople.associate { it.id to it.uuid }
         val loans = db.loanDao().getAllForSync()
-        val loanIds = loans.associate { it.id to it.uuid }
-        syncEntity("momentum_loans", loans.filter { it.dirty }.map { it.toCloud(device) },
-            loans.filter { it.dirty }.map { it.uuid }, db.loanDao()::markClean) { applyLoan(it) }
+        attempt("momentum_loans") {
+            syncEntity("momentum_loans", loans.filter { it.dirty }.map { it.toCloud(device, it.personId?.let(personIds::get)) },
+                loans.filter { it.dirty }.map { it.uuid }, db.loanDao()::markClean) { applyLoan(it) }
+        }
+        val syncedLoans = db.loanDao().getAllForSync()
+        val loanIds = syncedLoans.associate { it.id to it.uuid }
+        val attachments = db.loanDao().getAllAttachmentsForSync()
+        attempt("momentum_loan_attachments") {
+            syncEntity("momentum_loan_attachments", attachments.filter { it.dirty }.map { it.toCloud(device, loanIds[it.loanId].orEmpty()) },
+                attachments.filter { it.dirty }.map { it.uuid }, db.loanDao()::markAttachmentsClean) { applyLoanAttachment(it) }
+        }
         val payments = db.loanDao().getAllPaymentsForSync()
-        syncEntity("momentum_loan_payments", payments.filter { it.dirty }.map { it.toCloud(device, loanIds[it.loanId].orEmpty()) },
-            payments.filter { it.dirty }.map { it.uuid }, db.loanDao()::markPaymentsClean) { applyPayment(it) }
+        attempt("momentum_loan_payments") {
+            syncEntity("momentum_loan_payments", payments.filter { it.dirty }.map { it.toCloud(device, loanIds[it.loanId].orEmpty()) },
+                payments.filter { it.dirty }.map { it.uuid }, db.loanDao()::markPaymentsClean) { applyPayment(it) }
+        }
 
         val files = db.fileDao().getAllForSync()
-        syncEntity("momentum_files", files.filter { it.dirty }.map { it.toCloud(device) },
-            files.filter { it.dirty }.map { it.uuid }, db.fileDao()::markClean) { applyFile(it) }
+        attempt("momentum_files") {
+            syncEntity("momentum_files", files.filter { it.dirty }.map { it.toCloud(device) },
+                files.filter { it.dirty }.map { it.uuid }, db.fileDao()::markClean) { applyFile(it) }
+        }
         val todos = db.toDoDao().getAllForSync()
         val todoIds = todos.associate { it.id to it.uuid }
-        syncEntity("momentum_todos", todos.filter { it.dirty }.map { it.toCloud(device, todoIds[it.parentId].orEmpty()) },
-            todos.filter { it.dirty }.map { it.uuid }, db.toDoDao()::markClean) { applyTodo(it) }
+        attempt("momentum_todos") {
+            syncEntity("momentum_todos", todos.filter { it.dirty }.map { it.toCloud(device, todoIds[it.parentId].orEmpty()) },
+                todos.filter { it.dirty }.map { it.uuid }, db.toDoDao()::markClean) { applyTodo(it) }
+        }
+        val lifeRules = db.lifeRuleDao().getAllForSync()
+        attempt("momentum_life_rules") {
+            syncEntity("momentum_life_rules", lifeRules.filter { it.dirty }.map { it.toCloud(device) },
+                lifeRules.filter { it.dirty }.map { it.uuid }, db.lifeRuleDao()::markClean) { applyLifeRule(it) }
+        }
+        val syncedRules = db.lifeRuleDao().getAllForSync()
+        val ruleIds = syncedRules.associate { it.id to it.uuid }
+        val ruleFiles = db.lifeRuleDao().getAllFilesForSync()
+        attempt("momentum_life_rule_files") {
+            syncEntity("momentum_life_rule_files", ruleFiles.filter { it.dirty }.map { it.toCloud(device, ruleIds[it.ruleId].orEmpty()) },
+                ruleFiles.filter { it.dirty }.map { it.uuid }, db.lifeRuleDao()::markFilesClean) { applyLifeRuleFile(it) }
+        }
+        val customNotifications = db.customNotificationDao().getAllForSync()
+        attempt("momentum_custom_notifications") {
+            syncEntity("momentum_custom_notifications", customNotifications.filter { it.dirty }.map { it.toCloud(device) },
+                customNotifications.filter { it.dirty }.map { it.uuid }, db.customNotificationDao()::markClean) { applyCustomNotification(it) }
+        }
         val vault = db.vaultDao().getAll()
-        syncEntity("momentum_vault_entries", vault.filter { it.dirty }.map { it.toCloud(device) },
-            vault.filter { it.dirty }.map { it.uuid }, db.vaultDao()::markClean) { applyVault(it) }
-        fileStorage.restoreMissingFiles()
-        SyncRunResult(pushed, pulled, conflicts, pending)
+        attempt("momentum_vault_entries") {
+            syncEntity("momentum_vault_entries", vault.filter { it.dirty }.map { it.toCloud(device) },
+                vault.filter { it.dirty }.map { it.uuid }, db.vaultDao()::markClean) { applyVault(it) }
+        }
+        attempt { fileStorage.restoreMissingFiles() }
+        failures.firstOrNull()?.let { throw it }
+        SyncRunResult(pushed, pulled, conflicts, pending = 0)
     }
 
     suspend fun setPaused(paused: Boolean) {
@@ -111,9 +209,64 @@ class SupabaseSyncRepository(
     }
 
     suspend fun deleteCloudData() {
-        listOf("momentum_habits", "momentum_completions", "momentum_habit_skips", "momentum_habit_reminders",
-            "momentum_expenses", "momentum_category_budgets", "momentum_loans", "momentum_loan_payments",
-            "momentum_files", "momentum_todos", "momentum_vault_entries").forEach { client.deleteAll(it) }
+        allCloudTables.forEach { client.deleteAll(it) }
+    }
+
+    suspend fun deleteCloudDataUpdatedToday() {
+        val startOfDay = ZonedDateTime.now(ZoneId.systemDefault()).toLocalDate()
+            .atStartOfDay(ZoneId.systemDefault()).toInstant().toString()
+        allCloudTables.forEach { client.deleteUpdatedSince(it, startOfDay) }
+    }
+
+    suspend fun deleteCloudTable(table: String) = client.deleteAll(table)
+
+    suspend fun deleteCloudTableUpdatedToday(table: String) {
+        val startOfDay = ZonedDateTime.now(ZoneId.systemDefault()).toLocalDate()
+            .atStartOfDay(ZoneId.systemDefault()).toInstant().toString()
+        client.deleteUpdatedSince(table, startOfDay)
+    }
+
+    suspend fun resetModule(module: AppModule) = withContext(Dispatchers.IO) {
+        val tables = moduleTables(module)
+        require(tables.isNotEmpty()) { "${module.label} does not contain synced records." }
+        tables.forEach { client.deleteAll(it) }
+        val database = db.openHelper.writableDatabase
+        database.beginTransaction()
+        try {
+            localTables(module).forEach { database.execSQL("DELETE FROM $it") }
+            tables.forEach { database.execSQL("DELETE FROM sync_state WHERE tableName = ?", arrayOf(it)) }
+            database.setTransactionSuccessful()
+        } finally {
+            database.endTransaction()
+        }
+    }
+
+    private fun moduleTables(module: AppModule): List<String> = when (module) {
+        AppModule.Habits -> listOf(
+            "momentum_habits", "momentum_completions", "momentum_habit_skips", "momentum_habit_reminders"
+        )
+        AppModule.Money -> listOf("momentum_expenses", "momentum_category_budgets")
+        AppModule.Loans -> listOf("momentum_loan_people", "momentum_loans", "momentum_loan_attachments", "momentum_loan_payments")
+        AppModule.Contacts -> listOf("momentum_contacts")
+        AppModule.Files -> listOf("momentum_files")
+        AppModule.ToDos -> listOf("momentum_todos")
+        AppModule.LifeRules -> listOf("momentum_life_rules", "momentum_life_rule_files")
+        AppModule.Vault -> listOf("momentum_vault_entries")
+        AppModule.Settings -> listOf("momentum_custom_notifications")
+        else -> emptyList()
+    }
+
+    private fun localTables(module: AppModule): List<String> = when (module) {
+        AppModule.Habits -> listOf("completions", "habit_skips", "habit_reminders", "habits")
+        AppModule.Money -> listOf("category_budgets", "expenses")
+        AppModule.Loans -> listOf("loan_attachments", "loan_payments", "loans", "loan_people")
+        AppModule.Contacts -> listOf("contacts")
+        AppModule.LifeRules -> listOf("life_rule_files", "life_rules")
+        AppModule.Files -> listOf("library_files")
+        AppModule.ToDos -> listOf("todo_items")
+        AppModule.Settings -> listOf("custom_notifications")
+        AppModule.Vault -> listOf("vault_entries")
+        else -> emptyList()
     }
 
     private suspend fun applyHabit(r: JsonObject): Int {
@@ -144,6 +297,16 @@ class SupabaseSyncRepository(
         if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
         db.expenseDao().upsertExpense(r.expense(old?.id ?: 0)); return 0
     }
+    private suspend fun applyContact(r: JsonObject): Int {
+        val old = db.contactDao().getByUuid(r.string("id"))
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        db.contactDao().upsertForSync(r.contact(old?.id ?: 0)); return 0
+    }
+    private suspend fun applyLoanPerson(r: JsonObject): Int {
+        val old = db.loanDao().getPersonByUuid(r.string("id"))
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        db.loanDao().upsertPersonForSync(r.loanPerson(old?.id ?: 0)); return 0
+    }
     private suspend fun applyBudget(r: JsonObject): Int {
         val old = db.expenseDao().getBudgetByUuid(r.string("id"))
         if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to it.deviceId }, r)) return if (old?.dirty == true) 1 else 0
@@ -152,7 +315,14 @@ class SupabaseSyncRepository(
     private suspend fun applyLoan(r: JsonObject): Int {
         val old = db.loanDao().getByUuid(r.string("id"))
         if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
-        db.loanDao().upsertLoan(r.loan(old?.id ?: 0)); return 0
+        val personId = r.string("person_id").takeIf { it.isNotBlank() }?.let { db.loanDao().getPersonByUuid(it)?.id }
+        db.loanDao().upsertLoan(r.loan(old?.id ?: 0, personId)); return 0
+    }
+    private suspend fun applyLoanAttachment(r: JsonObject): Int {
+        val old = db.loanDao().getAttachmentByUuid(r.string("id"))
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        val loan = db.loanDao().getByUuid(r.string("loan_id")) ?: return 0
+        db.loanDao().upsertAttachmentForSync(r.loanAttachment(loan.id, old?.id ?: 0)); return 0
     }
     private suspend fun applyPayment(r: JsonObject): Int {
         val loan = db.loanDao().getByUuid(r.string("loan_id")) ?: return 0
@@ -170,6 +340,22 @@ class SupabaseSyncRepository(
         if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
         val parent = r["parent_id"]?.jsonPrimitive?.contentOrNull?.let { db.toDoDao().getByUuid(it)?.id }
         db.toDoDao().upsertForSync(r.todo(old?.id ?: 0, parent)); return 0
+    }
+    private suspend fun applyLifeRule(r: JsonObject): Int {
+        val old = db.lifeRuleDao().getByUuid(r.string("id"))
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        db.lifeRuleDao().upsertForSync(r.lifeRule(old?.id ?: 0)); return 0
+    }
+    private suspend fun applyLifeRuleFile(r: JsonObject): Int {
+        val old = db.lifeRuleDao().getFileByUuid(r.string("id"))
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        val rule = db.lifeRuleDao().getByUuid(r.string("rule_id")) ?: return 0
+        db.lifeRuleDao().upsertFileForSync(r.lifeRuleFile(rule.id, old?.id ?: 0)); return 0
+    }
+    private suspend fun applyCustomNotification(r: JsonObject): Int {
+        val old = db.customNotificationDao().getByUuid(r.string("id"))
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        db.customNotificationDao().upsertForSync(r.customNotification(old?.id ?: 0)); return 0
     }
     private suspend fun applyVault(r: JsonObject): Int {
         val old = db.vaultDao().getByUuid(r.string("id"))
@@ -222,23 +408,45 @@ private fun Completion.toCloud(d: String, habitUuid: String) = base(uuid, update
 private fun HabitSkip.toCloud(d: String, habitUuid: String) = base(uuid, updatedAt, d.ifBlank { deviceId }, deleted).merge(buildJsonObject { put("habit_id", habitUuid); put("epoch_day", epochDay); put("reason", reason) })
 private fun HabitReminder.toCloud(d: String, habitUuid: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("habit_id", habitUuid); put("hour", hour); put("minute", minute); put("days_mask", daysMask); put("enabled", enabled); put("date_epoch_day", dateEpochDay) })
 private fun Expense.toCloud(d: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("title", title); put("amount_minor_units", amountMinorUnits); put("category", category); put("epoch_day", epochDay); put("account", account); put("recurring_rule", recurringRule); put("category_icon", categoryIcon); put("category_color", categoryColor) })
+private fun Contact.toCloud(d: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("name", name); put("phone", phone); put("email", email); put("address", address); put("notes", notes); put("profile_image_path", if (profileImageUri.isBlank()) "" else "contacts/$uuid/profile") })
 private fun CategoryBudget.toCloud(d: String) = base(uuid, updatedAt, d.ifBlank { deviceId }, deleted).merge(buildJsonObject { put("category", category); put("month_key", monthKey); put("limit_minor_units", limitMinorUnits) })
-private fun Loan.toCloud(d: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("person", person); put("amount_minor_units", amountMinorUnits); put("lent", lent); put("note", note); put("epoch_day", epochDay); put("settled", settled); put("due_epoch_day", dueEpochDay) })
+private fun LoanPerson.toCloud(d: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("name", name); put("phone", phone); put("address", address); put("profile_image_path", if (profileImageUri.isBlank()) "" else "loan-people/$uuid/profile"); put("notes", notes); put("archived", archived) })
+private fun Loan.toCloud(d: String, personUuid: String?) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("person", person); put("person_id", personUuid); put("amount_minor_units", amountMinorUnits); put("lent", lent); put("note", note); put("epoch_day", epochDay); put("settled", settled); put("due_epoch_day", dueEpochDay); put("title", title); put("status", status) })
+private fun LoanAttachment.toCloud(d: String, loanUuid: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("loan_id", loanUuid); put("name", name); put("object_path", "loan-attachments/$uuid"); put("mime", mime); put("added_at", Instant.ofEpochMilli(addedAt).toString()) })
 private fun LoanPayment.toCloud(d: String, loanUuid: String) = base(uuid, updatedAt, d.ifBlank { deviceId }, deleted).merge(buildJsonObject { put("loan_id", loanUuid); put("amount_minor_units", amountMinorUnits); put("epoch_day", epochDay); put("note", note) })
 private fun FileItem.toCloud(d: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("name", name); put("uri", uri); put("mime", mime); put("added_epoch_day", addedEpochDay); put("tags", tags); put("folder", folder); put("last_accessed_epoch_day", lastAccessedEpochDay); put("missing", missing) })
 private fun ToDoItem.toCloud(d: String, parentUuid: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("title", title); put("notes", notes); put("due_epoch_day", dueEpochDay); put("due_epoch_millis", dueEpochMillis); put("completed", completed); put("category", category); put("priority", priority); put("reminder_hour", reminderHour); put("reminder_minute", reminderMinute); put("repeat_rule", repeatRule); put("project", project); put("labels", labels); put("parent_id", parentUuid.ifBlank { null }); put("sort_order", sortOrder) })
-private fun VaultRecord.toCloud(d: String) = base(uuid, updatedAt, d.ifBlank { deviceId }, deleted).merge(buildJsonObject { put("nonce", "\\x${nonce.hex()}"); put("ciphertext", "\\x${ciphertext.hex()}") })
+private fun LifeRule.toCloud(d: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("title", title); put("body", body); put("kind", kind); put("pinned", pinned); put("created_epoch_day", createdEpochDay) })
+private fun LifeRuleFile.toCloud(d: String, ruleUuid: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("rule_id", ruleUuid); put("name", name); put("object_path", "life-rule-files/$uuid"); put("mime", mime); put("folder_path", folderPath); put("added_at", Instant.ofEpochMilli(addedAt).toString()) })
+private fun CustomNotification.toCloud(d: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("title", title); put("message", message); put("repeat_mode", repeatMode); put("hour", hour); put("minute", minute); put("date_epoch_day", dateEpochDay); put("days_mask", daysMask); put("day_of_month", dayOfMonth); put("enabled", enabled); put("last_delivered_epoch_millis", lastDeliveredEpochMillis) })
+private fun VaultRecord.toCloud(d: String) = toCloudJson(d)
+
+internal fun VaultRecord.toCloudJson(device: String): JsonObject = buildJsonObject {
+    put("id", uuid)
+    put("nonce", "\\x${nonce.hex()}")
+    put("ciphertext", "\\x${ciphertext.hex()}")
+    put("updated_at", Instant.ofEpochMilli(updatedAt).toString())
+    put("deleted_at", if (deleted) Instant.ofEpochMilli(updatedAt).toString() else null)
+    put("device_id", device.ifBlank { deviceId })
+    put("version", 1)
+}
 
 private fun JsonObject.habit(id: Int) = Habit(id, string("name"), string("description"), string("icon"), int("color_index"), int("time_of_day"), int("days_mask"), bool("archived"), long("created_epoch_day"), string("id"), instantMillis("updated_at"), deleted(), false, string("schedule_type"), int("frequency_per_week"), int("every_n_days", 1), int("target_quantity"), string("quantity_unit"), int("timer_minutes"), string("category"), int("streak_freezes"))
 private fun JsonObject.completion(habitId: Int, epoch: Long) = Completion(habitId, epoch, string("id"), instantMillis("updated_at"), deleted(), false, string("note"), int("quantity"), long("duration_seconds"), long("completed_at_epoch_millis"))
 private fun JsonObject.skip(habitId: Int) = HabitSkip(habitId, long("epoch_day"), string("reason"), string("id"), instantMillis("updated_at"), deleted(), false, string("device_id"))
 private fun JsonObject.reminder(habitId: Int, id: Int) = HabitReminder(id, habitId, int("hour"), int("minute"), int("days_mask"), bool("enabled"), nullableLong("date_epoch_day"), string("id"), instantMillis("updated_at"), deleted(), false)
 private fun JsonObject.expense(id: Int) = Expense(id, string("title"), long("amount_minor_units"), string("category"), long("epoch_day"), string("id"), instantMillis("updated_at"), deleted(), false, string("account"), string("recurring_rule"), string("category_icon"), int("category_color"))
+private fun JsonObject.contact(id: Int) = Contact(id, string("name"), string("phone"), string("email"), string("address"), string("notes"), string("profile_image_path"), string("id"), instantMillis("updated_at"), deleted(), false)
 private fun JsonObject.budget() = CategoryBudget(string("category"), string("month_key"), long("limit_minor_units"), string("id"), instantMillis("updated_at"), deleted(), false, string("device_id"))
-private fun JsonObject.loan(id: Int) = Loan(id, string("person"), long("amount_minor_units"), bool("lent"), string("note"), long("epoch_day"), bool("settled"), string("id"), instantMillis("updated_at"), deleted(), false, nullableLong("due_epoch_day"))
+private fun JsonObject.loan(id: Int, personId: Int?) = Loan(id, string("person"), long("amount_minor_units"), bool("lent"), string("note"), long("epoch_day"), bool("settled"), string("id"), instantMillis("updated_at"), deleted(), false, nullableLong("due_epoch_day"), string("title"), string("status").ifBlank { "pending" }, personId)
+private fun JsonObject.loanPerson(id: Int) = LoanPerson(id, string("name"), string("phone"), string("address"), string("profile_image_path"), string("notes"), bool("archived"), string("id"), instantMillis("updated_at"), deleted(), false)
+private fun JsonObject.loanAttachment(loanId: Int, id: Int) = LoanAttachment(id, loanId, string("name"), string("object_path"), string("mime"), instantMillis("added_at"), string("id"), instantMillis("updated_at"), deleted(), false)
 private fun JsonObject.payment(loanId: Int, id: Int) = LoanPayment(id, loanId, long("amount_minor_units"), long("epoch_day"), string("note"), string("id"), instantMillis("updated_at"), deleted(), false, string("device_id"))
 private fun JsonObject.file(id: Int) = FileItem(id, string("name"), string("uri"), string("mime"), long("added_epoch_day"), string("id"), instantMillis("updated_at"), deleted(), false, string("tags"), string("folder"), long("last_accessed_epoch_day"), bool("missing"))
 private fun JsonObject.todo(id: Int, parent: Int?) = ToDoItem(id, string("title"), string("notes"), long("due_epoch_day"), bool("completed"), string("category"), int("priority"), nullableInt("reminder_hour"), nullableInt("reminder_minute"), string("id"), instantMillis("updated_at"), deleted(), false, nullableLong("due_epoch_millis"), string("repeat_rule"), string("project"), string("labels"), parent, long("sort_order"))
+private fun JsonObject.lifeRule(id: Int) = LifeRule(id, string("title"), string("body"), string("kind"), bool("pinned"), long("created_epoch_day"), string("id"), instantMillis("updated_at"), deleted(), false)
+private fun JsonObject.lifeRuleFile(ruleId: Int, id: Int) = LifeRuleFile(id, ruleId, string("name"), string("object_path"), string("mime"), string("folder_path"), instantMillis("added_at"), string("id"), instantMillis("updated_at"), deleted(), false)
+private fun JsonObject.customNotification(id: Int) = CustomNotification(id, string("title"), string("message"), string("repeat_mode").ifBlank { "once" }, int("hour", 9), int("minute"), nullableLong("date_epoch_day"), int("days_mask", ALL_DAYS), int("day_of_month", 1), bool("enabled"), long("last_delivered_epoch_millis"), string("id"), instantMillis("updated_at"), deleted(), false)
 private fun JsonObject.vault(id: Int) = VaultRecord(id, getBytea("nonce"), getBytea("ciphertext"), instantMillis("updated_at"), string("id"), deleted(), false, string("device_id"))
 
 private fun JsonObject.string(n: String) = this[n]?.jsonPrimitive?.contentOrNull.orEmpty()

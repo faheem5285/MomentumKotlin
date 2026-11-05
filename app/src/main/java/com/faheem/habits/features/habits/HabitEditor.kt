@@ -21,7 +21,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -96,28 +95,24 @@ fun HabitEditorSheet(
     val accent = habitColor(color)
 
     FormSheet(if (initial == null) "New habit" else "Edit habit", onDismiss) {
-        OutlinedTextField(
+        MomentumTextField(
             value = name,
             onValueChange = { name = it },
             label = { Text("Habit name") },
-            singleLine = true,
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth()
+            singleLine = true
         )
-        OutlinedTextField(
+        MomentumTextField(
             value = what,
             onValueChange = { what = it },
             label = { Text("What do I need to do?") },
             minLines = 2,
-            maxLines = 4,
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth()
+            maxLines = 4
         )
 
         EditorLabel("When")
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TIME_LABELS.forEachIndexed { i, label ->
-                FilterChip(selected = time == i, onClick = { time = i }, label = { Text(label) })
+                MomentumChip(selected = time == i, onClick = { time = i }, label = label)
             }
         }
 
@@ -143,19 +138,18 @@ fun HabitEditorSheet(
                 onDelete = { reminders = reminders.toMutableList().also { it.removeAt(index) } }
             )
         }
-        OutlinedButton(
+        MomentumOutlinedButton(
+            text = "Add reminder time",
             onClick = {
                 TimePickerDialog(context, { _, hour, minute ->
                     reminders = reminders + HabitReminderDraft(hour, minute, mask.takeIf { it != 0 } ?: ALL_DAYS)
                 }, 9, 0, DateFormat.is24HourFormat(context)).show()
             },
+            icon = Icons.Rounded.AddAlarm,
             modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(Icons.Rounded.AddAlarm, null)
-            Spacer(Modifier.width(8.dp))
-            Text("Add reminder time")
-        }
-        OutlinedButton(
+        )
+        MomentumOutlinedButton(
+            text = "Add reminder for a specific date",
             onClick = {
                 val start = LocalDate.now()
                 DatePickerDialog(context, { _, year, month, day ->
@@ -169,12 +163,9 @@ fun HabitEditorSheet(
                     }.timeInMillis
                 }.show()
             },
+            icon = Icons.Rounded.Event,
             modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(Icons.Rounded.Event, null)
-            Spacer(Modifier.width(8.dp))
-            Text("Add reminder for a specific date")
-        }
+        )
         if (reminders.isNotEmpty() && !notificationAllowed) {
             PremiumCard(contentPadding = PaddingValues(14.dp)) {
                 Text("Allow notifications so these reminders can appear on your device.", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -283,49 +274,53 @@ private fun HabitReminderDraftCard(
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Reminder ${index + 1}", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                OutlinedButton(onClick = {
-                    TimePickerDialog(context, { _, hour, minute -> onChange(reminder.copy(hour = hour, minute = minute)) }, reminder.hour, reminder.minute, DateFormat.is24HourFormat(context)).show()
-                }, shape = RoundedCornerShape(14.dp)) { Text(DateFormat.getTimeFormat(context).format(time.time)) }
+                MomentumOutlinedButton(
+                    text = DateFormat.getTimeFormat(context).format(time.time),
+                    onClick = {
+                        TimePickerDialog(context, { _, hour, minute -> onChange(reminder.copy(hour = hour, minute = minute)) }, reminder.hour, reminder.minute, DateFormat.is24HourFormat(context)).show()
+                    }
+                )
                 IconButton(onClick = onDelete) { Icon(Icons.Rounded.Delete, "Remove reminder", tint = MaterialTheme.colorScheme.error) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
+                MomentumChip(
                     selected = reminder.dateEpochDay == null,
                     onClick = { if (reminder.dateEpochDay != null) onChange(reminder.copy(dateEpochDay = null, daysMask = maskOrAll(reminder.daysMask))) },
-                    label = { Text("Repeat weekly") }
+                    label = "Repeat weekly"
                 )
-                FilterChip(
+                MomentumChip(
                     selected = reminder.dateEpochDay != null,
                     onClick = { if (reminder.dateEpochDay == null) onChange(reminder.copy(dateEpochDay = today(), daysMask = 0)) },
-                    label = { Text("One-time date") }
+                    label = "One-time date"
                 )
             }
             if (reminder.dateEpochDay != null) {
-                OutlinedButton(onClick = {
-                    DatePickerDialog(context, { _, year, month, day ->
-                        onChange(reminder.copy(dateEpochDay = LocalDate.of(year, month + 1, day).toEpochDay()))
-                    }, date.year, date.monthValue - 1, date.dayOfMonth).apply {
-                        datePicker.minDate = Calendar.getInstance().apply {
-                            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-                        }.timeInMillis
-                    }.show()
-                }, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Rounded.Schedule, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)))
-                }
+                MomentumOutlinedButton(
+                    text = date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)),
+                    onClick = {
+                        DatePickerDialog(context, { _, year, month, day ->
+                            onChange(reminder.copy(dateEpochDay = LocalDate.of(year, month + 1, day).toEpochDay()))
+                        }, date.year, date.monthValue - 1, date.dayOfMonth).apply {
+                            datePicker.minDate = Calendar.getInstance().apply {
+                                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+                            }.timeInMillis
+                        }.show()
+                    },
+                    icon = Icons.Rounded.Schedule,
+                    modifier = Modifier.fillMaxWidth()
+                )
             } else {
                 Text("Repeat on", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     dayLabels.forEach { (label, bit) ->
                         val selected = ((reminder.daysMask shr bit) and 1) == 1
-                        FilterChip(
+                        MomentumChip(
                             selected = selected,
                             onClick = {
                                 val next = reminder.daysMask xor (1 shl bit)
                                 if (next != 0) onChange(reminder.copy(daysMask = next))
                             },
-                            label = { Text(label) }
+                            label = label
                         )
                     }
                 }

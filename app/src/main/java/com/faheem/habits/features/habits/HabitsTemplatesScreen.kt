@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -42,11 +41,11 @@ fun TemplatesScreen(vm: HabitViewModel) {
 
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+        contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            HeroCard {
+            HeroCard(contentPadding = 18.dp) {
                 Text("Habit library", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
                 Text("${HabitTemplates.size} ready-made habits", fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
                 Spacer(Modifier.height(6.dp))
@@ -57,20 +56,19 @@ fun TemplatesScreen(vm: HabitViewModel) {
             }
         }
         item {
-            OutlinedTextField(
+            MomentumTextField(
                 value = query,
                 onValueChange = { query = it },
+                modifier = Modifier.height(52.dp),
                 placeholder = { Text("Search habits") },
                 leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                singleLine = true,
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier.fillMaxWidth()
+                singleLine = true
             )
         }
         item {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 (listOf("All") + TemplateCategories).forEach { c ->
-                    FilterChip(selected = cat == c, onClick = { cat = c }, label = { Text(c) })
+                    MomentumChip(selected = cat == c, onClick = { cat = c }, label = c)
                 }
             }
         }
@@ -100,23 +98,31 @@ fun TemplatesScreen(vm: HabitViewModel) {
                     }
                     Spacer(Modifier.width(8.dp))
                     if (added) {
-                        FilledTonalButton(onClick = {}, enabled = false) {
-                            Icon(Icons.Rounded.Check, null, Modifier.size(18.dp))
-                        }
+                        MomentumChip(
+                            selected = true,
+                            onClick = {},
+                            label = "Added",
+                            icon = Icons.Rounded.Check,
+                            enabled = false
+                        )
                     } else {
-                        Button(onClick = {
-                            vm.add(
-                                Habit(
-                                    name = tpl.name,
-                                    description = tpl.what,
-                                    icon = tpl.icon,
-                                    colorIndex = categoryColorIndex(tpl.category),
-                                    timeOfDay = tpl.timeOfDay,
-                                    daysMask = tpl.daysMask
+                        MomentumOutlinedButton(
+                            text = "Add",
+                            icon = Icons.Rounded.Add,
+                            onClick = {
+                                vm.add(
+                                    Habit(
+                                        name = tpl.name,
+                                        description = tpl.what,
+                                        icon = tpl.icon,
+                                        colorIndex = categoryColorIndex(tpl.category),
+                                        timeOfDay = tpl.timeOfDay,
+                                        daysMask = tpl.daysMask
+                                    )
                                 )
-                            )
-                            Toast.makeText(ctx, "Added to Today", Toast.LENGTH_SHORT).show()
-                        }, shape = RoundedCornerShape(14.dp)) { Text("Add") }
+                                Toast.makeText(ctx, "Added to Today", Toast.LENGTH_SHORT).show()
+                            }
+                        )
                     }
                 }
             }

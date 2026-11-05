@@ -83,7 +83,7 @@ class BatteryChargingMonitorService : Service() {
     }
 
     private fun buildNotification(): Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setSmallIcon(android.R.drawable.ic_lock_idle_charging)
+        .setSmallIcon(R.drawable.ic_stat_zylo)
         .setContentTitle("Charging animation listener active")
         .setContentText("Zylo will show your selected animation when power connects.")
         .setCategory(NotificationCompat.CATEGORY_SERVICE)

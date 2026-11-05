@@ -14,6 +14,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 enum class SessionRestoreResult { AUTHENTICATED, NO_SESSION, TEMPORARY_FAILURE }
 
@@ -29,6 +32,12 @@ object SupabaseAuthApi {
     private data class Credentials(val email: String, val password: String)
 
     @Serializable
+    private data class SignupCredentials(val email: String, val password: String, val data: SignupMetadata)
+
+    @Serializable
+    private data class SignupMetadata(val display_name: String)
+
+    @Serializable
     private data class RefreshCredentials(val refresh_token: String)
 
     @Serializable
@@ -36,11 +45,36 @@ object SupabaseAuthApi {
         val access_token: String? = null,
         val refresh_token: String? = null,
         val expires_in: Long? = null,
-        val token_type: String? = null
+        val token_type: String? = null,
+        val user: AuthUser? = null
     )
+
+    @Serializable
+    private data class AuthUser(val user_metadata: JsonObject? = null)
 
     @Volatile
     private var accessToken: String? = null
+
+    @Volatile
+    private var accessTokenExpiresAt: Long = 0L
+
+    private fun rememberSession(session: AuthResponse) {
+        accessToken = session.access_token
+        val lifetimeMs = (session.expires_in ?: 3600L).coerceAtLeast(60L) * 1_000L
+        accessTokenExpiresAt = System.currentTimeMillis() + lifetimeMs
+    }
+
+    private fun cacheDisplayName(context: Context, session: AuthResponse) {
+        val name = session.user?.user_metadata?.get("display_name")?.jsonPrimitive?.contentOrNull
+            ?.trim()?.take(80).orEmpty()
+        if (name.isNotBlank()) {
+            context.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
+                .edit().putString("display_name", name).apply()
+        }
+    }
+
+    private fun hasFreshToken(): Boolean =
+        !accessToken.isNullOrBlank() && System.currentTimeMillis() < accessTokenExpiresAt - 60_000L
 
     private class AuthHttpException(val status: Int, detail: String) :
         IllegalStateException("Supabase authentication failed ($status): $detail")
@@ -49,10 +83,19 @@ object SupabaseAuthApi {
         request("signup", json.encodeToString(Credentials(email, password)))
     }
 
+    suspend fun signUp(email: String, password: String, displayName: String) {
+        request("signup", json.encodeToString(SignupCredentials(email, password, SignupMetadata(displayName))))
+    }
+
+    suspend fun sendPasswordReset(email: String) {
+        request("recover", json.encodeToString(mapOf("email" to email)))
+    }
+
     suspend fun signIn(context: Context, email: String, password: String) {
         val body = request("token?grant_type=password", json.encodeToString(Credentials(email, password)))
         val session = json.decodeFromString<AuthResponse>(body)
-        accessToken = session.access_token
+        rememberSession(session)
+        cacheDisplayName(context.applicationContext, session)
         val refreshToken = session.refresh_token
         check(!refreshToken.isNullOrBlank()) {
             "Sign-in succeeded but Supabase did not return a refresh token."
@@ -69,7 +112,8 @@ object SupabaseAuthApi {
                 json.encodeToString(RefreshCredentials(refreshToken))
             )
             val session = json.decodeFromString<AuthResponse>(body)
-            accessToken = session.access_token
+            rememberSession(session)
+            cacheDisplayName(context.applicationContext, session)
             val updatedToken = session.refresh_token
             check(!updatedToken.isNullOrBlank()) {
                 "Supabase did not return a refreshed session token."
@@ -80,6 +124,7 @@ object SupabaseAuthApi {
             if (e.status in listOf(400, 401, 403)) {
                 SecureTokenStore.clear(context.applicationContext)
                 accessToken = null
+                accessTokenExpiresAt = 0L
                 SessionRestoreResult.NO_SESSION
             } else {
                 SessionRestoreResult.TEMPORARY_FAILURE
@@ -91,7 +136,7 @@ object SupabaseAuthApi {
     }
 
     suspend fun getAccessToken(context: Context): String? {
-        accessToken?.let { return it }
+        if (hasFreshToken()) return accessToken
         return when (restoreSession(context.applicationContext)) {
             SessionRestoreResult.AUTHENTICATED -> accessToken
             else -> null
@@ -100,6 +145,7 @@ object SupabaseAuthApi {
 
     fun clearInMemorySession() {
         accessToken = null
+        accessTokenExpiresAt = 0L
     }
 
     private suspend fun request(endpoint: String, body: String): String {

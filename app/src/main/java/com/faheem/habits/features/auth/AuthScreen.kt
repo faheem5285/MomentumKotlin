@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -22,7 +23,6 @@ import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -45,10 +46,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.faheem.habits.core.data.supabase.SupabaseAuthApi
+import com.faheem.habits.R
 import com.faheem.habits.core.data.supabase.SupabaseProvider
 import com.faheem.habits.core.data.sync.SupabaseSyncScheduler
 import com.faheem.habits.core.ui.BrandGradient
 import com.faheem.habits.core.ui.InfoBanner
+import com.faheem.habits.core.ui.MomentumTextField
 import com.faheem.habits.core.ui.MomentumTokens
 import com.faheem.habits.core.ui.PremiumCard
 import com.faheem.habits.core.ui.PrimaryButton
@@ -61,6 +64,7 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
     val isConfigured = remember { SupabaseProvider.isConfigured }
     val scope = rememberCoroutineScope()
     var isSignUp by remember { mutableStateOf(false) }
+    var displayName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -72,7 +76,7 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 22.dp, vertical = 36.dp),
+                .padding(horizontal = MomentumTokens.screenPadding, vertical = 36.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -87,11 +91,14 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
                         spotColor = BrandGradient.last().copy(alpha = 0.55f)
                     )
                     .clip(RoundedCornerShape(24.dp))
-                    .background(Brush.linearGradient(BrandGradient))
                     .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(24.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(36.dp), tint = Color.White)
+                Image(
+                    painter = painterResource(R.drawable.zylo_logo),
+                    contentDescription = "Zylo logo",
+                    modifier = Modifier.fillMaxSize()
+                )
             }
             Spacer(Modifier.height(20.dp))
             Text(
@@ -124,36 +131,44 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(12.dp))
-                    OutlinedTextField(
+                    if (isSignUp) {
+                        MomentumTextField(
+                            value = displayName,
+                            onValueChange = { displayName = it.take(80); message = null },
+                            label = { Text("Your name") },
+                            leadingIcon = { Icon(Icons.Rounded.AutoAwesome, null) },
+                            singleLine = true,
+                            enabled = !busy
+                        )
+                        Spacer(Modifier.height(10.dp))
+                    }
+                    MomentumTextField(
                         value = email,
                         onValueChange = { email = it; message = null },
                         label = { Text("Email") },
                         leadingIcon = { Icon(Icons.Rounded.Email, null) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
                         enabled = !busy
                     )
                     Spacer(Modifier.height(10.dp))
-                    OutlinedTextField(
+                    MomentumTextField(
                         value = password,
                         onValueChange = { password = it; message = null },
                         label = { Text("Password") },
                         leadingIcon = { Icon(Icons.Rounded.Lock, null) },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
                         enabled = !busy
                     )
                     Spacer(Modifier.height(16.dp))
                     PrimaryButton(
                         text = if (isSignUp) "Create account" else "Sign in",
                         onClick = {
-                            if (email.isBlank() || password.length < 6) {
+                            if (email.isBlank() || password.length < 6 || (isSignUp && displayName.isBlank())) {
                                 isError = true
-                                message = "Enter a valid email and a password with at least 6 characters."
+                                message = if (isSignUp) "Enter your name, a valid email, and a password with at least 6 characters."
+                                else "Enter a valid email and a password with at least 6 characters."
                             } else {
                                 val enteredEmail = email.trim()
                                 val enteredPassword = password
@@ -162,7 +177,9 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
                                     message = null
                                     try {
                                         if (isSignUp) {
-                                            SupabaseAuthApi.signUp(enteredEmail, enteredPassword)
+                                            SupabaseAuthApi.signUp(enteredEmail, enteredPassword, displayName.trim().take(80))
+                                            context.getSharedPreferences("account_profile", android.content.Context.MODE_PRIVATE)
+                                                .edit().putString("display_name", displayName.trim()).apply()
                                             isError = false
                                             message = "Account created. Check your email to confirm it, then sign in."
                                             isSignUp = false
@@ -184,6 +201,28 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
                         loading = busy,
                         icon = Icons.AutoMirrored.Rounded.ArrowForward
                     )
+                    if (!isSignUp) {
+                        TextButton(
+                            onClick = {
+                                if (email.isBlank()) {
+                                    isError = true
+                                    message = "Enter your email first so we can send a password reset link."
+                                } else scope.launch {
+                                    busy = true
+                                    try {
+                                        SupabaseAuthApi.sendPasswordReset(email.trim())
+                                        isError = false
+                                        message = "If an account exists for that email, a password reset link has been sent."
+                                    } catch (e: Exception) {
+                                        isError = true
+                                        message = e.message ?: "Could not send the reset email. Try again."
+                                    } finally { busy = false }
+                                }
+                            },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Forgot password? Email me a reset link") }
+                    }
                     Spacer(Modifier.height(4.dp))
                     TextButton(
                         onClick = {

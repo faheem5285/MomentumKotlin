@@ -1,4 +1,12 @@
-@file:Suppress("FunctionNaming", "TooManyFunctions", "LongParameterList", "MagicNumber")
+@file:Suppress(
+    "FunctionNaming",
+    "TooManyFunctions",
+    "LongParameterList",
+    "MagicNumber",
+    "CyclomaticComplexMethod",
+    "MatchingDeclarationName",
+    "ReturnCount"
+)
 
 package com.faheem.habits.core.ui
 

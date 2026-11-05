@@ -1,3 +1,5 @@
+@file:Suppress("FunctionNaming")
+
 package com.faheem.habits.app
 
 import android.content.Intent
@@ -8,12 +10,21 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.Image
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
@@ -23,7 +34,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -31,9 +50,14 @@ import androidx.lifecycle.lifecycleScope
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.faheem.habits.core.notifications.MomentumReminderScheduler
+import com.faheem.habits.core.notifications.ZyloNotifications
 import com.faheem.habits.core.settings.AppearancePreferences
+import com.faheem.habits.core.ui.AppModule
+import com.faheem.habits.core.ui.BrandGradient
 import com.faheem.habits.core.ui.MomentumTheme
+import com.faheem.habits.core.ui.ScreenBackground
 import com.faheem.habits.BuildConfig
+import com.faheem.habits.R
 import com.faheem.habits.features.battery.handleAutomaticBatteryPowerEvent
 import com.faheem.habits.features.auth.AuthScreen
 import com.faheem.habits.core.data.supabase.SupabaseAuthApi
@@ -43,10 +67,16 @@ import com.faheem.habits.features.settings.PermissionsSetupScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+/** Destination requested by a notification tap. The token lets repeated taps reopen the module. */
+data class NotificationTarget(val moduleName: String, val token: Long)
+
 @dagger.hilt.android.AndroidEntryPoint
 class MainActivity : FragmentActivity() {
+    private var notificationTarget by mutableStateOf<NotificationTarget?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        notificationTarget = notificationTargetFrom(intent)
         if (BuildConfig.DEBUG) {
             StrictMode.setThreadPolicy(
                 StrictMode.ThreadPolicy.Builder()
@@ -69,8 +99,21 @@ class MainActivity : FragmentActivity() {
         setContent {
             val themeMode by AppearancePreferences.themeMode.collectAsStateWithLifecycle()
             val reduceMotion by AppearancePreferences.reduceMotion.collectAsStateWithLifecycle()
-            MomentumTheme(themeMode = themeMode, reduceEffects = reduceMotion) { MomentumApp() }
+            MomentumTheme(themeMode = themeMode, reduceEffects = reduceMotion) {
+                MomentumApp(notificationTarget = notificationTarget)
+            }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        notificationTarget = notificationTargetFrom(intent)
+    }
+
+    private fun notificationTargetFrom(intent: Intent?): NotificationTarget? {
+        val moduleName = intent?.getStringExtra(ZyloNotifications.EXTRA_TARGET_MODULE) ?: return null
+        return NotificationTarget(moduleName, System.currentTimeMillis())
     }
 
     private fun scheduleRemindersSafely() {
@@ -87,7 +130,10 @@ class MainActivity : FragmentActivity() {
 }
 
 @Composable
-fun MomentumApp(settingsViewModel: com.faheem.habits.features.settings.SettingsViewModel = hiltViewModel()) {
+fun MomentumApp(
+    settingsViewModel: com.faheem.habits.features.settings.SettingsViewModel = hiltViewModel(),
+    notificationTarget: NotificationTarget? = null
+) {
     val context = LocalContext.current
     var destination by remember { mutableStateOf<MomentumDestination>(MomentumDestination.Home) }
     var isAuthenticated by remember { mutableStateOf(false) }
@@ -95,6 +141,12 @@ fun MomentumApp(settingsViewModel: com.faheem.habits.features.settings.SettingsV
     var authNotice by remember { mutableStateOf<String?>(null) }
     val permissionSetupSeen by settingsViewModel.permissionSetupSeen.collectAsStateWithLifecycle()
     val showPermissionSetup = !permissionSetupSeen
+    LaunchedEffect(notificationTarget) {
+        val moduleName = notificationTarget?.moduleName ?: return@LaunchedEffect
+        AppModule.entries.firstOrNull { it.name.equals(moduleName, true) }?.let {
+            destination = MomentumDestination.Module(it)
+        }
+    }
     LaunchedEffect(context) {
         when (SupabaseAuthApi.restoreSession(context.applicationContext)) {
             SessionRestoreResult.AUTHENTICATED -> {
@@ -150,9 +202,7 @@ fun MomentumApp(settingsViewModel: com.faheem.habits.features.settings.SettingsV
                 )
             }
         } else if (isRestoringSession) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
+            RestoringSessionScreen(modifier = Modifier.padding(padding))
         } else {
             AuthScreen(
                 initialMessage = authNotice,
@@ -161,6 +211,57 @@ fun MomentumApp(settingsViewModel: com.faheem.habits.features.settings.SettingsV
                     SupabaseSyncScheduler.enqueue(context.applicationContext)
                 }
             )
+        }
+    }
+}
+
+@Composable
+private fun RestoringSessionScreen(modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(24.dp)
+    ScreenBackground(modifier = modifier, tint = BrandGradient.first()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier
+                        .size(72.dp)
+                        .shadow(
+                            22.dp,
+                            shape,
+                            clip = false,
+                            ambientColor = BrandGradient.first().copy(alpha = 0.60f),
+                            spotColor = BrandGradient.last().copy(alpha = 0.50f)
+                        )
+                        .clip(shape)
+                        .border(1.dp, Color.White.copy(alpha = 0.40f), shape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.zylo_logo),
+                        contentDescription = "Zylo logo",
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                Spacer(Modifier.height(18.dp))
+                Text(
+                    "Zylo",
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-0.8).sp,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Preparing your space",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(24.dp))
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = 2.5.dp
+                )
+            }
         }
     }
 }

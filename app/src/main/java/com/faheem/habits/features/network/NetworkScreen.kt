@@ -104,6 +104,7 @@ fun NetworkScreen() {
     var appReport by remember { mutableStateOf<AppNetworkReport?>(null) }
     var loading by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableIntStateOf(0) }
+    var showUsageAlarm by remember { mutableStateOf(false) }
     var indicatorEnabled by remember {
         mutableStateOf(context.getSharedPreferences(NetworkIndicatorService.PREFS, Context.MODE_PRIVATE).getBoolean(NetworkIndicatorService.KEY_ENABLED, false))
     }
@@ -130,10 +131,53 @@ fun NetworkScreen() {
         }
     }
     val settings = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+    if (showUsageAlarm) {
+        val prefs = context.getSharedPreferences(NetworkIndicatorService.PREFS, Context.MODE_PRIVATE)
+        var wifiLimit by remember { mutableStateOf(prefs.getLong(NetworkIndicatorService.KEY_WIFI_LIMIT_MB, 0L).toString()) }
+        var mobileLimit by remember { mutableStateOf(prefs.getLong(NetworkIndicatorService.KEY_MOBILE_LIMIT_MB, 0L).toString()) }
+        var limitPeriod by remember {
+            mutableStateOf(NetworkLimitPeriod.fromKey(prefs.getString(NetworkIndicatorService.KEY_LIMIT_PERIOD, null)))
+        }
+        AlertDialog(
+            onDismissRequest = { showUsageAlarm = false },
+            title = { Text("Mobile data alarm") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    MomentumTextField(wifiLimit, { wifiLimit = it.filter(Char::isDigit) }, label = { Text("Wi-Fi limit in MB (0 disables)") }, singleLine = true)
+                    MomentumTextField(mobileLimit, { mobileLimit = it.filter(Char::isDigit) }, label = { Text("Mobile data limit in MB (0 disables)") }, singleLine = true)
+                    Text("Limit period", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        NetworkLimitPeriod.entries.forEachIndexed { index, option ->
+                            SegmentedButton(
+                                selected = limitPeriod == option,
+                                onClick = { limitPeriod = option },
+                                shape = SegmentedButtonDefaults.itemShape(index, NetworkLimitPeriod.entries.size)
+                            ) { Text(option.label, fontSize = 11.sp, maxLines = 1) }
+                        }
+                    }
+                    Text("Both limits apply per ${limitPeriod.label.lowercase()} period. Keep Network indicator enabled and allow Usage Access and notifications. Alerts repeat at the limit, then at 1.5× each previous threshold (for example 100, 150, 225 MB); monitoring does not stop at the limit.", fontSize = 12.sp)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    prefs.edit().putLong(NetworkIndicatorService.KEY_WIFI_LIMIT_MB, wifiLimit.toLongOrNull() ?: 0L)
+                        .putLong(NetworkIndicatorService.KEY_MOBILE_LIMIT_MB, mobileLimit.toLongOrNull() ?: 0L)
+                        .putString(NetworkIndicatorService.KEY_LIMIT_PERIOD, limitPeriod.key)
+                        .apply()
+                    NetworkIndicatorService.resetAlarmProgress(context)
+                    showUsageAlarm = false
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showUsageAlarm = false }) { Text("Cancel") } }
+        )
+    }
     Column(Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 100.dp),
+            contentPadding = PaddingValues(
+                horizontal = MomentumTokens.screenPadding,
+                vertical = MomentumTokens.space2
+            ),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
@@ -164,6 +208,9 @@ fun NetworkScreen() {
                         }
                     }
                 }
+            }
+            item {
+                SecondaryButton("Set mobile data alarm", onClick = { showUsageAlarm = true }, icon = Icons.Rounded.NotificationsActive)
             }
             item {
                 PremiumCard(contentPadding = PaddingValues(16.dp)) {
@@ -391,6 +438,7 @@ private fun startNetworkIndicator(context: Context) {
 }
 
 @Composable
+@Suppress("FunctionNaming")
 private fun AppTrafficRow(app: AppNetworkUsage) {
     PremiumCard(contentPadding = PaddingValues(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {

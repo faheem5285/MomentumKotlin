@@ -23,7 +23,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -211,7 +210,7 @@ fun BatteryScreen() {
             .getBoolean(BatteryChargingMonitorService.KEY_BACKGROUND_LISTENER, false)
         notificationsAllowed = MomentumNotificationSettings.notificationsAllowed(context)
     }
-    val styles = listOf("Liquid Glass", "Plasma Storm", "Pulse", "Flow", "Glow", "Neon Ring", "Dual Orbit", "Spark", "Wave", "Heartbeat", "Rainbow", "Comet", "Solar Flare", "Ripple", "Segment", "Liquid", "Aurora", "Matrix", "Firefly", "Prism", "Galaxy", "Radar", "Energy Core", "Spiral", "Minimal")
+    val styles = BATTERY_ANIMATION_STYLES
 
     Column(Modifier.fillMaxSize()) {
         LazyBatteryContent(
@@ -304,7 +303,11 @@ private fun LazyBatteryContent(
     val displayPercent = estimate.percent
     val reduceMotion = LocalReduceEffects.current
     androidx.compose.foundation.lazy.LazyColumn(
-        Modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp, 6.dp, 18.dp, 36.dp),
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            horizontal = MomentumTokens.screenPadding,
+            vertical = MomentumTokens.space2
+        ),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
@@ -443,11 +446,7 @@ private fun LazyBatteryContent(
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         report.apps.take(5).forEach { app ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (app.icon != null) {
-                                    Image(app.icon, app.label, Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)))
-                                } else {
-                                    IconBubble(Icons.Rounded.Apps, MaterialTheme.colorScheme.primary, 32.dp)
-                                }
+                                AppIcon(app.icon, app.label, 32.dp, cornerRadius = 9.dp)
                                 Spacer(Modifier.width(10.dp))
                                 Text(
                                     app.label,
