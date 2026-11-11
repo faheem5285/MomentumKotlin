@@ -391,10 +391,10 @@ enum class AppModule(val label: String, val icon: ImageVector, val gradient: Lis
     LifeRules("Life rules", Icons.AutoMirrored.Rounded.MenuBook, listOf(Color(0xFF78350F), Color(0xFFF59E0B), Color(0xFFFDE68A))),
     Screen("Screen time", Icons.Rounded.Timer, listOf(Color(0xFF581C87), Color(0xFFA855F7), Color(0xFFE879F9))),
     Vault("Vault", Icons.Rounded.Lock, listOf(Color(0xFF134E4A), Color(0xFF14B8A6), Color(0xFF5EEAD4))),
-    Battery("Battery", Icons.Rounded.BatteryChargingFull, listOf(Color(0xFF365314), Color(0xFF84CC16), Color(0xFFBEF264))),
-    Network("Network", Icons.Rounded.Wifi, listOf(Color(0xFF312E81), Color(0xFF6366F1), Color(0xFFA5B4FC))),
+    Battery("Battery", Icons.Rounded.Bolt, listOf(Color(0xFF365314), Color(0xFF84CC16), Color(0xFFBEF264))),
+    Network("Network", Icons.Rounded.SignalCellularAlt, listOf(Color(0xFF312E81), Color(0xFF6366F1), Color(0xFFA5B4FC))),
     Supabase("Supabase", Icons.Rounded.Cloud, listOf(Color(0xFF14532D), Color(0xFF22C55E), Color(0xFF86EFAC))),
-    Settings("Settings", Icons.Rounded.Settings, listOf(Color(0xFF1E293B), Color(0xFF64748B), Color(0xFFCBD5E1)));
+    Settings("Settings", Icons.Rounded.SettingsSuggest, listOf(Color(0xFF1E293B), Color(0xFF64748B), Color(0xFFCBD5E1)));
 
     /** Readable, saturated accent for text, charts and small icons. */
     val accent: Color get() = gradient.getOrElse(1) { gradient.first() }
