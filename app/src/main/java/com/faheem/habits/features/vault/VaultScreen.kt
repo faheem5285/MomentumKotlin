@@ -102,6 +102,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = AppDatabase.get(app).vaultDao()
     private val accountKeys = SupabaseRestClient(app)
     private val prefs = app.getSharedPreferences("momentum_vault", Context.MODE_PRIVATE)
+    private val profilePrefs = app.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
     private val vmkWrappedPref = "vmk_wrapped_password_v1"
     private val biometricWrappedPref = "vmk_wrapped_biometric_v1"
     private val failedAttemptsPref = "failed_unlock_attempts"
@@ -109,6 +110,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
 
     fun isConfigured(): Boolean = prefs.contains(VaultCrypto.SALT_PREF) && prefs.contains(VaultCrypto.CHECK_PREF)
     fun needsAccountLink(): Boolean = isConfigured() && !prefs.getBoolean(accountLinkedPref, false)
+    fun linkedEmail(): String = profilePrefs.getString("email", "").orEmpty()
 
     suspend fun unlockWithAccount(): ByteArray = withContext(Dispatchers.IO) {
         val accountKey = accountKeys.fetchVaultKey()
@@ -875,60 +877,6 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
                         visualTransformation = PasswordVisualTransformation()
                     )
                 }
-                if (pendingRecordMerge) {
-                    MomentumDialog(
-                        onDismissRequest = {
-                            pendingRecordMerge = false
-                            legacyPassword = ""
-                        },
-                        title = { Text("Recover old Vault records") },
-                        text = {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text("Enter the old Vault password once. Any records it can open will be re-encrypted with your account key. Other encrypted records will be preserved unchanged.")
-                                MomentumTextField(
-                                    value = legacyPassword,
-                                    onValueChange = { legacyPassword = it.take(128); error = null },
-                                    label = { Text("Old Vault password") },
-                                    singleLine = true,
-                                    visualTransformation = PasswordVisualTransformation()
-                                )
-                            }
-                        },
-                        confirmButton = {
-                            TextButton(
-                                enabled = !busy && legacyPassword.isNotEmpty(),
-                                onClick = {
-                                    val password = legacyPassword
-                                    legacyPassword = ""
-                                    pendingRecordMerge = false
-                                    val key = sessionKey ?: return@TextButton
-                                    scope.launch {
-                                        busy = true
-                                        try {
-                                            val count = vm.mergeLegacyRecords(password, key)
-                                            refresh++
-                                            exportMessage = if (count > 0) {
-                                                "Recovered and synced $count old Vault record${if (count == 1) "" else "s"}."
-                                            } else {
-                                                "No records could be recovered with that old password. Encrypted records were left unchanged."
-                                            }
-                                        } catch (e: Exception) {
-                                            exportMessage = e.message ?: "Could not recover old Vault records."
-                                        } finally {
-                                            busy = false
-                                        }
-                                    }
-                                }
-                            ) { Text(if (busy) "Recovering…" else "Recover records") }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = {
-                                pendingRecordMerge = false
-                                legacyPassword = ""
-                            }) { Text("Cancel") }
-                        }
-                    )
-                }
             },
             confirmButton = {
                 TextButton(
@@ -956,6 +904,60 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
             dismissButton = {
                 TextButton(onClick = {
                     pendingLegacyMigration = false
+                    legacyPassword = ""
+                }) { Text("Cancel") }
+            }
+        )
+    }
+    if (pendingRecordMerge) {
+        MomentumDialog(
+            onDismissRequest = {
+                pendingRecordMerge = false
+                legacyPassword = ""
+            },
+            title = { Text("Unlock old Vault records") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Enter the old Vault password once. Any records it can open are re-encrypted with your account key. Everything else is preserved unchanged.")
+                    MomentumTextField(
+                        value = legacyPassword,
+                        onValueChange = { legacyPassword = it.take(128); error = null },
+                        label = { Text("Old Vault password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !busy && legacyPassword.isNotEmpty(),
+                    onClick = {
+                        val password = legacyPassword
+                        legacyPassword = ""
+                        pendingRecordMerge = false
+                        val activeKey = sessionKey ?: return@TextButton
+                        scope.launch {
+                            busy = true
+                            try {
+                                val count = vm.mergeLegacyRecords(password, activeKey)
+                                refresh++
+                                exportMessage = if (count > 0) {
+                                    "Recovered $count old Vault record${if (count == 1) "" else "s"}."
+                                } else {
+                                    "No records could be opened with that password. Encrypted records were left unchanged."
+                                }
+                            } catch (e: Exception) {
+                                exportMessage = e.message ?: "Could not unlock old Vault records."
+                            } finally {
+                                busy = false
+                            }
+                        }
+                    }
+                ) { Text(if (busy) "Unlocking…" else "Unlock records") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    pendingRecordMerge = false
                     legacyPassword = ""
                 }) { Text("Cancel") }
             }
@@ -1003,8 +1005,9 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
     val key = sessionKey
     if (key == null) {
         VaultGate(
-            busy,
-            error,
+            busy = busy,
+            error = error,
+            linkedEmail = vm.linkedEmail(),
             legacyVaultAvailable = vm.needsAccountLink(),
             onSubmit = ::unlockWithAccount,
             onLinkExisting = { pendingLegacyMigration = true },
@@ -1017,8 +1020,9 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
         VaultHome(
             items = items,
             unreadable = unreadable,
+            linkedEmail = vm.linkedEmail(),
             legacyBackupAvailable = vm.isConfigured(),
-            onRecoverOldRecords = { pendingRecordMerge = true },
+            onRecoverOldRecords = { legacyPassword = ""; pendingRecordMerge = true },
             onLock = {
                 sessionEpoch++
                 key.fill(0); sessionKey = null; items = emptyList(); selected = null
@@ -1082,6 +1086,7 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
 private fun VaultGate(
     busy: Boolean,
     error: String?,
+    linkedEmail: String,
     legacyVaultAvailable: Boolean,
     onSubmit: () -> Unit,
     onLinkExisting: () -> Unit,
@@ -1096,6 +1101,15 @@ private fun VaultGate(
                 HeroCard {
                     Icon(Icons.Rounded.Lock, null, Modifier.size(38.dp), tint = Color.White)
                     Spacer(Modifier.height(12.dp))
+                    if (linkedEmail.isNotBlank()) {
+                        Text(
+                            linkedEmail,
+                            fontSize = 12.sp,
+                            color = Color.White.copy(alpha = .84f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     Text(
                         "Open your account Vault",
                         fontSize = 25.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp
@@ -1144,6 +1158,7 @@ private fun VaultGate(
 private fun VaultHome(
     items: List<VaultListItem>,
     unreadable: Int,
+    linkedEmail: String,
     legacyBackupAvailable: Boolean,
     onRecoverOldRecords: () -> Unit,
     onLock: () -> Unit,
@@ -1201,8 +1216,17 @@ private fun VaultHome(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("Private password vault", fontSize = 12.sp, color = Color.White.copy(alpha = .84f))
+                            Text(
+                                if (linkedEmail.isNotBlank()) linkedEmail else "Your account vault",
+                                fontSize = 12.sp,
+                                color = Color.White.copy(alpha = .84f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                             Text("${items.size} secure item${if (items.size == 1) "" else "s"}", fontSize = 25.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+                            if (unreadable > 0) {
+                                Text("+ $unreadable from an older key", fontSize = 12.sp, color = Color.White.copy(alpha = .8f))
+                            }
                         }
                         IconButton(onClick = onLock, modifier = Modifier.size(40.dp)) {
                             Icon(Icons.Rounded.Lock, "Lock vault now", tint = Color.White)
@@ -1212,12 +1236,14 @@ private fun VaultHome(
             }
             if (unreadable > 0) item {
                 InfoBanner(
-                    icon = Icons.Rounded.Warning,
-                    text = "$unreadable old record${if (unreadable == 1) "" else "s"} use a different key and are preserved. Recover any records still available on this device using the old Vault password.",
-                    tint = MaterialTheme.colorScheme.error
+                    icon = Icons.Rounded.Security,
+                    text = "$unreadable older record${if (unreadable == 1) "" else "s"} were saved with a previous vault key and are safely preserved. Open them once with the old password, or restore the matching backup.",
+                    tint = MaterialTheme.colorScheme.tertiary
                 )
                 if (legacyBackupAvailable) {
-                    SecondaryButton("Recover old records", onClick = onRecoverOldRecords, icon = Icons.Rounded.Restore)
+                    SecondaryButton("Unlock old records", onClick = onRecoverOldRecords, icon = Icons.Rounded.Restore)
+                } else {
+                    SecondaryButton("Restore from encrypted backup", onClick = onRestoreBackup, icon = Icons.Rounded.Restore)
                 }
             }
             item {

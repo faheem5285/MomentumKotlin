@@ -50,7 +50,7 @@ object SupabaseAuthApi {
     )
 
     @Serializable
-    private data class AuthUser(val user_metadata: JsonObject? = null)
+    private data class AuthUser(val email: String? = null, val user_metadata: JsonObject? = null)
 
     @Volatile
     private var accessToken: String? = null
@@ -64,12 +64,15 @@ object SupabaseAuthApi {
         accessTokenExpiresAt = System.currentTimeMillis() + lifetimeMs
     }
 
-    private fun cacheDisplayName(context: Context, session: AuthResponse) {
+    private fun cacheProfile(context: Context, session: AuthResponse) {
         val name = session.user?.user_metadata?.get("display_name")?.jsonPrimitive?.contentOrNull
             ?.trim()?.take(80).orEmpty()
-        if (name.isNotBlank()) {
-            context.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
-                .edit().putString("display_name", name).apply()
+        val email = session.user?.email?.trim()?.take(160).orEmpty()
+        if (name.isNotBlank() || email.isNotBlank()) {
+            val editor = context.getSharedPreferences("account_profile", Context.MODE_PRIVATE).edit()
+            if (name.isNotBlank()) editor.putString("display_name", name)
+            if (email.isNotBlank()) editor.putString("email", email)
+            editor.apply()
         }
     }
 
@@ -95,7 +98,7 @@ object SupabaseAuthApi {
         val body = request("token?grant_type=password", json.encodeToString(Credentials(email, password)))
         val session = json.decodeFromString<AuthResponse>(body)
         rememberSession(session)
-        cacheDisplayName(context.applicationContext, session)
+        cacheProfile(context.applicationContext, session)
         val refreshToken = session.refresh_token
         check(!refreshToken.isNullOrBlank()) {
             "Sign-in succeeded but Supabase did not return a refresh token."
@@ -113,7 +116,7 @@ object SupabaseAuthApi {
             )
             val session = json.decodeFromString<AuthResponse>(body)
             rememberSession(session)
-            cacheDisplayName(context.applicationContext, session)
+            cacheProfile(context.applicationContext, session)
             val updatedToken = session.refresh_token
             check(!updatedToken.isNullOrBlank()) {
                 "Supabase did not return a refreshed session token."

@@ -369,7 +369,7 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
             "Vault",
             if (!s.vaultCountKnown) "Open Vault to load account records"
             else if (s.vaultEntries == 0) "Private password manager"
-            else "${s.vaultEntries} entr${if (s.vaultEntries == 1) "y" else "ies"} encrypted",
+            else "${s.vaultEntries} secure item${if (s.vaultEntries == 1) "" else "s"}",
             AppModule.Vault.icon, AppModule.Vault.gradient, AppModule.Vault,
             chart = TileChart.Trend(s.vaultWeek)
         ),
