@@ -116,16 +116,9 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun unlockWithAccount(): ByteArray = withContext(Dispatchers.IO) {
         val accountKey = accountKeys.fetchVaultKey()
         if (accountKey != null) {
-            try {
-                verifyRecordsReadable(accountKey)
-                SupabaseSyncRepository(getApplication()).syncVaultEntries()
-                verifyRecordsReadable(accountKey)
-                prefs.edit().putBoolean(accountLinkedPref, true).apply()
-                return@withContext accountKey
-            } catch (failure: Exception) {
-                accountKey.fill(0)
-                throw failure
-            }
+            SupabaseSyncRepository(getApplication()).syncVaultEntries()
+            prefs.edit().putBoolean(accountLinkedPref, true).apply()
+            return@withContext accountKey
         }
         if (isConfigured()) {
             error("This device has a legacy password-protected vault. Choose “Link existing vault” and enter its password once.")
@@ -142,7 +135,6 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
             val savedKey = accountKeys.fetchVaultKey()
                 ?: error("The account key was not available after saving.")
             SupabaseSyncRepository(getApplication()).syncVaultEntries()
-            verifyRecordsReadable(savedKey)
             prefs.edit().putBoolean(accountLinkedPref, true).apply()
             savedKey
         } finally {
@@ -170,7 +162,6 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                 accountKey.fill(0)
             } else {
                 SupabaseSyncRepository(getApplication()).syncVaultEntries()
-                verifyRecordsReadable(localKey)
                 check(accountKeys.count("momentum_vault_entries") <= dao.getAllForSync().size) {
                     "The account has Vault records that are not present on this device. Sync them before linking the key."
                 }
@@ -184,25 +175,11 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                 savedKey.fill(0)
             }
             SupabaseSyncRepository(getApplication()).syncVaultEntries()
-            verifyRecordsReadable(localKey)
             prefs.edit().putBoolean(accountLinkedPref, true).apply()
             localKey
         } catch (failure: Exception) {
             localKey.fill(0)
             throw failure
-        }
-    }
-
-    private suspend fun verifyRecordsReadable(key: ByteArray) {
-        dao.getAll().forEach { record ->
-            try {
-                VaultCrypto.decrypt(record.nonce, record.ciphertext, key)
-            } catch (failure: Exception) {
-                throw IllegalStateException(
-                    "The account key does not match one or more local Vault records. The encrypted records were left unchanged.",
-                    failure
-                )
-            }
         }
     }
 
@@ -366,6 +343,10 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                     try { VaultListItem(record.id, VaultCrypto.decrypt(record.nonce, record.ciphertext, operationKey), record.updatedAt) }
                     catch (_: Exception) { unreadable++; null }
                 }
+                prefs.edit()
+                    .putInt("readable_records", entries.size)
+                    .putInt("unreadable_records", unreadable)
+                    .apply()
                 entries to unreadable
             }
         } finally {
@@ -400,6 +381,41 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun delete(id: Int) = withContext(Dispatchers.IO) {
         dao.markDeleted(id, System.currentTimeMillis())
+    }
+
+    suspend fun mergeLegacyRecords(masterPassword: String, accountKey: ByteArray): Int = withContext(Dispatchers.IO) {
+        val legacyKey = unlock(masterPassword)
+            ?: error("That password did not unlock the old Vault data.")
+        try {
+            var migrated = 0
+            dao.getAll().forEach { record ->
+                val alreadyAccountEncrypted = runCatching {
+                    VaultCrypto.decrypt(record.nonce, record.ciphertext, accountKey)
+                }.isSuccess
+                if (!alreadyAccountEncrypted) {
+                    val secret = runCatching {
+                        VaultCrypto.decrypt(record.nonce, record.ciphertext, legacyKey)
+                    }.getOrNull()
+                    if (secret != null) {
+                        val encrypted = VaultCrypto.encrypt(secret, accountKey)
+                        dao.upsert(
+                            record.copy(
+                                nonce = encrypted.first,
+                                ciphertext = encrypted.second,
+                                updatedAt = System.currentTimeMillis(),
+                                dirty = true,
+                                deleted = false
+                            )
+                        )
+                        migrated++
+                    }
+                }
+            }
+            if (migrated > 0) SupabaseSyncRepository(getApplication()).syncVaultEntries()
+            migrated
+        } finally {
+            legacyKey.fill(0)
+        }
     }
 
     suspend fun exportEncrypted(destination: Uri) = withContext(Dispatchers.IO) {
@@ -532,7 +548,9 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                     .putBoolean(accountLinkedPref, true)
                     .commit()
             ) { "Could not save the restored vault setup." }
-            VaultRestoreResult(vmk, applyImport(records, VaultImportAction.Upsert, vmk))
+            val importedCount = applyImport(records, VaultImportAction.Upsert, vmk)
+            SupabaseSyncRepository(getApplication()).syncVaultEntries()
+            VaultRestoreResult(vmk, importedCount)
         } catch (failure: Exception) {
             vmk.fill(0)
             throw failure
@@ -705,10 +723,23 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
     var pendingImport by remember { mutableStateOf<Pair<Uri, Boolean>?>(null) }
     var pendingRecovery by remember { mutableStateOf<Uri?>(null) }
     var pendingLegacyMigration by remember { mutableStateOf(false) }
+    var pendingRecordMerge by remember { mutableStateOf(false) }
     var recoveryPassword by remember { mutableStateOf("") }
     var legacyPassword by remember { mutableStateOf("") }
     var externalFilePickerOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) {
+        busy = true
+        try {
+            sessionKey = vm.unlockWithAccount()
+            configured = true
+            sessionEpoch++
+        } catch (e: Exception) {
+            error = e.message ?: "Could not open Vault with this account."
+        } finally {
+            busy = false
+        }
+    }
     val vaultExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         externalFilePickerOpen = false
         val key = sessionKey
@@ -845,6 +876,60 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
                         label = { Text("Existing Vault password") },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation()
+                    )
+                }
+                if (pendingRecordMerge) {
+                    MomentumDialog(
+                        onDismissRequest = {
+                            pendingRecordMerge = false
+                            legacyPassword = ""
+                        },
+                        title = { Text("Recover old Vault records") },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("Enter the old Vault password once. Any records it can open will be re-encrypted with your account key. Other encrypted records will be preserved unchanged.")
+                                MomentumTextField(
+                                    value = legacyPassword,
+                                    onValueChange = { legacyPassword = it.take(128); error = null },
+                                    label = { Text("Old Vault password") },
+                                    singleLine = true,
+                                    visualTransformation = PasswordVisualTransformation()
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(
+                                enabled = !busy && legacyPassword.isNotEmpty(),
+                                onClick = {
+                                    val password = legacyPassword
+                                    legacyPassword = ""
+                                    pendingRecordMerge = false
+                                    val key = sessionKey ?: return@TextButton
+                                    scope.launch {
+                                        busy = true
+                                        try {
+                                            val count = vm.mergeLegacyRecords(password, key)
+                                            refresh++
+                                            exportMessage = if (count > 0) {
+                                                "Recovered and synced $count old Vault record${if (count == 1) "" else "s"}."
+                                            } else {
+                                                "No records could be recovered with that old password. Encrypted records were left unchanged."
+                                            }
+                                        } catch (e: Exception) {
+                                            exportMessage = e.message ?: "Could not recover old Vault records."
+                                        } finally {
+                                            busy = false
+                                        }
+                                    }
+                                }
+                            ) { Text(if (busy) "Recovering…" else "Recover records") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = {
+                                pendingRecordMerge = false
+                                legacyPassword = ""
+                            }) { Text("Cancel") }
+                        }
                     )
                 }
             },
@@ -996,14 +1081,11 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
     val key = sessionKey
     if (key == null) {
         VaultGate(
-            configured,
             busy,
             error,
-            biometricAvailable = configured && vm.hasBiometricUnlock(),
             legacyVaultAvailable = vm.needsAccountLink(),
             onSubmit = ::unlockWithAccount,
             onLinkExisting = { pendingLegacyMigration = true },
-            onBiometric = ::launchBiometricUnlock,
             onRestoreBackup = {
                 externalFilePickerOpen = true
                 recoveryLauncher.launch(arrayOf("application/json", "text/json", "text/plain"))
@@ -1014,6 +1096,7 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
             items = items,
             unreadable = unreadable,
             legacyBackupAvailable = vm.isConfigured(),
+            onRecoverOldRecords = { pendingRecordMerge = true },
             onLock = {
                 sessionEpoch++
                 key.fill(0); sessionKey = null; items = emptyList(); selected = null
@@ -1036,8 +1119,7 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
             onRestoreBackup = {
                 externalFilePickerOpen = true
                 recoveryLauncher.launch(arrayOf("application/json", "text/json", "text/plain"))
-            },
-            onEnableBiometric = ::enableBiometricUnlock
+            }
         )
         exportMessage?.let { Text(it, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
     }
@@ -1076,14 +1158,11 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
 
 @Composable
 private fun VaultGate(
-    configured: Boolean,
     busy: Boolean,
     error: String?,
-    biometricAvailable: Boolean,
     legacyVaultAvailable: Boolean,
     onSubmit: () -> Unit,
     onLinkExisting: () -> Unit,
-    onBiometric: () -> Unit,
     onRestoreBackup: () -> Unit
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = MomentumTokens.screenPadding, vertical = 16.dp), verticalArrangement = Arrangement.Center) {
@@ -1105,9 +1184,6 @@ private fun VaultGate(
                         color = Color.White.copy(alpha = .9f)
                     )
                 }
-            }
-            if (configured && biometricAvailable) item {
-                SecondaryButton("Unlock with biometrics", onClick = onBiometric, icon = Icons.Rounded.Fingerprint)
             }
             if (legacyVaultAvailable) {
                 item {
@@ -1147,6 +1223,7 @@ private fun VaultHome(
     items: List<VaultListItem>,
     unreadable: Int,
     legacyBackupAvailable: Boolean,
+    onRecoverOldRecords: () -> Unit,
     onLock: () -> Unit,
     onAdd: () -> Unit,
     onSelect: (VaultListItem) -> Unit,
@@ -1154,7 +1231,6 @@ private fun VaultHome(
     onImport: () -> Unit,
     onImportCsv: () -> Unit,
     onRestoreBackup: () -> Unit,
-    onEnableBiometric: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     var type by remember { mutableStateOf("All") }
@@ -1204,9 +1280,7 @@ private fun VaultHome(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Private password vault", fontSize = 12.sp, color = Color.White.copy(alpha = .84f))
-                            val totalRecords = items.size + unreadable
-                            Text("$totalRecords secure item${if (totalRecords == 1) "" else "s"}", fontSize = 25.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
-                            Text("Encrypted vault records", fontSize = 11.sp, color = Color.White.copy(alpha = .9f))
+                            Text("${items.size} secure item${if (items.size == 1) "" else "s"}", fontSize = 25.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
                         }
                         IconButton(onClick = onLock, modifier = Modifier.size(40.dp)) {
                             Icon(Icons.Rounded.Lock, "Lock vault now", tint = Color.White)
@@ -1214,15 +1288,15 @@ private fun VaultHome(
                     }
                 }
             }
-            item {
-                SecondaryButton("Enable biometric unlock", onClick = onEnableBiometric, icon = Icons.Rounded.Fingerprint)
-            }
             if (unreadable > 0) item {
                 InfoBanner(
                     icon = Icons.Rounded.Warning,
-                    text = "$unreadable record${if (unreadable == 1) "" else "s"} could not be decrypted with this vault key. The encrypted data is preserved, but it can only be opened with the original vault key or a matching backup.",
+                    text = "$unreadable old record${if (unreadable == 1) "" else "s"} use a different key. They are preserved. You can try merging them with the old Vault password.",
                     tint = MaterialTheme.colorScheme.error
                 )
+                if (legacyBackupAvailable) {
+                    SecondaryButton("Recover old records", onClick = onRecoverOldRecords, icon = Icons.Rounded.Restore)
+                }
             }
             item {
                 val issues = health.weak + health.reused + health.duplicates

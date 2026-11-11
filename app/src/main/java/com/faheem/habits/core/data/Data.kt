@@ -595,7 +595,7 @@ interface VaultDao {
     @Query("SELECT * FROM vault_entries ORDER BY updatedAt DESC")
     suspend fun getAllForSync(): List<VaultRecord>
 
-    @Query("SELECT updatedAt FROM vault_entries ORDER BY updatedAt DESC")
+    @Query("SELECT updatedAt FROM vault_entries WHERE deleted = 0 ORDER BY updatedAt DESC")
     fun observeUpdatedAt(): Flow<List<Long>>
 
     @Query("SELECT * FROM vault_entries WHERE uuid = :uuid LIMIT 1")

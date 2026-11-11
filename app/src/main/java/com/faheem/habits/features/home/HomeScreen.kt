@@ -66,6 +66,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
@@ -90,6 +91,7 @@ data class HomeState(
     val todoWeek: List<Float> = emptyList(),
     val vaultWeek: List<Float> = emptyList(),
     val vaultEntries: Int = 0,
+    val vaultCountKnown: Boolean = false,
     val fileMix: List<Pair<String, Float>> = emptyList(),
     val loanLent: Long = 0L,
     val loanBorrowed: Long = 0L,
@@ -102,6 +104,18 @@ data class HomeState(
 
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private val db = AppDatabase.get(app)
+    private val vaultReadableCount = kotlinx.coroutines.flow.callbackFlow {
+        val prefs = app.getSharedPreferences("momentum_vault", Context.MODE_PRIVATE)
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "readable_records") trySend(prefs.getInt("readable_records", -1))
+        }
+        trySend(prefs.getInt("readable_records", -1))
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    private val vaultStats = combine(db.vaultDao().observeUpdatedAt(), vaultReadableCount) { updates, readable ->
+        updates to readable
+    }
 
     private val overview = combine(
         db.habitDao().getHabits(),
@@ -156,10 +170,11 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<HomeState> = combine(
         overview,
         db.toDoDao().getAll(),
-        db.vaultDao().observeUpdatedAt(),
+        vaultStats,
         db.syncStateDao().observeAll(),
         db.lifeRuleDao().getAll()
-    ) { base, tasks, vaultUpdates, syncStates, lifeRules ->
+    ) { base, tasks, vaultStats, syncStates, lifeRules ->
+        val (vaultUpdates, readableVaultCount) = vaultStats
         val liveRules = lifeRules.filter { !it.deleted }
         val day = today()
         fun weekCounts(timestamps: List<Long>): List<Float> =
@@ -177,7 +192,8 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             openTasks = tasks.count { !it.completed },
             todoWeek = weekCounts(tasks.filter { it.completed }.map { it.updatedAt }),
             vaultWeek = weekCounts(vaultUpdates),
-            vaultEntries = vaultUpdates.size,
+            vaultEntries = readableVaultCount.coerceAtLeast(0),
+            vaultCountKnown = readableVaultCount >= 0,
             syncPending = syncStates.sumOf { it.pendingCount },
             syncHealthy = syncStates.count { it.lastSyncEpochMillis > 0 && it.lastError.isNullOrBlank() },
             syncTracked = syncStates.size,
@@ -351,7 +367,8 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
         ),
         TileSpec(
             "Vault",
-            if (s.vaultEntries == 0) "Private password manager"
+            if (!s.vaultCountKnown) "Open Vault to load account records"
+            else if (s.vaultEntries == 0) "Private password manager"
             else "${s.vaultEntries} entr${if (s.vaultEntries == 1) "y" else "ies"} encrypted",
             AppModule.Vault.icon, AppModule.Vault.gradient, AppModule.Vault,
             chart = TileChart.Trend(s.vaultWeek)
