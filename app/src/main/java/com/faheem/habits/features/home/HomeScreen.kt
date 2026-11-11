@@ -40,9 +40,13 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -491,6 +495,57 @@ private fun HomeHeader(s: HomeState, displayName: String, onSettings: () -> Unit
     }
 }
 
+/**
+ * A module glyph rendered like frosted glass: translucent, gradient-tinted and
+ * lit by a soft halo so it reads as an emblem etched into the card surface.
+ */
+@Composable
+private fun GlassModuleIcon(
+    icon: ImageVector,
+    gradient: List<Color>,
+    modifier: Modifier = Modifier
+) {
+    val glass = LocalGlassPalette.current
+    val accent = gradient.getOrElse(1) { gradient.first() }
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(
+                    Brush.radialGradient(
+                        listOf(
+                            gradient.last().copy(alpha = if (glass.dark) 0.32f else 0.22f),
+                            accent.copy(alpha = 0.10f),
+                            Color.Transparent
+                        )
+                    ),
+                    CircleShape
+                )
+        )
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                .drawWithCache {
+                    val sheen = Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = if (glass.dark) 0.42f else 0.54f),
+                            accent.copy(alpha = if (glass.dark) 0.24f else 0.32f),
+                            Color.Transparent
+                        )
+                    )
+                    onDrawWithContent {
+                        drawContent()
+                        drawRect(brush = sheen, blendMode = BlendMode.SrcIn)
+                    }
+                }
+        )
+    }
+}
+
 @Composable
 private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -> Unit) {
     val glass = LocalGlassPalette.current
@@ -537,33 +592,20 @@ private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -> Unit) 
                     CircleShape
                 )
         )
+        // Large transparent glass emblem carrying the module identity inside the card.
+        GlassModuleIcon(
+            icon = spec.icon,
+            gradient = spec.gradient,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .offset(x = 28.dp, y = (-34).dp)
+                .size(118.dp)
+        )
         Column(
             Modifier.fillMaxSize().padding(14.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                Box(
-                    Modifier
-                        .size(40.dp)
-                        .shadow(
-                            12.dp,
-                            RoundedCornerShape(13.dp),
-                            clip = false,
-                            ambientColor = spec.gradient.first().copy(alpha = 0.75f),
-                            spotColor = spec.gradient.last().copy(alpha = 0.50f)
-                        )
-                        .clip(RoundedCornerShape(13.dp))
-                        .background(Brush.linearGradient(spec.gradient))
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.White.copy(alpha = 0.28f), Color.Transparent)
-                            )
-                        )
-                        .border(1.dp, Color.White.copy(alpha = 0.55f), RoundedCornerShape(13.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(spec.icon, null, Modifier.size(21.dp), tint = Color.White)
-                }
                 Spacer(Modifier.weight(1f))
                 Box(
                     Modifier
