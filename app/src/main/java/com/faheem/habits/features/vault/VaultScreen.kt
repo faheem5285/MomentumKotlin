@@ -23,9 +23,6 @@ import android.os.PersistableBundle
 import android.view.Window
 import android.view.WindowManager
 import android.widget.Toast
-import androidx.biometric.BiometricPrompt
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
@@ -116,7 +113,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun unlockWithAccount(): ByteArray = withContext(Dispatchers.IO) {
         val accountKey = accountKeys.fetchVaultKey()
         if (accountKey != null) {
-            SupabaseSyncRepository(getApplication()).syncVaultEntries()
+            SupabaseSyncRepository(getApplication()).syncVaultEntries(accountKey)
             prefs.edit().putBoolean(accountLinkedPref, true).apply()
             return@withContext accountKey
         }
@@ -134,7 +131,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
             accountKeys.saveVaultKeyIfAbsent(generatedKey)
             val savedKey = accountKeys.fetchVaultKey()
                 ?: error("The account key was not available after saving.")
-            SupabaseSyncRepository(getApplication()).syncVaultEntries()
+            SupabaseSyncRepository(getApplication()).syncVaultEntries(savedKey)
             prefs.edit().putBoolean(accountLinkedPref, true).apply()
             savedKey
         } finally {
@@ -161,7 +158,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 accountKey.fill(0)
             } else {
-                SupabaseSyncRepository(getApplication()).syncVaultEntries()
+                SupabaseSyncRepository(getApplication()).syncVaultEntries(localKey)
                 check(accountKeys.count("momentum_vault_entries") <= dao.getAllForSync().size) {
                     "The account has Vault records that are not present on this device. Sync them before linking the key."
                 }
@@ -174,7 +171,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 savedKey.fill(0)
             }
-            SupabaseSyncRepository(getApplication()).syncVaultEntries()
+            SupabaseSyncRepository(getApplication()).syncVaultEntries(localKey)
             prefs.edit().putBoolean(accountLinkedPref, true).apply()
             localKey
         } catch (failure: Exception) {
@@ -411,7 +408,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             }
-            if (migrated > 0) SupabaseSyncRepository(getApplication()).syncVaultEntries()
+            if (migrated > 0) SupabaseSyncRepository(getApplication()).syncVaultEntries(accountKey)
             migrated
         } finally {
             legacyKey.fill(0)
@@ -549,7 +546,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                     .commit()
             ) { "Could not save the restored vault setup." }
             val importedCount = applyImport(records, VaultImportAction.Upsert, vmk)
-            SupabaseSyncRepository(getApplication()).syncVaultEntries()
+            SupabaseSyncRepository(getApplication()).syncVaultEntries(vmk)
             VaultRestoreResult(vmk, importedCount)
         } catch (failure: Exception) {
             vmk.fill(0)
@@ -1003,81 +1000,6 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
         }
     }
 
-    fun launchBiometricUnlock() {
-        val activity = context.findActivity() as? FragmentActivity ?: run {
-            error = "Biometric unlock is unavailable in this screen."
-            return
-        }
-        val cipher = vm.prepareBiometricDecryptCipher() ?: run {
-            error = "Biometric unlock is not configured. Enable it again from the vault."
-            return
-        }
-        val prompt = BiometricPrompt(
-            activity,
-            ContextCompat.getMainExecutor(context),
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    scope.launch {
-                        val unlocked = result.cryptoObject?.cipher?.let { vm.unlockWithBiometric(it) }
-                        if (unlocked != null) {
-                            sessionEpoch++
-                            sessionKey = unlocked
-                        } else {
-                            error = "Biometric unlock could not open the vault."
-                        }
-                    }
-                }
-
-                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    error = errString.toString()
-                }
-            }
-        )
-        prompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Unlock Zylo vault")
-                .setSubtitle("Use strong biometrics to unwrap the vault key")
-                .setNegativeButtonText("Use master password")
-                .build(),
-            BiometricPrompt.CryptoObject(cipher)
-        )
-    }
-
-    fun enableBiometricUnlock() {
-        val activity = context.findActivity() as? FragmentActivity ?: run {
-            error = "Biometric unlock is unavailable in this screen."
-            return
-        }
-        val vmk = sessionKey ?: run {
-            error = "Unlock the vault before enabling biometric unlock."
-            return
-        }
-        val cipher = runCatching { vm.prepareBiometricCipher() }.getOrElse {
-            error = "Biometric unlock is unavailable on this device."
-            return
-        }
-        val prompt = BiometricPrompt(
-            activity,
-            ContextCompat.getMainExecutor(context),
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    scope.launch {
-                        runCatching { vm.enableBiometric(vmk, result.cryptoObject?.cipher ?: cipher) }
-                            .onFailure { error = it.message ?: "Could not enable biometric unlock." }
-                    }
-                }
-            }
-        )
-        prompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Enable biometric vault unlock")
-                .setSubtitle("Your account sign-in remains available as a fallback")
-                .setNegativeButtonText("Cancel")
-                .build(),
-            BiometricPrompt.CryptoObject(cipher)
-        )
-    }
-
     val key = sessionKey
     if (key == null) {
         VaultGate(
@@ -1291,7 +1213,7 @@ private fun VaultHome(
             if (unreadable > 0) item {
                 InfoBanner(
                     icon = Icons.Rounded.Warning,
-                    text = "$unreadable old record${if (unreadable == 1) "" else "s"} use a different key. They are preserved. You can try merging them with the old Vault password.",
+                    text = "$unreadable old record${if (unreadable == 1) "" else "s"} use a different key and are preserved. Recover any records still available on this device using the old Vault password.",
                     tint = MaterialTheme.colorScheme.error
                 )
                 if (legacyBackupAvailable) {

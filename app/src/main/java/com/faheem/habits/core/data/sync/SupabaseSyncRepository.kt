@@ -19,6 +19,7 @@ import androidx.work.WorkManager
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.data.backup.MomentumBackup
 import com.faheem.habits.core.data.supabase.SupabaseRestClient
+import com.faheem.habits.features.vault.VaultCrypto
 import com.faheem.habits.core.ui.AppModule
 import java.io.File
 import java.time.Instant
@@ -45,14 +46,14 @@ class SupabaseSyncRepository(
     private val client: SupabaseRestClient = SupabaseRestClient(context),
     private val fileStorage: FileStorageSync = FileStorageSync(context, db, client)
 ) {
-    suspend fun syncVaultEntries(): Int = withContext(Dispatchers.IO) {
+    suspend fun syncVaultEntries(accountKey: ByteArray? = null): Int = withContext(Dispatchers.IO) {
         val table = "momentum_vault_entries"
         val stateDao = db.syncStateDao()
         val old = stateDao.get(table) ?: SyncState(table)
         val device = DeviceIdentity.get(context)
         try {
             val records = db.vaultDao().getAllForSync()
-            val dirty = records.filter { it.dirty }
+            val dirty = records.filter { it.dirty && (accountKey == null || it.matchesVaultKey(accountKey)) }
             val pushed = client.upsert(table, buildJsonArray { dirty.forEach { add(it.toCloud(device)) } })
             if (dirty.isNotEmpty()) db.vaultDao().markClean(dirty.map { it.uuid })
             var cursor = old.cursor.ifBlank { SYNC_EPOCH }
@@ -232,10 +233,18 @@ class SupabaseSyncRepository(
             syncEntity("momentum_custom_notifications", customNotifications.filter { it.dirty }.map { it.toCloud(device) },
                 customNotifications.filter { it.dirty }.map { it.uuid }, db.customNotificationDao()::markClean) { applyCustomNotification(it) }
         }
-        val vault = db.vaultDao().getAllForSync()
         attempt("momentum_vault_entries") {
-            syncEntity("momentum_vault_entries", vault.filter { it.dirty }.map { it.toCloud(device) },
-                vault.filter { it.dirty }.map { it.uuid }, db.vaultDao()::markClean) { applyVault(it) }
+            val accountKey = client.fetchVaultKey()
+            try {
+                val vault = db.vaultDao().getAllForSync()
+                val dirty = vault.filter {
+                    it.dirty && (accountKey == null || it.matchesVaultKey(accountKey))
+                }
+                syncEntity("momentum_vault_entries", dirty.map { it.toCloud(device) },
+                    dirty.map { it.uuid }, db.vaultDao()::markClean) { applyVault(it) }
+            } finally {
+                accountKey?.fill(0)
+            }
         }
         attempt { fileStorage.restoreMissingFiles() }
         failures.firstOrNull()?.let { throw it }
@@ -401,6 +410,14 @@ class SupabaseSyncRepository(
         if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to it.deviceId }, r)) return if (old?.dirty == true) 1 else 0
         db.vaultDao().upsert(r.vault(old?.id ?: 0)); return 0
     }
+
+    private fun VaultRecord.matchesVaultKey(key: ByteArray): Boolean =
+        try {
+            VaultCrypto.decrypt(nonce, ciphertext, key)
+            true
+        } catch (_: Exception) {
+            false
+        }
 
     private fun accept(localTime: Long?, dirty: Boolean, local: Pair<Long, String>?, r: JsonObject): Boolean {
         if (localTime == null) return true
