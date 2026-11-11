@@ -1,4 +1,4 @@
-@file:Suppress("FunctionNaming", "LongParameterList")
+@file:Suppress("FunctionNaming", "LongParameterList", "TooManyFunctions")
 
 package com.faheem.habits.features.home
 import com.faheem.habits.core.data.*
@@ -19,6 +19,7 @@ import com.faheem.habits.features.screen_time.screenWeekMinutes
 import android.app.Application
 import android.content.Context
 import android.os.BatteryManager
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -27,7 +28,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -394,6 +395,16 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
     ).filter { spec -> spec.module?.let { isModuleVisible(ctx, it) } ?: true } }
     val settingsTile = TileSpec("Settings", "Manage modules and preferences", AppModule.Settings.icon, AppModule.Settings.gradient, AppModule.Settings)
 
+    val rows = tiles.chunked(2)
+    val reduce = LocalReduceEffects.current
+    var entered by remember { mutableStateOf(reduce) }
+    val enter = animateFloatAsState(
+        targetValue = if (entered) 1f else 0f,
+        animationSpec = tween(durationMillis = 560, easing = FastOutSlowInEasing),
+        label = "home-enter"
+    )
+    LaunchedEffect(Unit) { entered = true }
+
     ScreenBackground(tint = BrandGradient.first()) {
         LazyColumn(
             Modifier.fillMaxSize(),
@@ -403,39 +414,57 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            item { HomeHeader(s, displayName, onSettings = { onOpen(AppModule.Settings) }) }
-            items(
-                items = tiles.chunked(2),
-                key = { row -> row.joinToString("|") { it.title } },
-                contentType = { "module-row" }
-            ) { row ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            item {
+                HomeHeader(
+                    s,
+                    displayName,
+                    onSettings = { onOpen(AppModule.Settings) },
+                    modifier = Modifier.homeEntrance(enter, 0)
+                )
+            }
+            itemsIndexed(
+                items = rows,
+                key = { _, row -> row.joinToString("|") { it.title } },
+                contentType = { _, _ -> "module-row" }
+            ) { index, row ->
+                Row(
+                    Modifier.fillMaxWidth().homeEntrance(enter, index + 1),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     row.forEach { spec -> ModuleTile(spec, Modifier.weight(1f)) { spec.module?.let(onOpen) } }
                     if (row.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
-            item { SectionHeader("On this device") }
+            item { SectionHeader("On this device", Modifier.homeEntrance(enter, rows.size + 1)) }
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    Modifier.homeEntrance(enter, rows.size + 2),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     deviceTools.forEach { spec ->
                         DeviceRow(spec) { spec.module?.let(onOpen) }
                     }
                 }
             }
             item {
-                DeviceRow(settingsTile) { onOpen(AppModule.Settings) }
+                DeviceRow(settingsTile, Modifier.homeEntrance(enter, rows.size + 3)) { onOpen(AppModule.Settings) }
             }
         }
     }
 }
 
 @Composable
-private fun HomeHeader(s: HomeState, displayName: String, onSettings: () -> Unit) {
+private fun HomeHeader(
+    s: HomeState,
+    displayName: String,
+    onSettings: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val glass = LocalGlassPalette.current
     val accent = BrandGradient.first()
     val shape = RoundedCornerShape(MomentumTokens.radiusLarge)
     Box(
-        Modifier
+        modifier
             .fillMaxWidth()
             .padding(top = MomentumTokens.space2)
             .shadow(
@@ -581,6 +610,19 @@ private fun HeroDivider() {
 }
 
 /**
+ * One-shot entrance: a staggered fade-and-rise driven by a single shared
+ * progress value so recycling list items never replay the animation.
+ */
+private fun Modifier.homeEntrance(progress: State<Float>, index: Int): Modifier =
+    graphicsLayer {
+        val p = progress.value
+        val phase = (index * 0.07f).coerceAtMost(0.55f)
+        val t = ((p - phase) / (1f - phase)).coerceIn(0f, 1f)
+        alpha = t
+        translationY = (1f - t) * 26.dp.toPx()
+    }
+
+/**
  * A glyph rendered like etched glass: the icon is masked into a translucent
  * vertical gradient so it reads as a lit, frosted emblem rather than flat ink.
  */
@@ -644,6 +686,16 @@ private fun GlassModuleIcon(
                     CircleShape
                 )
         )
+        // A hairline orbit ring for depth.
+        Box(
+            Modifier
+                .fillMaxSize(0.88f)
+                .border(
+                    1.dp,
+                    Color.White.copy(alpha = if (glass.dark) 0.10f else 0.22f),
+                    CircleShape
+                )
+        )
         // Frosted plate.
         Box(
             Modifier
@@ -656,6 +708,14 @@ private fun GlassModuleIcon(
                             gradient.first().copy(alpha = if (glass.dark) 0.18f else 0.12f),
                             accent.copy(alpha = 0.08f)
                         )
+                    )
+                )
+                // Diagonal specular sheen across the pane.
+                .background(
+                    Brush.linearGradient(
+                        0f to Color.White.copy(alpha = if (glass.dark) 0.24f else 0.36f),
+                        0.42f to Color.Transparent,
+                        1f to Color.Transparent
                     )
                 )
                 .border(
