@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -47,6 +48,11 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
+
+private fun phoneNumbers(value: String): List<String> =
+    value.split(Regex("[\\r\\n]+")).map(String::trim).filter(String::isNotBlank).distinct()
+
+private fun phoneKey(value: String): String = value.filter(Char::isDigit)
 
 class ContactsViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = AppDatabase.get(app).contactDao()
@@ -61,19 +67,33 @@ class ContactsViewModel(app: Application) : AndroidViewModel(app) {
         dao.softDelete(contact.id)
     }
 
-    internal fun importContacts(rows: List<ImportedContact>, onComplete: (Int, Int) -> Unit) = viewModelScope.launch {
+    internal fun importContacts(rows: List<ImportedContact>, onComplete: (Int, Int, Int) -> Unit) = viewModelScope.launch {
         val existing = dao.getAll().first()
-        val keys = existing.mapNotNull(::contactKey).toMutableSet()
+        val existingPhoneKeys = existing.flatMap { phoneNumbers(it.phone) }
+            .map(::phoneKey).filter(String::isNotBlank).toMutableSet()
+        val emailKeys = existing.map { it.email.trim().lowercase() }
+            .filter(String::isNotBlank).toMutableSet()
         var imported = 0
-        var skipped = 0
+        var skippedContacts = 0
+        var duplicateNumbers = 0
         rows.forEach { row ->
-            val key = contactKey(row.phone, row.email)
-            if (key != null && !keys.add(key)) {
-                skipped++
+            val uniqueNumbers = row.phoneNumbers.filter { number ->
+                val key = phoneKey(number)
+                if (key.isBlank()) return@filter false
+                if (existingPhoneKeys.add(key)) true else {
+                    duplicateNumbers++
+                    false
+                }
+            }
+            val emailKey = row.email.trim().lowercase()
+            val duplicateEmail = uniqueNumbers.isEmpty() && emailKey.isNotBlank() && !emailKeys.add(emailKey)
+            if ((row.phoneNumbers.isNotEmpty() && uniqueNumbers.isEmpty()) || duplicateEmail) {
+                skippedContacts++
             } else {
+                if (emailKey.isNotBlank()) emailKeys.add(emailKey)
                 dao.insert(Contact(
                     name = row.name,
-                    phone = row.phone,
+                    phone = uniqueNumbers.joinToString("\n"),
                     email = row.email,
                     address = row.address,
                     notes = row.notes
@@ -81,13 +101,8 @@ class ContactsViewModel(app: Application) : AndroidViewModel(app) {
                 imported++
             }
         }
-        onComplete(imported, skipped)
+        onComplete(imported, skippedContacts, duplicateNumbers)
     }
-
-    private fun contactKey(contact: Contact): String? = contactKey(contact.phone, contact.email)
-    private fun contactKey(phone: String, email: String): String? =
-        phone.filter(Char::isDigit).takeIf { it.isNotBlank() }?.let { "phone:$it" }
-            ?: email.trim().lowercase().takeIf { it.isNotBlank() }?.let { "email:$it" }
 }
 
 @Composable
@@ -108,8 +123,16 @@ fun ContactsScreen(vm: ContactsViewModel = viewModel()) {
                         context.contentResolver.openInputStream(uri)?.use { parseContacts(it, fileName) }
                             ?: error("Could not open the selected file.")
                     }
-                    vm.importContacts(imported) { added, skipped ->
-                        Toast.makeText(context, "Imported $added contact${if (added == 1) "" else "s"}${if (skipped > 0) " · skipped $skipped duplicate${if (skipped == 1) "" else "s"}" else ""}.", Toast.LENGTH_LONG).show()
+                    vm.importContacts(imported) { added, skippedContacts, duplicateNumbers ->
+                        val details = buildList {
+                            if (skippedContacts > 0) add("skipped $skippedContacts duplicate contact${if (skippedContacts == 1) "" else "s"}")
+                            if (duplicateNumbers > 0) add("$duplicateNumbers duplicate number${if (duplicateNumbers == 1) "" else "s"} detected")
+                        }.joinToString(" · ")
+                        Toast.makeText(
+                            context,
+                            "Imported $added contact${if (added == 1) "" else "s"}${if (details.isNotBlank()) " · $details" else ""}.",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 }.onFailure { error ->
                     Toast.makeText(context, error.message ?: "Could not import contacts.", Toast.LENGTH_LONG).show()
@@ -161,9 +184,12 @@ fun ContactsScreen(vm: ContactsViewModel = viewModel()) {
                 )
             }
             item {
-                SecondaryButton("Import CSV or Excel", onClick = {
+                SecondaryButton("Import VCF, CSV or Excel", onClick = {
                     importPicker.launch(arrayOf(
                         "text/*",
+                        "text/vcard",
+                        "text/x-vcard",
+                        "application/vcard",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         "application/vnd.ms-excel"
                     ))
@@ -182,7 +208,13 @@ fun ContactsScreen(vm: ContactsViewModel = viewModel()) {
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(contact.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(contact.phone.ifBlank { contact.email.ifBlank { "No phone or email" } }, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                phoneNumbers(contact.phone).joinToString(" · ").ifBlank { contact.email.ifBlank { "No phone or email" } },
+                                fontSize = 12.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                             if (contact.phone.isNotBlank() && contact.email.isNotBlank()) {
                                 Text(contact.email, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -269,7 +301,14 @@ private fun ContactEditor(initial: Contact?, onDismiss: () -> Unit, onSave: (Con
             )
         }
         MomentumTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
-        MomentumTextField(phone, { phone = it }, label = { Text("Phone") }, singleLine = true)
+        MomentumTextField(
+            phone,
+            { phone = it },
+            label = { Text("Phone numbers (one per line)") },
+            minLines = 2,
+            maxLines = 4,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Phone)
+        )
         MomentumTextField(email, { email = it }, label = { Text("Email") }, singleLine = true)
         MomentumTextField(address, { address = it }, label = { Text("Address") }, singleLine = true)
         MomentumTextField(notes, { notes = it }, label = { Text("Notes") }, singleLine = false)
@@ -277,7 +316,7 @@ private fun ContactEditor(initial: Contact?, onDismiss: () -> Unit, onSave: (Con
         PrimaryButton("Save contact", onClick = {
             if (name.isNotBlank()) onSave(
                 (initial ?: Contact(name = name)).copy(
-                    name = name.trim(), phone = phone.trim(), email = email.trim(), address = address.trim(),
+                    name = name.trim(), phone = phoneNumbers(phone).joinToString("\n"), email = email.trim(), address = address.trim(),
                     notes = notes.trim(), profileImageUri = imageUri
                 )
             )

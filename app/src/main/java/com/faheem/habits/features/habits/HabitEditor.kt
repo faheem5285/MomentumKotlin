@@ -109,10 +109,12 @@ fun HabitEditorSheet(
             maxLines = 4
         )
 
-        EditorLabel("When")
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TIME_LABELS.forEachIndexed { i, label ->
-                MomentumChip(selected = time == i, onClick = { time = i }, label = label)
+        if (initial != null) {
+            EditorLabel("When")
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TIME_LABELS.forEachIndexed { i, label ->
+                    MomentumChip(selected = time == i, onClick = { time = i }, label = label)
+                }
             }
         }
 

@@ -305,6 +305,14 @@ create table if not exists public.momentum_vault_entries (
   version bigint not null default 1
 );
 
+create table if not exists public.momentum_vault_keys (
+  user_id uuid primary key default auth.uid() references auth.users(id) on delete cascade,
+  key_material text not null,
+  created_at timestamptz not null default now()
+);
+comment on column public.momentum_vault_keys.key_material is
+  'Account-recoverable Vault key material. RLS scopes it to the signed-in user; account or server-side access can decrypt Vault entries.';
+
 do $$
 declare
   table_name text;
@@ -329,3 +337,17 @@ begin
     execute format('create policy %I_owner_delete on public.%I for delete using (user_id = auth.uid())', table_name, table_name);
   end loop;
 end $$;
+
+alter table public.momentum_vault_keys enable row level security;
+drop policy if exists momentum_vault_keys_owner_select on public.momentum_vault_keys;
+drop policy if exists momentum_vault_keys_owner_insert on public.momentum_vault_keys;
+drop policy if exists momentum_vault_keys_owner_update on public.momentum_vault_keys;
+drop policy if exists momentum_vault_keys_owner_delete on public.momentum_vault_keys;
+create policy momentum_vault_keys_owner_select on public.momentum_vault_keys
+  for select using (user_id = auth.uid());
+create policy momentum_vault_keys_owner_insert on public.momentum_vault_keys
+  for insert with check (user_id = auth.uid());
+create policy momentum_vault_keys_owner_update on public.momentum_vault_keys
+  for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy momentum_vault_keys_owner_delete on public.momentum_vault_keys
+  for delete using (user_id = auth.uid());

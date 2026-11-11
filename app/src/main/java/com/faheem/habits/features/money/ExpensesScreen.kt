@@ -51,7 +51,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -66,13 +68,14 @@ class ExpenseViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
     fun setCategoryBudget(category: String, value: Double) { viewModelScope.launch { repository.setCategoryBudget(category, value) } }
     fun setBudget(value: Double) { viewModelScope.launch { repository.setBudget(value) } }
-    fun add(title: String, amount: Double, category: String) {
-        viewModelScope.launch { repository.add(title, amount, category) }
+    fun add(title: String, amount: Double, category: String, epochDay: Long) {
+        viewModelScope.launch { repository.add(title, amount, category, epochDay) }
     }
     fun remove(expense: Expense) { viewModelScope.launch { repository.delete(expense) } }
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel()) {
     val expenses by vm.expenses.collectAsStateWithLifecycle()
     val budgetMinorUnits by vm.budget.collectAsStateWithLifecycle()
@@ -82,6 +85,7 @@ fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel()) {
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("All") }
     var showAdd by remember { mutableStateOf(false) }
+    var showMonthPicker by remember { mutableStateOf(false) }
     var showBudget by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<Expense?>(null) }
 
@@ -131,7 +135,37 @@ fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel()) {
     }
 
     if (showBudget) BudgetSheet(budget, { showBudget = false }) { vm.setBudget(it); showBudget = false }
-    if (showAdd) AddExpenseSheet({ showAdd = false }) { title, amount, cat -> vm.add(title, amount, cat); showAdd = false }
+    if (showAdd) {
+        val defaultDate = if (month == YearMonth.now()) LocalDate.now() else month.atDay(1)
+        AddExpenseSheet(
+            initialDate = defaultDate,
+            onDismiss = { showAdd = false }
+        ) { title, amount, cat, date ->
+            vm.add(title, amount, cat, date)
+            showAdd = false
+        }
+    }
+    if (showMonthPicker) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = month.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showMonthPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { millis ->
+                        month = YearMonth.from(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate())
+                    }
+                    showMonthPicker = false
+                }) { Text("Select month") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMonthPicker = false }) { Text("Cancel") }
+            }
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
     deleting?.let { expense ->
         MomentumDialog(
             onDismissRequest = { deleting = null }, title = { Text("Delete expense?") },
@@ -142,7 +176,12 @@ fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel()) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        MonthSwitcher(month, onPrevious = { month = month.minusMonths(1) }, onNext = { if (month < YearMonth.now()) month = month.plusMonths(1) })
+        MonthSwitcher(
+            month,
+            onPrevious = { month = month.minusMonths(1) },
+            onNext = { month = month.plusMonths(1) },
+            onSelectMonth = { showMonthPicker = true }
+        )
         Box(Modifier.weight(1f)) {
             when (tab) {
                 0 -> OverviewScreen(
@@ -174,7 +213,7 @@ fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun MonthSwitcher(month: YearMonth, onPrevious: () -> Unit, onNext: () -> Unit) {
+private fun MonthSwitcher(month: YearMonth, onPrevious: () -> Unit, onNext: () -> Unit, onSelectMonth: () -> Unit) {
     val glass = LocalGlassPalette.current
     Row(
         Modifier.fillMaxWidth().padding(horizontal = MomentumTokens.screenPadding, vertical = 2.dp),
@@ -185,20 +224,27 @@ private fun MonthSwitcher(month: YearMonth, onPrevious: () -> Unit, onNext: () -
         }
         Box(Modifier.weight(2f), contentAlignment = Alignment.Center) {
             Surface(
+                modifier = Modifier.clickable(onClick = onSelectMonth),
                 shape = CircleShape,
                 color = glass.chip,
                 border = BorderStroke(1.dp, glass.panelBorder)
             ) {
-                Text(
-                    month.format(DateTimeFormatter.ofPattern("MMMM yyyy")),
+                Row(
                     Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Rounded.CalendarMonth, contentDescription = "Choose month", modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        month.format(DateTimeFormatter.ofPattern("MMMM yyyy")),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-            IconButton(onClick = onNext, enabled = month < YearMonth.now()) {
+            IconButton(onClick = onNext) {
                 Icon(Icons.Rounded.ChevronRight, "Next month")
             }
         }
@@ -566,10 +612,38 @@ private fun BudgetSheet(value: Double, onDismiss: () -> Unit, onSave: (Double) -
 }
 
 @Composable
-private fun AddExpenseSheet(onDismiss: () -> Unit, onSave: (String, Double, String) -> Unit) {
+@OptIn(ExperimentalMaterial3Api::class)
+private fun AddExpenseSheet(
+    initialDate: LocalDate,
+    onDismiss: () -> Unit,
+    onSave: (String, Double, String, Long) -> Unit
+) {
     var amount by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
     var category by remember { mutableStateOf(categories[0].name) }
+    var expenseDate by remember { mutableStateOf(initialDate) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    if (showDatePicker) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = expenseDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { millis ->
+                        expenseDate = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+                    }
+                    showDatePicker = false
+                }) { Text("Select date") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            }
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
     FormSheet("New expense", onDismiss) {
         MomentumTextField(
             value = amount,
@@ -586,13 +660,26 @@ private fun AddExpenseSheet(onDismiss: () -> Unit, onSave: (String, Double, Stri
             placeholder = { Text("e.g. Groceries, bus fare") },
             singleLine = true
         )
+        OutlinedButton(
+            onClick = { showDatePicker = true },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(MomentumTokens.radiusSmall + 2.dp)
+        ) {
+            Icon(Icons.Rounded.CalendarMonth, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Date · ${expenseDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))}")
+        }
         SectionHeader("Category")
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             categories.forEach { c ->
                 MomentumChip(selected = category == c.name, onClick = { category = c.name }, label = c.name, icon = c.icon)
             }
         }
-        PrimaryButton("Save expense", onClick = { amount.toDoubleOrNull()?.takeIf { it > 0 }?.let { onSave(title.ifBlank { category }, it, category) } })
+        PrimaryButton("Save expense", onClick = {
+            amount.toDoubleOrNull()?.takeIf { it > 0 }?.let {
+                onSave(title.ifBlank { category }, it, category, expenseDate.toEpochDay())
+            }
+        })
     }
 }
 

@@ -211,7 +211,14 @@ fun ToDoScreen(vm: ToDoViewModel = hiltViewModel()) {
                         MomentumTextField(
                             value = query,
                             onValueChange = { query = it },
-                            placeholder = { Text("Search tasks, notes, categories") },
+                            placeholder = {
+                                Text(
+                                    "Search tasks",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontSize = 12.sp
+                                )
+                            },
                             leadingIcon = { Icon(Icons.Rounded.Search, null) },
                             trailingIcon = {
                                 if (query.isNotBlank()) {
@@ -441,6 +448,7 @@ private fun ToDoCard(task: ToDoItem, onClick: () -> Unit, onToggle: () -> Unit, 
     }
     PremiumCard(
         onClick = onClick,
+        accent = accent,
         shape = RoundedCornerShape(MomentumTokens.radiusMedium),
         contentPadding = PaddingValues(start = 12.dp, end = 6.dp, top = 12.dp, bottom = 12.dp)
     ) {
@@ -477,10 +485,28 @@ private fun ToDoCard(task: ToDoItem, onClick: () -> Unit, onToggle: () -> Unit, 
                 Spacer(Modifier.height(5.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     StatusPill(dateLabel, accent)
-                    Text("·", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
-                    Text(task.category, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        task.category,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    StatusPill(
+                        text = priorityLabels.getOrElse(task.priority) { "Normal" },
+                        color = priorityColor,
+                        icon = if (task.priority >= 2) Icons.Rounded.WarningAmber else null
+                    )
                     if (task.reminderHour != null) {
-                        Icon(Icons.Rounded.NotificationsActive, null, Modifier.size(13.dp), tint = MaterialTheme.colorScheme.secondary)
+                        Icon(
+                            Icons.Rounded.NotificationsActive,
+                            contentDescription = "Reminder set",
+                            modifier = Modifier.size(13.dp),
+                            tint = MaterialTheme.colorScheme.secondary
+                        )
                     }
                 }
             }

@@ -2,6 +2,11 @@
 
 package com.faheem.habits.features.liferules
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
+import android.widget.Toast
 import com.faheem.habits.core.data.LifeRule
 import com.faheem.habits.core.data.LifeRuleFile
 import com.faheem.habits.core.ui.EmptyState
@@ -52,6 +57,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +67,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -103,7 +110,11 @@ class LifeRulesViewModel @Inject constructor(
 
     val rules = repository.rules.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun save(rule: LifeRule, files: List<LifeRuleFile> = emptyList()) = viewModelScope.launch {
+    fun save(
+        rule: LifeRule,
+        files: List<LifeRuleFile> = emptyList(),
+        removedFiles: List<LifeRuleFile> = emptyList()
+    ) = viewModelScope.launch {
         val savedId = repository.save(
             rule.copy(
                 title = rule.title.trim(),
@@ -113,9 +124,11 @@ class LifeRulesViewModel @Inject constructor(
                 dirty = true
             )
         )
-        files.forEach { repository.addFile(it.copy(ruleId = savedId)) }
+        files.filter { it.id == 0 }.forEach { repository.addFile(it.copy(ruleId = savedId)) }
+        removedFiles.forEach { repository.deleteFile(it) }
     }
 
+    fun files(ruleId: Int) = repository.files(ruleId)
     fun togglePin(rule: LifeRule) = viewModelScope.launch {
         repository.save(
             rule.copy(
@@ -160,7 +173,14 @@ fun LifeRulesScreen(vm: LifeRulesViewModel = hiltViewModel()) {
                 MomentumTextField(
                     value = query,
                     onValueChange = { query = it },
-                    placeholder = { Text("Search your rules, habits and quotes") },
+                    placeholder = {
+                        Text(
+                            "Search life entries",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontSize = 12.sp
+                        )
+                    },
                     leadingIcon = { Icon(Icons.Rounded.Search, null) },
                     trailingIcon = {
                         if (query.isNotBlank()) {
@@ -226,14 +246,22 @@ fun LifeRulesScreen(vm: LifeRulesViewModel = hiltViewModel()) {
         LifeRuleEditorSheet(
             initial = null,
             onDismiss = { creating = false },
-            onSave = { rule, files -> vm.save(rule, files); creating = false }
+            onSave = { rule, files, removedFiles ->
+                vm.save(rule, files, removedFiles)
+                creating = false
+            }
         )
     }
     editing?.let { rule ->
+        val files by vm.files(rule.id).collectAsStateWithLifecycle(initialValue = emptyList())
         LifeRuleEditorSheet(
             initial = rule,
+            initialFiles = files,
             onDismiss = { editing = null },
-            onSave = { rule, files -> vm.save(rule, files); editing = null }
+            onSave = { updatedRule, addedFiles, removedFiles ->
+                vm.save(updatedRule, addedFiles, removedFiles)
+                editing = null
+            }
         )
     }
 }
@@ -369,24 +397,52 @@ private fun LifeRuleCard(
 @Composable
 private fun LifeRuleEditorSheet(
     initial: LifeRule?,
+    initialFiles: List<LifeRuleFile> = emptyList(),
     onDismiss: () -> Unit,
-    onSave: (LifeRule, List<LifeRuleFile>) -> Unit
+    onSave: (LifeRule, List<LifeRuleFile>, List<LifeRuleFile>) -> Unit
 ) {
+    val context = LocalContext.current
     var kind by remember(initial?.id) { mutableStateOf(initial?.kind ?: KIND_RULE) }
     var title by remember(initial?.id) { mutableStateOf(initial?.title.orEmpty()) }
     var body by remember(initial?.id) { mutableStateOf(initial?.body.orEmpty()) }
     var pinned by remember(initial?.id) { mutableStateOf(initial?.pinned ?: false) }
     var folderPath by remember(initial?.id) { mutableStateOf("") }
-    var attachments by remember(initial?.id) { mutableStateOf(emptyList<LifeRuleFile>()) }
+    var attachments by remember(initial?.id, initialFiles) { mutableStateOf(initialFiles) }
+    var removedAttachments by remember(initial?.id) { mutableStateOf(emptyList<LifeRuleFile>()) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        attachments = attachments + uris.map { uri ->
-            LifeRuleFile(
-                ruleId = initial?.id ?: 0,
-                name = uri.toString().substringAfterLast('/').ifBlank { "Attached file" },
-                uri = uri.toString(),
-                folderPath = folderPath.trim('/')
-            )
+        val selectedFiles = buildList {
+            uris.forEach { uri ->
+                val name = documentName(context, uri)
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                    add(
+                        LifeRuleFile(
+                            ruleId = initial?.id ?: 0,
+                            name = name,
+                            uri = uri.toString(),
+                            mime = context.contentResolver.getType(uri).orEmpty(),
+                            folderPath = folderPath.trim('/')
+                        )
+                    )
+                } catch (error: SecurityException) {
+                    Toast.makeText(
+                        context,
+                        "Could not keep access to $name: ${error.message ?: "permission denied"}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } catch (error: UnsupportedOperationException) {
+                    Toast.makeText(
+                        context,
+                        "This file provider does not support persistent access: $name",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
         }
+        attachments = (attachments + selectedFiles).distinctBy { it.uri }
     }
 
     val titleLabel = when (kind) {
@@ -410,20 +466,50 @@ private fun LifeRuleEditorSheet(
                     label = value,
                     icon = kindIcon(value)
                 )
-                MomentumTextField(
-                    value = folderPath,
-                    onValueChange = { folderPath = it },
-                    label = { Text("Folder / subfolder (optional)") },
-                    placeholder = { Text("Personal/Values") },
-                    singleLine = true
-                )
-                SecondaryButton(
-                    text = "Add files",
-                    onClick = { picker.launch(arrayOf("*/*")) },
-                    icon = Icons.Rounded.AttachFile
-                )
-                attachments.forEach { file ->
-                    Text(file.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+        MomentumTextField(
+            value = folderPath,
+            onValueChange = { folderPath = it },
+            label = { Text("Folder / subfolder (optional)") },
+            placeholder = { Text("Personal/Values") },
+            singleLine = true
+        )
+        SecondaryButton(
+            text = "Choose files",
+            onClick = { picker.launch(arrayOf("*/*")) },
+            icon = Icons.Rounded.AttachFile
+        )
+        attachments.forEach { file ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(
+                    onClick = {
+                        try {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(Uri.parse(file.uri), file.mime.ifBlank { "*/*" })
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                            )
+                        } catch (error: ActivityNotFoundException) {
+                            Toast.makeText(context, "No app can open ${file.name}.", Toast.LENGTH_LONG).show()
+                        } catch (error: SecurityException) {
+                            Toast.makeText(context, "Access to ${file.name} is no longer available.", Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        file.name,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                IconButton(onClick = {
+                    attachments = attachments - file
+                    if (file.id != 0) removedAttachments = removedAttachments + file
+                }) {
+                    Icon(Icons.Rounded.Close, contentDescription = "Remove ${file.name}")
                 }
             }
         }
@@ -469,10 +555,21 @@ private fun LifeRuleEditorSheet(
                             kind = kind,
                             pinned = pinned
                         ),
-                        attachments
+                        attachments,
+                        removedAttachments
                     )
                 }
             }
         )
     }
+}
+
+private fun documentName(context: android.content.Context, uri: Uri): String {
+    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        val nameColumn = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (nameColumn >= 0 && cursor.moveToFirst()) {
+            cursor.getString(nameColumn)?.takeIf(String::isNotBlank)?.let { return it }
+        }
+    }
+    return Uri.decode(uri.lastPathSegment?.substringAfterLast(':').orEmpty()).ifBlank { "Attached file" }
 }

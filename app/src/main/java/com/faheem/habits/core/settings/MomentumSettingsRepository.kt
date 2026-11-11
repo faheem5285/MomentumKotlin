@@ -35,6 +35,8 @@ class MomentumSettingsRepository @Inject constructor(
         appSettings.data.map { it[booleanPreferencesKey("module_enabled_$moduleName")] ?: true }
 
     val budgetMinorUnits: Flow<Long> = moneySettings.data.map { it[BUDGET_MINOR_UNITS] ?: 0L }
+    val loansAccountBalanceMinorUnits: Flow<Long?> =
+        moneySettings.data.map { it[LOANS_ACCOUNT_BALANCE_MINOR_UNITS] }
 
     fun categoryBudgetMinorUnits(category: String): Flow<Long> =
         moneySettings.data.map { it[longPreferencesKey("money_limit_${category}_minor_units")] ?: 0L }
@@ -51,6 +53,10 @@ class MomentumSettingsRepository @Inject constructor(
         moneySettings.edit { it[BUDGET_MINOR_UNITS] = value }
     }
 
+    suspend fun setLoansAccountBalanceMinorUnits(value: Long) {
+        moneySettings.edit { it[LOANS_ACCOUNT_BALANCE_MINOR_UNITS] = value }
+    }
+
     suspend fun setCategoryBudgetMinorUnits(category: String, value: Long) {
         moneySettings.edit { it[longPreferencesKey("money_limit_${category}_minor_units")] = value }
     }
@@ -58,5 +64,6 @@ class MomentumSettingsRepository @Inject constructor(
     private companion object {
         val PERMISSION_SETUP_SEEN = booleanPreferencesKey("permission_setup_seen")
         val BUDGET_MINOR_UNITS = longPreferencesKey("budget_minor_units")
+        val LOANS_ACCOUNT_BALANCE_MINOR_UNITS = longPreferencesKey("loans_account_balance_minor_units")
     }
 }

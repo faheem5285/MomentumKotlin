@@ -45,6 +45,45 @@ class SupabaseSyncRepository(
     private val client: SupabaseRestClient = SupabaseRestClient(context),
     private val fileStorage: FileStorageSync = FileStorageSync(context, db, client)
 ) {
+    suspend fun syncVaultEntries(): Int = withContext(Dispatchers.IO) {
+        val table = "momentum_vault_entries"
+        val stateDao = db.syncStateDao()
+        val old = stateDao.get(table) ?: SyncState(table)
+        val device = DeviceIdentity.get(context)
+        try {
+            val records = db.vaultDao().getAllForSync()
+            val dirty = records.filter { it.dirty }
+            val pushed = client.upsert(table, buildJsonArray { dirty.forEach { add(it.toCloud(device)) } })
+            if (dirty.isNotEmpty()) db.vaultDao().markClean(dirty.map { it.uuid })
+            var cursor = old.cursor.ifBlank { SYNC_EPOCH }
+            var pulled = 0
+            while (true) {
+                val batch = client.pull(table, cursor, PULL_PAGE)
+                if (batch.isEmpty()) break
+                val previousCursor = cursor
+                batch.forEach { element ->
+                    val row = element.jsonObject
+                    cursor = maxOf(cursor, row.string("updated_at"))
+                    applyVault(row)
+                }
+                pulled += batch.size
+                if (batch.size < PULL_PAGE || cursor == previousCursor) break
+            }
+            stateDao.upsert(
+                old.copy(
+                    cursor = cursor,
+                    pendingCount = 0,
+                    lastSyncEpochMillis = System.currentTimeMillis(),
+                    lastError = null
+                )
+            )
+            pushed + pulled
+        } catch (failure: Exception) {
+            stateDao.upsert(old.copy(lastError = failure.message?.take(300)))
+            throw failure
+        }
+    }
+
     suspend fun sync(): SyncRunResult = withContext(Dispatchers.IO) {
         val paused = db.syncStateDao().get("momentum_vault_entries")?.paused == true
         if (paused) return@withContext SyncRunResult()
@@ -193,7 +232,7 @@ class SupabaseSyncRepository(
             syncEntity("momentum_custom_notifications", customNotifications.filter { it.dirty }.map { it.toCloud(device) },
                 customNotifications.filter { it.dirty }.map { it.uuid }, db.customNotificationDao()::markClean) { applyCustomNotification(it) }
         }
-        val vault = db.vaultDao().getAll()
+        val vault = db.vaultDao().getAllForSync()
         attempt("momentum_vault_entries") {
             syncEntity("momentum_vault_entries", vault.filter { it.dirty }.map { it.toCloud(device) },
                 vault.filter { it.dirty }.map { it.uuid }, db.vaultDao()::markClean) { applyVault(it) }

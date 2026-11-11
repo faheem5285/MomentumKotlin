@@ -44,7 +44,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import com.faheem.habits.core.settings.MomentumSettingsRepository
+import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -54,10 +57,19 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
-class LoanViewModel(app: Application) : AndroidViewModel(app) {
+@HiltViewModel
+class LoanViewModel @Inject constructor(
+    app: Application,
+    private val settings: MomentumSettingsRepository
+) : AndroidViewModel(app) {
     private val dao = AppDatabase.get(app).loanDao()
     val loans: StateFlow<List<Loan>> = dao.getAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val people: StateFlow<List<LoanPerson>> = dao.getPeople().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val accountBalanceMinorUnits: StateFlow<Long?> = settings.loansAccountBalanceMinorUnits
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    fun setAccountBalance(value: Double) {
+        viewModelScope.launch { settings.setLoansAccountBalanceMinorUnits(value.toMinorUnits()) }
+    }
     fun addPerson(person: LoanPerson) { viewModelScope.launch { dao.insertPerson(person.copy(name = person.name.trim())) } }
     fun updatePerson(person: LoanPerson) { viewModelScope.launch { dao.updatePerson(person.copy(name = person.name.trim(), updatedAt = System.currentTimeMillis(), dirty = true)) } }
     fun archivePerson(person: LoanPerson) { viewModelScope.launch { dao.archivePerson(person.id) } }
@@ -162,7 +174,7 @@ private fun openProofFile(context: android.content.Context, uri: String, mime: S
 }
 
 @Composable
-fun LoansScreen(vm: LoanViewModel = viewModel()) {
+fun LoansScreen(vm: LoanViewModel = hiltViewModel()) {
     val loans by vm.loans.collectAsState()
     var tab by remember { mutableIntStateOf(0) }
     var direction by remember { mutableIntStateOf(0) }
@@ -175,7 +187,9 @@ fun LoansScreen(vm: LoanViewModel = viewModel()) {
     var editing by remember { mutableStateOf<Loan?>(null) }
     var deleting by remember { mutableStateOf<Loan?>(null) }
     var deletingPerson by remember { mutableStateOf<LoanPerson?>(null) }
+    var editingAccountBalance by remember { mutableStateOf(false) }
 
+    val accountBalanceMinorUnits by vm.accountBalanceMinorUnits.collectAsState()
     val openLoans = remember(loans) { loans.filter { !it.settled } }
     val settledLoans = remember(loans) { loans.filter { it.settled } }
     val toReceive = remember(openLoans) { openLoans.asSequence().filter { it.lent }.sumOf { it.amountMinorUnits } }
@@ -189,6 +203,16 @@ fun LoansScreen(vm: LoanViewModel = viewModel()) {
     }
 
     val people by vm.people.collectAsState()
+    if (editingAccountBalance) {
+        AccountBalanceSheet(
+            initialBalanceMinorUnits = accountBalanceMinorUnits,
+            onDismiss = { editingAccountBalance = false },
+            onSave = {
+                vm.setAccountBalance(it)
+                editingAccountBalance = false
+            }
+        )
+    }
     if (showAdd) LoanEditorSheet(null, people, { showAdd = false }) { personId, person, amount, lent, note, title, due, status, proofs -> vm.add(person, personId, amount, lent, note, title, due, status, proofs); showAdd = false }
     if (showPersonEditor) {
         PersonEditorSheet(editingPerson, onDismiss = { showPersonEditor = false; editingPerson = null }) { person ->
@@ -236,7 +260,13 @@ fun LoansScreen(vm: LoanViewModel = viewModel()) {
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {
             when (tab) {
-                0 -> LoanOverview(openLoans, people, settledLoans.size, toReceive, toPay, net, onOpenLedger = { tab = 1 }, onSelect = { selected = it })
+                0 -> LoanOverview(
+                    openLoans, people, settledLoans.size, toReceive, toPay, net,
+                    accountBalanceMinorUnits = accountBalanceMinorUnits,
+                    onEditAccountBalance = { editingAccountBalance = true },
+                    onOpenLedger = { tab = 1 },
+                    onSelect = { selected = it }
+                )
                 3 -> PeopleScreen(people = people, loans = loans, onAdd = { showPersonEditor = true }, onEdit = { editingPerson = it; showPersonEditor = true }, onDelete = { deletingPerson = it })
                 else -> LoanLedger(
                     loans = filtered,
@@ -362,7 +392,10 @@ private fun PersonEditorSheet(initial: LoanPerson?, onDismiss: () -> Unit, onSav
 @Composable
 private fun LoanOverview(
     openLoans: List<Loan>, people: List<LoanPerson>, settledCount: Int, toReceive: Long, toPay: Long, net: Long,
-    onOpenLedger: () -> Unit, onSelect: (Loan) -> Unit
+    accountBalanceMinorUnits: Long?,
+    onEditAccountBalance: () -> Unit,
+    onOpenLedger: () -> Unit,
+    onSelect: (Loan) -> Unit
 ) {
     val peopleCount = openLoans.map { it.person.trim().lowercase() }.distinct().size
     val recent = openLoans.take(4)
@@ -378,6 +411,33 @@ private fun LoanOverview(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     BalancePill("To receive", money(toReceive), Modifier.weight(1f))
                     BalancePill("To repay", money(toPay), Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color.White.copy(alpha = .15f))
+                        .clickable(onClick = onEditAccountBalance)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Rounded.AccountBalanceWallet, null, Modifier.size(20.dp), tint = Color.White)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("In my account", fontSize = 11.5.sp, color = Color.White.copy(alpha = .85f))
+                        Text(
+                            accountBalanceMinorUnits?.let(::money) ?: "Set account balance",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = Color.White
+                        )
+                    }
+                    Text(
+                        if (accountBalanceMinorUnits == null) "Add" else "Edit",
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
+                    )
                 }
             }
         }
@@ -577,6 +637,46 @@ private fun BalancePill(label: String, value: String, modifier: Modifier) {
         Spacer(Modifier.height(2.dp))
         Text(value, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color.White)
     }
+}
+
+@Composable
+private fun AccountBalanceSheet(
+    initialBalanceMinorUnits: Long?,
+    onDismiss: () -> Unit,
+    onSave: (Double) -> Unit
+) {
+    var amount by remember(initialBalanceMinorUnits) {
+        mutableStateOf(initialBalanceMinorUnits?.let { (it / 100.0).toString() }.orEmpty())
+    }
+    val parsedAmount = amount.toDoubleOrNull()
+    MomentumDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("In my account") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Enter your current bank or cash balance. This is tracked separately from money to receive or repay.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                MomentumTextField(
+                    value = amount,
+                    onValueChange = { amount = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) },
+                    label = { Text("Current balance") },
+                    prefix = { Text(CURRENCY) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = parsedAmount != null && parsedAmount >= 0,
+                onClick = { parsedAmount?.takeIf { it >= 0 }?.let(onSave) }
+            ) { Text("Save balance") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable

@@ -23,7 +23,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.put
+import com.faheem.habits.features.vault.VaultCrypto
 
 class SupabaseRestClient(
     private val context: Context,
@@ -140,6 +142,7 @@ class SupabaseRestClient(
                 parameters.append("select", "id")
                 parameters.append("limit", "1")
             }
+
         }
         check(response.status == HttpStatusCode.OK || response.status == HttpStatusCode.PartialContent) {
             "Supabase record count failed (${response.status.value}): ${response.bodyAsText().take(500)}"
@@ -148,6 +151,41 @@ class SupabaseRestClient(
             ?.substringAfter('/')
             ?.toIntOrNull()
             ?: 0
+    }
+
+    suspend fun fetchVaultKey(): ByteArray? {
+        val token = requireToken()
+        val response = http.get {
+            url("${baseUrl()}/rest/v1/momentum_vault_keys")
+            header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+            header("Authorization", "Bearer $token")
+            url {
+                parameters.append("select", "key_material")
+                parameters.append("limit", "1")
+            }
+        }
+        check(response.status == HttpStatusCode.OK) {
+            "Vault account-key lookup failed (${response.status.value}): ${response.bodyAsText().take(500)}"
+        }
+        val row = json.parseToJsonElement(response.bodyAsText()).jsonArray.firstOrNull()
+            ?: return null
+        val encoded = row.jsonObject["key_material"]?.jsonPrimitive?.content
+            ?: error("The account vault key record is invalid.")
+        return VaultCrypto.decode(encoded)
+    }
+
+    suspend fun saveVaultKeyIfAbsent(key: ByteArray) {
+        val token = requireToken()
+        val response = http.postRest("momentum_vault_keys", token) {
+            url { parameters.append("on_conflict", "user_id") }
+            header("Prefer", "resolution=ignore-duplicates,return=minimal")
+            setBody(buildJsonArray {
+                add(buildJsonObject { put("key_material", VaultCrypto.encode(key)) })
+            }.toString())
+        }
+        check(response.status == HttpStatusCode.Created || response.status == HttpStatusCode.OK) {
+            "Vault account-key save failed (${response.status.value}): ${response.bodyAsText().take(500)}"
+        }
     }
 
     suspend fun storageUsage(bucket: String): StorageUsage {

@@ -29,7 +29,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -123,50 +122,50 @@ private fun HabitRow(
     PremiumCard(
         modifier = modifier,
         onClick = onOpen,
+        accent = if (done) Positive else null,
         shape = RoundedCornerShape(MomentumTokens.radiusMedium),
-        contentPadding = PaddingValues(start = 14.dp, end = 12.dp, top = 13.dp, bottom = 13.dp)
+        contentPadding = PaddingValues(start = 12.dp, end = 10.dp, top = 9.dp, bottom = 9.dp)
     ) {
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconBubble(habitIcon(h.icon), color, 42.dp)
-            Spacer(Modifier.width(12.dp))
+            IconBubble(habitIcon(h.icon), color, 38.dp)
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     h.name,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp,
-                    textDecoration = if (done) TextDecoration.LineThrough else null,
-                    color = if (done) colors.onSurfaceVariant else colors.onSurface,
+                    fontSize = 14.sp,
+                    color = if (done) Positive else colors.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (h.description.isNotBlank()) {
                     Text(
                         h.description,
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = colors.onSurfaceVariant
                     )
                 }
-                Spacer(Modifier.height(5.dp))
+                Spacer(Modifier.height(3.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Schedule, null, Modifier.size(13.dp), tint = color)
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        "${TIME_LABELS[h.timeOfDay]}  ·  ${scheduleText(h.daysMask)}",
-                        fontSize = 11.sp,
+                        scheduleText(h.daysMask),
+                        fontSize = 10.sp,
                         color = colors.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(6.dp))
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                CompletionToggle(checked = done, color = color, onClick = onToggle, size = 36.dp)
+                CompletionToggle(checked = done, color = color, onClick = onToggle, size = 30.dp)
                 if (ui.current > 0) StreakChip(ui.current)
             }
         }
@@ -449,27 +448,17 @@ fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -> Unit) {
                 item { EmptyState(Icons.Rounded.WbSunny, "Rest day", "No habits are scheduled for this day") }
             }
 
-            val groups = listOf(1 to "Morning", 2 to "Afternoon", 3 to "Evening", 0 to "Anytime")
-            groups.forEach { (t, label) ->
-                val g = list.filter { it.habit.timeOfDay == t }
-                    .sortedWith(compareBy<HabitUi> { selected in it.days }.thenBy { it.habit.name.lowercase() })
-                if (g.isNotEmpty()) {
-                    item(key = "header-$t") {
-                        SectionHeader(
-                            title = label,
-                            subtitle = "${g.count { selected in it.days }} of ${g.size} complete"
-                        )
-                    }
-                    items(g, key = { it.habit.id }) { ui ->
-                        HabitRow(
-                            ui = ui,
-                            done = selected in ui.days,
-                            onToggle = { vm.toggle(ui, selected) },
-                            onOpen = { detailId = ui.habit.id },
-                            modifier = Modifier.animateItem()
-                        )
-                    }
-                }
+            val sortedList = list.sortedWith(
+                compareBy<HabitUi> { selected in it.days }.thenBy { it.habit.name.lowercase() }
+            )
+            items(sortedList, key = { it.habit.id }) { ui ->
+                HabitRow(
+                    ui = ui,
+                    done = selected in ui.days,
+                    onToggle = { vm.toggle(ui, selected) },
+                    onOpen = { detailId = ui.habit.id },
+                    modifier = Modifier.animateItem()
+                )
             }
         }
         MomentumFab(

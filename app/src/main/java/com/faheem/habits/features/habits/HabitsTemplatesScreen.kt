@@ -59,7 +59,6 @@ fun TemplatesScreen(vm: HabitViewModel) {
             MomentumTextField(
                 value = query,
                 onValueChange = { query = it },
-                modifier = Modifier.height(52.dp),
                 placeholder = { Text("Search habits") },
                 leadingIcon = { Icon(Icons.Rounded.Search, null) },
                 singleLine = true
@@ -84,46 +83,60 @@ fun TemplatesScreen(vm: HabitViewModel) {
                 accent = color,
                 contentPadding = PaddingValues(14.dp)
             ) {
-                Row(verticalAlignment = Alignment.Top) {
-                    IconBubble(habitIcon(tpl.icon), color, 44.dp)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(tpl.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text(tpl.what, fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.height(6.dp))
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBubble(habitIcon(tpl.icon), color, 44.dp)
+                        Spacer(Modifier.width(12.dp))
                         Text(
-                            "${tpl.category} · ${scheduleText(tpl.daysMask)} · ${TIME_LABELS[tpl.timeOfDay]}",
-                            fontSize = 11.sp, color = color, fontWeight = FontWeight.Medium
+                            tpl.name,
+                            modifier = Modifier.weight(1f),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
                         )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    if (added) {
-                        MomentumChip(
-                            selected = true,
-                            onClick = {},
-                            label = "Added",
-                            icon = Icons.Rounded.Check,
-                            enabled = false
-                        )
-                    } else {
-                        MomentumOutlinedButton(
-                            text = "Add",
-                            icon = Icons.Rounded.Add,
-                            onClick = {
-                                vm.add(
-                                    Habit(
-                                        name = tpl.name,
-                                        description = tpl.what,
-                                        icon = tpl.icon,
-                                        colorIndex = categoryColorIndex(tpl.category),
-                                        timeOfDay = tpl.timeOfDay,
-                                        daysMask = tpl.daysMask
+                        Spacer(Modifier.width(8.dp))
+                        if (added) {
+                            MomentumChip(
+                                selected = true,
+                                onClick = {},
+                                label = "Added",
+                                icon = Icons.Rounded.Check,
+                                enabled = false
+                            )
+                        } else {
+                            MomentumOutlinedButton(
+                                text = "Add",
+                                icon = Icons.Rounded.Add,
+                                onClick = {
+                                    vm.add(
+                                        Habit(
+                                            name = tpl.name,
+                                            description = tpl.what,
+                                            icon = tpl.icon,
+                                            colorIndex = categoryColorIndex(tpl.category),
+                                            timeOfDay = tpl.timeOfDay,
+                                            daysMask = tpl.daysMask
+                                        )
                                     )
-                                )
-                                Toast.makeText(ctx, "Added to Today", Toast.LENGTH_SHORT).show()
-                            }
-                        )
+                                    Toast.makeText(ctx, "Added to Today", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
                     }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        tpl.what,
+                        modifier = Modifier.fillMaxWidth().padding(start = 56.dp),
+                        fontSize = 12.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "${tpl.category} · ${scheduleText(tpl.daysMask)} · ${TIME_LABELS[tpl.timeOfDay]}",
+                        modifier = Modifier.padding(start = 56.dp),
+                        fontSize = 11.sp,
+                        color = color,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
         }

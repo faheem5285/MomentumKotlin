@@ -94,7 +94,6 @@ fun ManageScreen(vm: HabitViewModel) {
                 MomentumTextField(
                     value = query,
                     onValueChange = { query = it },
-                    modifier = Modifier.height(52.dp),
                     placeholder = { Text("Find a habit") },
                     leadingIcon = { Icon(Icons.Rounded.Search, null) },
                     singleLine = true,
@@ -166,7 +165,7 @@ private fun ManageCard(ui: HabitUi, modifier: Modifier, actions: @Composable Row
             Column(Modifier.weight(1f)) {
                 Text(h.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 Text(
-                    "${scheduleText(h.daysMask)} · ${TIME_LABELS[h.timeOfDay]}",
+                    scheduleText(h.daysMask),
                     fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }

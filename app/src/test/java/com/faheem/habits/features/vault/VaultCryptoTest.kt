@@ -1,5 +1,6 @@
 package com.faheem.habits.features.vault
 
+import com.faheem.habits.core.data.VaultRecord
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -89,6 +90,19 @@ class VaultCryptoTest {
         assertThrows(AEADBadTagException::class.java) {
             VaultCrypto.unwrapVmk(wrapped.first, tampered, key)
         }
+    }
+
+    @Test
+    fun repeatedImportsWithDifferentCiphertextsAreDeduplicatedBySecret() {
+        val key = VaultCrypto.newVmk()
+        val first = VaultCrypto.encrypt(secret, key)
+        val second = VaultCrypto.encrypt(secret, key)
+        val records = listOf(
+            VaultRecord(nonce = first.first, ciphertext = first.second, updatedAt = 1),
+            VaultRecord(nonce = second.first, ciphertext = second.second, updatedAt = 2)
+        )
+
+        assertEquals(1, uniqueVaultEntries(records, key).size)
     }
 
     @Test

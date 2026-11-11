@@ -589,8 +589,11 @@ interface FileDao {
 
 @Dao
 interface VaultDao {
-    @Query("SELECT * FROM vault_entries ORDER BY updatedAt DESC")
+    @Query("SELECT * FROM vault_entries WHERE deleted = 0 ORDER BY updatedAt DESC")
     suspend fun getAll(): List<VaultRecord>
+
+    @Query("SELECT * FROM vault_entries ORDER BY updatedAt DESC")
+    suspend fun getAllForSync(): List<VaultRecord>
 
     @Query("SELECT updatedAt FROM vault_entries ORDER BY updatedAt DESC")
     fun observeUpdatedAt(): Flow<List<Long>>
@@ -608,7 +611,7 @@ interface VaultDao {
     suspend fun upsertAll(records: List<VaultRecord>)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertImportedAll(records: List<VaultRecord>)
+    suspend fun insertImported(record: VaultRecord): Long
 
     @Update
     suspend fun update(record: VaultRecord)
@@ -616,8 +619,14 @@ interface VaultDao {
     @Query("DELETE FROM vault_entries")
     suspend fun deleteAll()
 
-    @Query("DELETE FROM vault_entries WHERE id = :id")
-    suspend fun delete(id: Int)
+    @Query("SELECT * FROM vault_entries WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Int): VaultRecord?
+
+    @Query("UPDATE vault_entries SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun markDeleted(id: Int, updatedAt: Long)
+
+    @Query("UPDATE vault_entries SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE deleted = 0")
+    suspend fun markAllDeleted(updatedAt: Long)
 }
 
 @Dao
@@ -671,6 +680,8 @@ interface LifeRuleDao {
     @Query("SELECT * FROM life_rule_files WHERE ruleId = :ruleId AND deleted = 0 ORDER BY addedAt DESC")
     fun getFiles(ruleId: Int): Flow<List<LifeRuleFile>>
     @Insert suspend fun insertFile(file: LifeRuleFile): Long
+    @Query("UPDATE life_rule_files SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun markFileDeleted(id: Int, updatedAt: Long)
     @Query("SELECT * FROM life_rule_files ORDER BY id")
     suspend fun getAllFilesForSync(): List<LifeRuleFile>
     @Query("SELECT * FROM life_rule_files WHERE uuid = :uuid LIMIT 1")

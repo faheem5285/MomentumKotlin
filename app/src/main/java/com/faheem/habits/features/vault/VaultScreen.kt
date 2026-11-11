@@ -2,6 +2,8 @@
 
 package com.faheem.habits.features.vault
 import com.faheem.habits.core.data.*
+import com.faheem.habits.core.data.supabase.SupabaseRestClient
+import com.faheem.habits.core.data.sync.SupabaseSyncRepository
 import com.faheem.habits.core.notifications.*
 import com.faheem.habits.core.ui.*
 import com.faheem.habits.R
@@ -79,16 +81,135 @@ enum class VaultImportAction(val label: String, val description: String) {
     Overwrite("Overwrite", "Delete the current vault records, then import")
 }
 
+data class VaultRestoreResult(val key: ByteArray, val importedCount: Int)
+
+internal fun uniqueVaultEntries(
+    records: List<VaultRecord>,
+    key: ByteArray
+): List<Pair<VaultRecord, VaultSecret>> {
+    val seen = mutableSetOf<VaultSecret>()
+    val seenUuids = mutableSetOf<String>()
+    return records.mapNotNull { record ->
+        val secret = VaultCrypto.decrypt(record.nonce, record.ciphertext, key)
+        if (secret !in seen && record.uuid !in seenUuids) {
+            seen += secret
+            seenUuids += record.uuid
+            record to secret
+        } else {
+            null
+        }
+    }
+}
+
 class VaultViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = AppDatabase.get(app).vaultDao()
+    private val accountKeys = SupabaseRestClient(app)
     private val prefs = app.getSharedPreferences("momentum_vault", Context.MODE_PRIVATE)
     private val vmkWrappedPref = "vmk_wrapped_password_v1"
     private val biometricWrappedPref = "vmk_wrapped_biometric_v1"
     private val failedAttemptsPref = "failed_unlock_attempts"
+    private val accountLinkedPref = "account_linked_v1"
 
     fun isConfigured(): Boolean = prefs.contains(VaultCrypto.SALT_PREF) && prefs.contains(VaultCrypto.CHECK_PREF)
+    fun needsAccountLink(): Boolean = isConfigured() && !prefs.getBoolean(accountLinkedPref, false)
+
+    suspend fun unlockWithAccount(): ByteArray = withContext(Dispatchers.IO) {
+        val accountKey = accountKeys.fetchVaultKey()
+        if (accountKey != null) {
+            try {
+                verifyRecordsReadable(accountKey)
+                SupabaseSyncRepository(getApplication()).syncVaultEntries()
+                verifyRecordsReadable(accountKey)
+                prefs.edit().putBoolean(accountLinkedPref, true).apply()
+                return@withContext accountKey
+            } catch (failure: Exception) {
+                accountKey.fill(0)
+                throw failure
+            }
+        }
+        if (isConfigured()) {
+            error("This device has a legacy password-protected vault. Choose “Link existing vault” and enter its password once.")
+        }
+        check(dao.getAllForSync().isEmpty()) {
+            "Encrypted records exist on this device but no account key is saved. Restore a matching backup; do not create a new key."
+        }
+        check(accountKeys.count("momentum_vault_entries") == 0) {
+            "Encrypted account records exist without an account key. A new key cannot decrypt them; restore a matching backup."
+        }
+        val generatedKey = VaultCrypto.newVmk()
+        try {
+            accountKeys.saveVaultKeyIfAbsent(generatedKey)
+            val savedKey = accountKeys.fetchVaultKey()
+                ?: error("The account key was not available after saving.")
+            SupabaseSyncRepository(getApplication()).syncVaultEntries()
+            verifyRecordsReadable(savedKey)
+            prefs.edit().putBoolean(accountLinkedPref, true).apply()
+            savedKey
+        } finally {
+            generatedKey.fill(0)
+        }
+    }
+
+    suspend fun linkExistingVault(masterPassword: String): ByteArray = withContext(Dispatchers.IO) {
+        val localKey = unlock(masterPassword)
+            ?: error("That existing Vault password did not unlock this device's vault.")
+        try {
+            dao.getAll().forEach { record ->
+                try {
+                    VaultCrypto.decrypt(record.nonce, record.ciphertext, localKey)
+                } catch (failure: Exception) {
+                    throw IllegalStateException("A local Vault record cannot be decrypted with the existing key.", failure)
+                }
+            }
+            val accountKey = accountKeys.fetchVaultKey()
+            if (accountKey != null) {
+                check(java.security.MessageDigest.isEqual(localKey, accountKey)) {
+                    accountKey.fill(0)
+                    "This account already has a different Vault key. The existing account data was not changed."
+                }
+                accountKey.fill(0)
+            } else {
+                SupabaseSyncRepository(getApplication()).syncVaultEntries()
+                verifyRecordsReadable(localKey)
+                check(accountKeys.count("momentum_vault_entries") <= dao.getAllForSync().size) {
+                    "The account has Vault records that are not present on this device. Sync them before linking the key."
+                }
+                accountKeys.saveVaultKeyIfAbsent(localKey)
+                val savedKey = accountKeys.fetchVaultKey()
+                    ?: error("The account key was not available after saving.")
+                check(java.security.MessageDigest.isEqual(localKey, savedKey)) {
+                    savedKey.fill(0)
+                    "A different Vault key was linked to this account concurrently."
+                }
+                savedKey.fill(0)
+            }
+            SupabaseSyncRepository(getApplication()).syncVaultEntries()
+            verifyRecordsReadable(localKey)
+            prefs.edit().putBoolean(accountLinkedPref, true).apply()
+            localKey
+        } catch (failure: Exception) {
+            localKey.fill(0)
+            throw failure
+        }
+    }
+
+    private suspend fun verifyRecordsReadable(key: ByteArray) {
+        dao.getAll().forEach { record ->
+            try {
+                VaultCrypto.decrypt(record.nonce, record.ciphertext, key)
+            } catch (failure: Exception) {
+                throw IllegalStateException(
+                    "The account key does not match one or more local Vault records. The encrypted records were left unchanged.",
+                    failure
+                )
+            }
+        }
+    }
 
     suspend fun setup(masterPassword: String): ByteArray = withContext(Dispatchers.IO) {
+        check(dao.getAll().isEmpty()) {
+            "Encrypted vault records already exist, but this device has no matching key setup. Restore a backup made with the original vault password before creating a vault."
+        }
         val salt = VaultCrypto.newSalt()
         val passwordChars = masterPassword.toCharArray()
         val key = VaultCrypto.deriveKey(passwordChars, salt)
@@ -213,7 +334,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
             val vmk = VaultCrypto.newVmk()
             val migrated = decrypted.map { (row, secret) ->
                 val encrypted = VaultCrypto.encrypt(secret, vmk)
-                VaultRecord(row.id, encrypted.first, encrypted.second, row.updatedAt)
+                row.copy(nonce = encrypted.first, ciphertext = encrypted.second, dirty = true)
             }
             dao.upsertAll(migrated)
             val passwordWrapped = VaultCrypto.wrapVmk(vmk, oldKey)
@@ -258,14 +379,28 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
         try {
             withContext(Dispatchers.IO) {
                 val encrypted = VaultCrypto.encrypt(secret, operationKey)
-                dao.upsert(VaultRecord(id = id ?: 0, nonce = encrypted.first, ciphertext = encrypted.second, updatedAt = System.currentTimeMillis()))
+                val old = id?.let { dao.getById(it) }
+                dao.upsert(
+                    VaultRecord(
+                        id = id ?: 0,
+                        nonce = encrypted.first,
+                        ciphertext = encrypted.second,
+                        updatedAt = System.currentTimeMillis(),
+                        uuid = old?.uuid ?: java.util.UUID.randomUUID().toString(),
+                        deleted = false,
+                        dirty = true,
+                        deviceId = old?.deviceId.orEmpty()
+                    )
+                )
             }
         } finally {
             operationKey.fill(0)
         }
     }
 
-    suspend fun delete(id: Int) = withContext(Dispatchers.IO) { dao.delete(id) }
+    suspend fun delete(id: Int) = withContext(Dispatchers.IO) {
+        dao.markDeleted(id, System.currentTimeMillis())
+    }
 
     suspend fun exportEncrypted(destination: Uri) = withContext(Dispatchers.IO) {
         val salt = prefs.getString(VaultCrypto.SALT_PREF, null) ?: error("Vault is not configured.")
@@ -273,11 +408,17 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
         val entries = JSONArray()
         records.forEach { row ->
             entries.put(JSONObject().put("id", row.id).put("nonce", VaultCrypto.encode(row.nonce))
-                .put("ciphertext", VaultCrypto.encode(row.ciphertext)).put("updatedAt", row.updatedAt))
+                .put("ciphertext", VaultCrypto.encode(row.ciphertext)).put("updatedAt", row.updatedAt)
+                .put("uuid", row.uuid))
         }
+        val wrapped = prefs.getString(vmkWrappedPref, null)
+            ?: error("The vault key cannot be included in this backup. Unlock the vault again and retry.")
+        val check = prefs.getString(VaultCrypto.CHECK_PREF, null)
+            ?: error("Vault password metadata is unavailable.")
         val bytes = JSONObject().put("format", "momentum-encrypted-vault")
-            .put("version", 1).put("exportedAt", System.currentTimeMillis())
-            .put("salt", salt).put("entries", entries).toString(2).toByteArray(Charsets.UTF_8)
+            .put("version", 2).put("exportedAt", System.currentTimeMillis())
+            .put("salt", salt).put("check", check).put("wrappedKey", wrapped)
+            .put("entries", entries).toString(2).toByteArray(Charsets.UTF_8)
         require(bytes.size <= 10 * 1024 * 1024) { "Encrypted vault export exceeds the 10 MB safety limit." }
         val output = getApplication<android.app.Application>().contentResolver.openOutputStream(destination, "w")
             ?: error("Could not open the encrypted export destination.")
@@ -295,7 +436,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
         require(document.optString("format") == "momentum-encrypted-vault") {
             "This is not a Zylo encrypted vault file."
         }
-        require(document.optInt("version", -1) == 1) { "This vault file version is not supported." }
+        require(document.optInt("version", -1) in 1..2) { "This vault file version is not supported." }
         val currentSalt = prefs.getString(VaultCrypto.SALT_PREF, null)
             ?: error("Vault is not configured.")
         require(document.optString("salt") == currentSalt) {
@@ -308,16 +449,94 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                 val entry = entries.optJSONObject(index)
                     ?: error("The selected vault file contains an invalid record.")
                 val record = VaultRecord(
-                    id = entry.getInt("id"),
+                    id = entry.optInt("id", 0),
                     nonce = VaultCrypto.decode(entry.getString("nonce")),
                     ciphertext = VaultCrypto.decode(entry.getString("ciphertext")),
-                    updatedAt = entry.getLong("updatedAt")
+                    updatedAt = entry.getLong("updatedAt"),
+                    uuid = entry.optString("uuid").ifBlank { java.util.UUID.randomUUID().toString() }
                 )
                 VaultCrypto.decrypt(record.nonce, record.ciphertext, key)
                 add(record)
             }
         }
-        applyImport(imported, action)
+        applyImport(imported, action, key)
+    }
+
+    suspend fun restoreEncryptedBackup(source: Uri, masterPassword: String): VaultRestoreResult = withContext(Dispatchers.IO) {
+        val resolver = getApplication<Application>().contentResolver
+        val bytes = resolver.openInputStream(source)?.use { input ->
+            input.readBytes().also {
+                require(it.size <= 10 * 1024 * 1024) { "Encrypted vault import exceeds the 10 MB safety limit." }
+            }
+        } ?: error("Could not open the selected vault file.")
+        val document = JSONObject(String(bytes, Charsets.UTF_8))
+        require(document.optString("format") == "momentum-encrypted-vault") {
+            "This is not a Zylo encrypted vault file."
+        }
+        require(document.optInt("version", -1) == 2) {
+            "This backup does not contain recovery key data. It can only be imported on a device that still has the original vault setup."
+        }
+        val salt = document.getString("salt")
+        val chars = masterPassword.toCharArray()
+        val passwordKey = try {
+            VaultCrypto.deriveKey(chars, VaultCrypto.decode(salt))
+        } finally {
+            chars.fill('\u0000')
+        }
+        val vmk = try {
+            require(VaultCrypto.matches(passwordKey, VaultCrypto.decode(document.getString("check")))) {
+                "The master password does not match this backup."
+            }
+            val wrapped = decodeWrapped(document.getString("wrappedKey"))
+            VaultCrypto.unwrapVmk(wrapped.first, wrapped.second, passwordKey)
+        } finally {
+            passwordKey.fill(0)
+        }
+        try {
+            val entries = document.optJSONArray("entries")
+                ?: error("The selected vault file contains no records.")
+            val records = buildList {
+                for (index in 0 until entries.length()) {
+                    val entry = entries.optJSONObject(index)
+                        ?: error("The selected vault file contains an invalid record.")
+                    val record = VaultRecord(
+                        id = entry.optInt("id", 0),
+                        nonce = VaultCrypto.decode(entry.getString("nonce")),
+                        ciphertext = VaultCrypto.decode(entry.getString("ciphertext")),
+                        updatedAt = entry.getLong("updatedAt"),
+                        uuid = entry.optString("uuid").ifBlank { java.util.UUID.randomUUID().toString() }
+                    )
+                    VaultCrypto.decrypt(record.nonce, record.ciphertext, vmk)
+                    add(record)
+                }
+            }
+            val wrappedKey = document.getString("wrappedKey")
+            var linkedKey = accountKeys.fetchVaultKey()
+            if (linkedKey == null) {
+                accountKeys.saveVaultKeyIfAbsent(vmk)
+                linkedKey = accountKeys.fetchVaultKey()
+            }
+            val savedKey = linkedKey ?: error("The account Vault key was not available after restore.")
+            check(java.security.MessageDigest.isEqual(vmk, savedKey)) {
+                savedKey.fill(0)
+                "A different Vault key is already linked to this account."
+            }
+            savedKey.fill(0)
+            check(
+                prefs.edit()
+                    .putString(VaultCrypto.SALT_PREF, salt)
+                    .putString(VaultCrypto.CHECK_PREF, document.getString("check"))
+                    .putString(vmkWrappedPref, wrappedKey)
+                    .remove(biometricWrappedPref)
+                    .remove(failedAttemptsPref)
+                    .putBoolean(accountLinkedPref, true)
+                    .commit()
+            ) { "Could not save the restored vault setup." }
+            VaultRestoreResult(vmk, applyImport(records, VaultImportAction.Upsert, vmk))
+        } catch (failure: Exception) {
+            vmk.fill(0)
+            throw failure
+        }
     }
 
     suspend fun importCsv(source: Uri, key: ByteArray, action: VaultImportAction): Int = withContext(Dispatchers.IO) {
@@ -365,24 +584,54 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         require(records.isNotEmpty()) { "No usable records were found in the CSV file." }
-        applyImport(records, action)
+        applyImport(records, action, key)
     }
 
-    private suspend fun applyImport(records: List<VaultRecord>, action: VaultImportAction): Int {
+    private suspend fun applyImport(records: List<VaultRecord>, action: VaultImportAction, key: ByteArray): Int {
+        val active = dao.getAll()
+        val secretsByUuid = active.mapNotNull { record ->
+            runCatching { record.uuid to VaultCrypto.decrypt(record.nonce, record.ciphertext, key) }.getOrNull()
+        }.toMap()
+        val secrets = secretsByUuid.toMutableMap()
+        val uniqueIncoming = uniqueVaultEntries(records, key)
+        var changed = 0
         when (action) {
-            VaultImportAction.Insert -> dao.insertImportedAll(records.map { it.copy(id = 0) })
-            VaultImportAction.Update -> records.forEach { incoming ->
-                dao.getByUuid(incoming.uuid)?.let { existing ->
-                    dao.update(incoming.copy(id = existing.id))
+            VaultImportAction.Insert -> uniqueIncoming.forEach { (incoming, secret) ->
+                val duplicate = dao.getByUuid(incoming.uuid) != null || secrets.values.contains(secret)
+                if (!duplicate) {
+                    val result = dao.insertImported(incoming.copy(id = 0, dirty = true, deleted = false))
+                    if (result != -1L) {
+                        changed++
+                        secrets[incoming.uuid] = secret
+                    }
                 }
             }
-            VaultImportAction.Upsert -> dao.upsertAll(records)
+            VaultImportAction.Update, VaultImportAction.Upsert -> uniqueIncoming.forEach { (incoming, secret) ->
+                val existing = dao.getByUuid(incoming.uuid)
+                    ?: secrets.entries.firstOrNull { it.value == secret }?.key?.let { dao.getByUuid(it) }
+                if (existing != null || action == VaultImportAction.Upsert) {
+                    dao.upsert(
+                        incoming.copy(
+                            id = existing?.id ?: 0,
+                            uuid = existing?.uuid ?: incoming.uuid,
+                            updatedAt = System.currentTimeMillis(),
+                            dirty = true,
+                            deleted = false
+                        )
+                    )
+                    changed++
+                    secrets[existing?.uuid ?: incoming.uuid] = secret
+                }
+            }
             VaultImportAction.Overwrite -> {
-                dao.deleteAll()
-                dao.upsertAll(records.map { it.copy(id = 0) })
+                dao.markAllDeleted(System.currentTimeMillis())
+                uniqueIncoming.forEach { (incoming, secret) ->
+                    dao.upsert(incoming.copy(id = 0, updatedAt = System.currentTimeMillis(), dirty = true, deleted = false))
+                    changed++
+                }
             }
         }
-        return records.size
+        return changed
     }
 
     private fun parseCsv(text: String): List<List<String>> {
@@ -454,6 +703,10 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
     var deleteTarget by remember { mutableStateOf<VaultListItem?>(null) }
     var exportMessage by remember { mutableStateOf<String?>(null) }
     var pendingImport by remember { mutableStateOf<Pair<Uri, Boolean>?>(null) }
+    var pendingRecovery by remember { mutableStateOf<Uri?>(null) }
+    var pendingLegacyMigration by remember { mutableStateOf(false) }
+    var recoveryPassword by remember { mutableStateOf("") }
+    var legacyPassword by remember { mutableStateOf("") }
     var externalFilePickerOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val vaultExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
@@ -477,6 +730,11 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
         if (uri != null) {
             pendingImport = uri to false
         }
+    }
+    val recoveryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        externalFilePickerOpen = false
+        pendingRecovery = uri
+        recoveryPassword = ""
     }
     pendingImport?.let { (uri, encrypted) ->
         MomentumDialog(
@@ -515,6 +773,112 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
             dismissButton = { TextButton(onClick = { pendingImport = null }) { Text("Cancel") } }
         )
     }
+    pendingRecovery?.let { uri ->
+        MomentumDialog(
+            onDismissRequest = {
+                pendingRecovery = null
+                recoveryPassword = ""
+            },
+            title = { Text("Restore encrypted vault") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Enter the master password used when this backup was created. Keep the backup file private.")
+                    MomentumTextField(
+                        value = recoveryPassword,
+                        onValueChange = { recoveryPassword = it.take(128); error = null },
+                        label = { Text("Original master password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation()
+                    )
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !busy && recoveryPassword.isNotEmpty(),
+                    onClick = {
+                        val password = recoveryPassword
+                        recoveryPassword = ""
+                        pendingRecovery = null
+                        scope.launch {
+                            busy = true
+                            error = null
+                            try {
+                                val restored = vm.restoreEncryptedBackup(uri, password)
+                                configured = true
+                                sessionEpoch++
+                                sessionKey?.fill(0)
+                                sessionKey = restored.key
+                                refresh++
+                                exportMessage = "Vault restored: ${restored.importedCount} record${if (restored.importedCount == 1) "" else "s"}."
+                            } catch (e: Exception) {
+                                val message = "Vault restore failed: ${e.message ?: "unknown error"}"
+                                if (configured) exportMessage = message else error = message
+                            } finally {
+                                busy = false
+                            }
+                        }
+                    }
+                ) { Text(if (busy) "Restoring…" else "Restore") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    pendingRecovery = null
+                    recoveryPassword = ""
+                }) { Text("Cancel") }
+            }
+        )
+    }
+    if (pendingLegacyMigration) {
+        MomentumDialog(
+            onDismissRequest = {
+                pendingLegacyMigration = false
+                legacyPassword = ""
+            },
+            title = { Text("Link existing vault") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Enter the existing Vault password once. After linking, your signed-in account will unlock Vault on this and other devices.")
+                    MomentumTextField(
+                        value = legacyPassword,
+                        onValueChange = { legacyPassword = it.take(128); error = null },
+                        label = { Text("Existing Vault password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !busy && legacyPassword.isNotEmpty(),
+                    onClick = {
+                        val password = legacyPassword
+                        legacyPassword = ""
+                        pendingLegacyMigration = false
+                        scope.launch {
+                            busy = true
+                            error = null
+                            try {
+                                sessionKey = vm.linkExistingVault(password)
+                                configured = true
+                                sessionEpoch++
+                            } catch (e: Exception) {
+                                error = e.message ?: "Could not link the existing Vault."
+                            } finally {
+                                busy = false
+                            }
+                        }
+                    }
+                ) { Text(if (busy) "Linking…" else "Link account") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    pendingLegacyMigration = false
+                    legacyPassword = ""
+                }) { Text("Cancel") }
+            }
+        )
+    }
 
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         if (externalFilePickerOpen) return@LifecycleEventEffect
@@ -540,20 +904,16 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
         }
     }
 
-    fun unlockOrCreate(master: String, setup: Boolean) {
+    fun unlockWithAccount() {
         scope.launch {
             busy = true
             error = null
             try {
-                val key = if (setup) vm.setup(master) else vm.unlock(master)
-                if (key == null) error = "That master password didn’t unlock the vault. Try again."
-                else {
-                    sessionEpoch++
-                    sessionKey = key
-                    configured = true
-                }
+                sessionKey = vm.unlockWithAccount()
+                sessionEpoch++
+                configured = true
             } catch (e: Exception) {
-                error = e.message ?: "Could not open the vault. Please try again."
+                error = e.message ?: "Could not open Vault with this account."
             } finally { busy = false }
         }
     }
@@ -626,7 +986,7 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
         prompt.authenticate(
             BiometricPrompt.PromptInfo.Builder()
                 .setTitle("Enable biometric vault unlock")
-                .setSubtitle("Your master password remains available as a fallback")
+                .setSubtitle("Your account sign-in remains available as a fallback")
                 .setNegativeButtonText("Cancel")
                 .build(),
             BiometricPrompt.CryptoObject(cipher)
@@ -640,13 +1000,20 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
             busy,
             error,
             biometricAvailable = configured && vm.hasBiometricUnlock(),
-            onSubmit = { unlockOrCreate(it, !configured) },
-            onBiometric = ::launchBiometricUnlock
+            legacyVaultAvailable = vm.needsAccountLink(),
+            onSubmit = ::unlockWithAccount,
+            onLinkExisting = { pendingLegacyMigration = true },
+            onBiometric = ::launchBiometricUnlock,
+            onRestoreBackup = {
+                externalFilePickerOpen = true
+                recoveryLauncher.launch(arrayOf("application/json", "text/json", "text/plain"))
+            }
         )
     } else {
         VaultHome(
             items = items,
             unreadable = unreadable,
+            legacyBackupAvailable = vm.isConfigured(),
             onLock = {
                 sessionEpoch++
                 key.fill(0); sessionKey = null; items = emptyList(); selected = null
@@ -665,6 +1032,10 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
             onImportCsv = {
                 externalFilePickerOpen = true
                 csvImportLauncher.launch(arrayOf("*/*"))
+            },
+            onRestoreBackup = {
+                externalFilePickerOpen = true
+                recoveryLauncher.launch(arrayOf("application/json", "text/json", "text/plain"))
             },
             onEnableBiometric = ::enableBiometricUnlock
         )
@@ -709,14 +1080,12 @@ private fun VaultGate(
     busy: Boolean,
     error: String?,
     biometricAvailable: Boolean,
-    onSubmit: (String) -> Unit,
-    onBiometric: () -> Unit
+    legacyVaultAvailable: Boolean,
+    onSubmit: () -> Unit,
+    onLinkExisting: () -> Unit,
+    onBiometric: () -> Unit,
+    onRestoreBackup: () -> Unit
 ) {
-    var master by remember(configured) { mutableStateOf("") }
-    var confirm by remember(configured) { mutableStateOf("") }
-    var showPassword by remember { mutableStateOf(false) }
-    var localError by remember(configured) { mutableStateOf<String?>(null) }
-
     Column(Modifier.fillMaxSize().padding(horizontal = MomentumTokens.screenPadding, vertical = 16.dp), verticalArrangement = Arrangement.Center) {
         LazyColumn(
             contentPadding = PaddingValues(bottom = 24.dp),
@@ -727,67 +1096,47 @@ private fun VaultGate(
                     Icon(Icons.Rounded.Lock, null, Modifier.size(38.dp), tint = Color.White)
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        if (configured) "Vault locked" else "Create your private vault",
+                        "Open your account Vault",
                         fontSize = 25.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp
                     )
-                    Text("Your passwords are encrypted on this device and never synced by Zylo.", fontSize = 12.5.sp, color = Color.White.copy(alpha = .9f))
+                    Text(
+                        "Your signed-in account unlocks your Vault across devices. Anyone with access to your account can also access Vault.",
+                        fontSize = 12.5.sp,
+                        color = Color.White.copy(alpha = .9f)
+                    )
                 }
             }
             if (configured && biometricAvailable) item {
                 SecondaryButton("Unlock with biometrics", onClick = onBiometric, icon = Icons.Rounded.Fingerprint)
             }
-            if (!configured) {
+            if (legacyVaultAvailable) {
                 item {
                     InfoBanner(
                         icon = Icons.Rounded.Security,
-                        text = "Choose a master password with at least 4 characters. Zylo does not store it and cannot reset it; if you forget it, the vault cannot be opened.",
+                        text = "This device has an older password-protected Vault. Link it to your account once using its existing password.",
                         tint = MaterialTheme.colorScheme.primary
                     )
+                    SecondaryButton("Link existing vault", onClick = onLinkExisting, icon = Icons.Rounded.Link)
                 }
             }
-            item {
-                MomentumTextField(
-                    value = master,
-                    onValueChange = { master = it.take(128); localError = null },
-                    label = { Text("Master password") },
-                    singleLine = true,
-                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        IconButton(onClick = { showPassword = !showPassword }) {
-                            Icon(if (showPassword) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility, "Show or hide master password")
-                        }
-                    }
-                )
-            }
-            if (!configured) item {
-                MomentumTextField(
-                    value = confirm,
-                    onValueChange = { confirm = it.take(128); localError = null },
-                    label = { Text("Confirm master password") },
-                    singleLine = true,
-                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation()
-                )
-            }
-            if (localError != null || error != null) item {
-                InfoBanner(icon = Icons.Rounded.Warning, text = localError ?: error.orEmpty(), tint = MaterialTheme.colorScheme.error)
+            if (error != null) item {
+                InfoBanner(icon = Icons.Rounded.Warning, text = error, tint = MaterialTheme.colorScheme.error)
             }
             item {
                 PrimaryButton(
-                    text = if (busy) "Unlocking…" else if (configured) "Unlock vault" else "Create vault",
-                    onClick = {
-                        when {
-                            busy -> Unit
-                            !configured && master.length < 4 -> localError = "Use at least 4 characters for your master password."
-                            !configured && master != confirm -> localError = "The passwords don’t match."
-                            else -> { onSubmit(master); master = ""; confirm = "" }
-                        }
-                    },
+                    text = if (busy) "Opening…" else "Continue with account",
+                    onClick = onSubmit,
                     enabled = !busy,
-                    icon = if (configured) Icons.Rounded.LockOpen else Icons.Rounded.Lock
+                    icon = Icons.Rounded.LockOpen
                 )
             }
-            if (configured) item {
-                Text("The vault locks when Zylo goes into the background. Screenshots are blocked while Vault is open.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            item {
+                SecondaryButton("Restore encrypted backup", onClick = onRestoreBackup, icon = Icons.Rounded.Restore)
+                Text(
+                    "Vault locks when Zylo goes into the background. Screenshots are blocked while it is open.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -797,12 +1146,14 @@ private fun VaultGate(
 private fun VaultHome(
     items: List<VaultListItem>,
     unreadable: Int,
+    legacyBackupAvailable: Boolean,
     onLock: () -> Unit,
     onAdd: () -> Unit,
     onSelect: (VaultListItem) -> Unit,
     onExport: () -> Unit,
     onImport: () -> Unit,
     onImportCsv: () -> Unit,
+    onRestoreBackup: () -> Unit,
     onEnableBiometric: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
@@ -853,8 +1204,9 @@ private fun VaultHome(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Private password vault", fontSize = 12.sp, color = Color.White.copy(alpha = .84f))
-                            Text("${items.size} secure item${if (items.size == 1) "" else "s"}", fontSize = 25.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
-                            Text("Encrypted on this device", fontSize = 11.sp, color = Color.White.copy(alpha = .9f))
+                            val totalRecords = items.size + unreadable
+                            Text("$totalRecords secure item${if (totalRecords == 1) "" else "s"}", fontSize = 25.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+                            Text("Encrypted vault records", fontSize = 11.sp, color = Color.White.copy(alpha = .9f))
                         }
                         IconButton(onClick = onLock, modifier = Modifier.size(40.dp)) {
                             Icon(Icons.Rounded.Lock, "Lock vault now", tint = Color.White)
@@ -868,7 +1220,7 @@ private fun VaultHome(
             if (unreadable > 0) item {
                 InfoBanner(
                     icon = Icons.Rounded.Warning,
-                    text = "$unreadable item${if (unreadable == 1) "" else "s"} could not be decrypted. Their encrypted data has not been changed.",
+                    text = "$unreadable record${if (unreadable == 1) "" else "s"} could not be decrypted with this vault key. The encrypted data is preserved, but it can only be opened with the original vault key or a matching backup.",
                     tint = MaterialTheme.colorScheme.error
                 )
             }
@@ -978,10 +1330,23 @@ private fun VaultHome(
             item {
                 Text("Credentials stay encrypted in the database. Copying a value clears the clipboard after 30 seconds when possible.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp))
             }
-            item {
+            if (legacyBackupAvailable) item {
                 SecondaryButton("Export encrypted vault file", onClick = onExport, icon = Icons.Rounded.Lock)
+                Text(
+                    "This legacy backup uses its original Vault password for recovery. Keep the file private.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-            item {
+            if (legacyBackupAvailable) item {
+                SecondaryButton("Restore from encrypted backup", onClick = onRestoreBackup, icon = Icons.Rounded.Restore)
+                Text(
+                    "Use the original Vault password from when the backup was created.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (legacyBackupAvailable) item {
                 SecondaryButton("Import encrypted vault file", onClick = onImport, icon = Icons.Rounded.FileOpen)
             }
             item {
