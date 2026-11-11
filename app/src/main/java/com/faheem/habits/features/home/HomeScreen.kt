@@ -23,7 +23,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -32,7 +31,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -55,6 +53,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
@@ -432,72 +431,193 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
 
 @Composable
 private fun HomeHeader(s: HomeState, displayName: String, onSettings: () -> Unit) {
-    Column(
+    val glass = LocalGlassPalette.current
+    val accent = BrandGradient.first()
+    val shape = RoundedCornerShape(MomentumTokens.radiusLarge)
+    Box(
         Modifier
             .fillMaxWidth()
-            .padding(
-                top = MomentumTokens.space2,
-                bottom = MomentumTokens.space2
+            .padding(top = MomentumTokens.space2)
+            .shadow(
+                if (LocalReduceEffects.current) 0.dp else MomentumTokens.elevationMedium,
+                shape,
+                clip = false,
+                ambientColor = BrandGradient.first().copy(alpha = 0.45f),
+                spotColor = BrandGradient.last().copy(alpha = 0.32f)
             )
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(glass.cardTop, glass.cardBottom)))
+            .background(glassSheenBrush(glass))
+            .background(neonWashBrush(glass, accent))
+            .border(1.dp, neonEdgeBrush(glass, accent), shape)
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Image(
-                painter = painterResource(R.drawable.zylo_logo),
-                contentDescription = "Zylo logo",
-                modifier = Modifier.size(34.dp).padding(end = 4.dp)
-            )
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
-            ) {
-                Row(
-                    Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Rounded.CalendarMonth, null, Modifier.size(19.dp), tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(8.dp))
+        // Decorative light bloom drifting off the top corner of the pane.
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .offset(x = 54.dp, y = (-60).dp)
+                .size(156.dp)
+                .background(
+                    Brush.radialGradient(
+                        listOf(
+                            BrandGradient.last().copy(alpha = if (glass.dark) 0.34f else 0.22f),
+                            Color.Transparent
+                        )
+                    ),
+                    CircleShape
+                )
+        )
+        Column(Modifier.fillMaxWidth().padding(MomentumTokens.cardPadding)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painter = painterResource(R.drawable.zylo_logo),
+                    contentDescription = "Zylo logo",
+                    modifier = Modifier.size(38.dp)
+                )
+                Spacer(Modifier.width(MomentumTokens.space3))
+                Column(Modifier.weight(1f)) {
                     Text(
-                        LocalDate.now().format(DateTimeFormatter.ofPattern("EEE, MMM d")),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
+                        "Zylo",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                    Spacer(Modifier.width(8.dp))
-                    Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, Modifier.size(18.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Rounded.CalendarMonth,
+                            null,
+                            Modifier.size(13.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMM")),
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                Spacer(Modifier.width(MomentumTokens.space2))
+                Box(
+                    Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(glass.cardTop)
+                        .border(1.dp, neonEdgeBrush(glass, accent), CircleShape)
+                        .clickable(
+                            role = Role.Button,
+                            onClickLabel = "Open settings",
+                            onClick = onSettings
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Rounded.Settings, "Open settings", Modifier.size(21.dp))
                 }
             }
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = onSettings) {
-                Icon(Icons.Rounded.Settings, "Open settings", Modifier.size(23.dp))
+            Spacer(Modifier.height(MomentumTokens.space4))
+            Text(
+                if (displayName.isBlank()) "Your day," else "Your day, $displayName",
+                fontSize = 30.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.9).sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                "in one place",
+                fontSize = 30.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.9).sp,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(Modifier.height(MomentumTokens.space2))
+            Text(
+                "Stay organized. Live smarter",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(MomentumTokens.space4))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                HeroStat("${s.habitsDone}/${s.habitsTotal}", "Habits")
+                HeroDivider()
+                HeroStat(if (s.tasksDueToday > 0) "${s.tasksDueToday}" else "—", "Tasks today")
+                HeroDivider()
+                HeroStat(money(s.monthSpent), "Spent")
             }
         }
-        Spacer(Modifier.height(MomentumTokens.space2))
+    }
+}
+
+@Composable
+private fun RowScope.HeroStat(value: String, label: String) {
+    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
-            if (displayName.isBlank()) "Your day," else "Your day, $displayName",
-            fontSize = 30.sp,
+            value,
+            fontSize = 17.sp,
             fontWeight = FontWeight.Bold,
-            letterSpacing = (-0.9).sp,
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
         Text(
-            "in one place",
-            fontSize = 30.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = (-0.9).sp,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Spacer(Modifier.height(MomentumTokens.space2))
-        Text(
-            "Stay organized. Live smarter",
-            fontSize = 13.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            label,
+            fontSize = 10.5.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
 
+@Composable
+private fun HeroDivider() {
+    Box(
+        Modifier
+            .padding(horizontal = MomentumTokens.space2)
+            .width(1.dp)
+            .height(28.dp)
+            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
+    )
+}
+
 /**
- * A module glyph rendered like frosted glass: translucent, gradient-tinted and
- * lit by a soft halo so it reads as an emblem etched into the card surface.
+ * A glyph rendered like etched glass: the icon is masked into a translucent
+ * vertical gradient so it reads as a lit, frosted emblem rather than flat ink.
+ */
+@Composable
+private fun GlassTintedIcon(
+    icon: ImageVector,
+    gradient: List<Color>,
+    modifier: Modifier = Modifier,
+    intensity: Float = 1f
+) {
+    val glass = LocalGlassPalette.current
+    val accent = gradient.getOrElse(1) { gradient.first() }
+    Icon(
+        imageVector = icon,
+        contentDescription = null,
+        tint = Color.White,
+        modifier = modifier
+            .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+            .drawWithCache {
+                val sheen = Brush.verticalGradient(
+                    listOf(
+                        Color.White.copy(alpha = (if (glass.dark) 0.46f else 0.62f) * intensity),
+                        accent.copy(alpha = (if (glass.dark) 0.30f else 0.40f) * intensity),
+                        Color.Transparent
+                    )
+                )
+                onDrawWithContent {
+                    drawContent()
+                    drawRect(brush = sheen, blendMode = BlendMode.SrcIn)
+                }
+            }
+    )
+}
+
+/**
+ * A large frosted medallion etched into the card surface: a soft halo, a
+ * translucent glass plate with a bright lit edge and the gradient-tinted glyph.
  */
 @Composable
 private fun GlassModuleIcon(
@@ -507,42 +627,100 @@ private fun GlassModuleIcon(
 ) {
     val glass = LocalGlassPalette.current
     val accent = gradient.getOrElse(1) { gradient.first() }
+    val plateShape = RoundedCornerShape(percent = 30)
     Box(modifier, contentAlignment = Alignment.Center) {
+        // Soft halo so the emblem glows against the glass.
         Box(
             Modifier
                 .matchParentSize()
                 .background(
                     Brush.radialGradient(
                         listOf(
-                            gradient.last().copy(alpha = if (glass.dark) 0.32f else 0.22f),
-                            accent.copy(alpha = 0.10f),
+                            gradient.last().copy(alpha = if (glass.dark) 0.36f else 0.24f),
+                            accent.copy(alpha = 0.12f),
                             Color.Transparent
                         )
                     ),
                     CircleShape
                 )
         )
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = Color.White,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-                .drawWithCache {
-                    val sheen = Brush.verticalGradient(
+        // Frosted plate.
+        Box(
+            Modifier
+                .fillMaxSize(0.68f)
+                .clip(plateShape)
+                .background(
+                    Brush.linearGradient(
                         listOf(
-                            Color.White.copy(alpha = if (glass.dark) 0.42f else 0.54f),
-                            accent.copy(alpha = if (glass.dark) 0.24f else 0.32f),
-                            Color.Transparent
+                            Color.White.copy(alpha = if (glass.dark) 0.16f else 0.38f),
+                            gradient.first().copy(alpha = if (glass.dark) 0.18f else 0.12f),
+                            accent.copy(alpha = 0.08f)
                         )
                     )
-                    onDrawWithContent {
-                        drawContent()
-                        drawRect(brush = sheen, blendMode = BlendMode.SrcIn)
-                    }
-                }
+                )
+                .border(
+                    1.dp,
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = if (glass.dark) 0.42f else 0.68f),
+                            Color.Transparent
+                        )
+                    ),
+                    plateShape
+                )
         )
+        // Etched glyph sitting on the plate.
+        GlassTintedIcon(icon, gradient, Modifier.fillMaxSize(0.40f))
+    }
+}
+
+/**
+ * Compact frosted badge for list rows: a transparent glass tile lit by the
+ * module gradient with the tinted glyph at its centre.
+ */
+@Composable
+private fun GlassBadge(
+    icon: ImageVector,
+    gradient: List<Color>,
+    modifier: Modifier = Modifier,
+    size: Dp = 42.dp
+) {
+    val glass = LocalGlassPalette.current
+    val accent = gradient.getOrElse(1) { gradient.first() }
+    val shape = RoundedCornerShape(size * 0.32f)
+    Box(
+        modifier
+            .size(size)
+            .shadow(
+                if (LocalReduceEffects.current) 0.dp else 9.dp,
+                shape,
+                clip = false,
+                ambientColor = gradient.first().copy(alpha = 0.55f),
+                spotColor = accent.copy(alpha = 0.42f)
+            )
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        Color.White.copy(alpha = if (glass.dark) 0.18f else 0.42f),
+                        gradient.first().copy(alpha = if (glass.dark) 0.22f else 0.14f),
+                        accent.copy(alpha = 0.10f)
+                    )
+                )
+            )
+            .border(
+                1.dp,
+                Brush.verticalGradient(
+                    listOf(
+                        Color.White.copy(alpha = if (glass.dark) 0.46f else 0.72f),
+                        accent.copy(alpha = 0.20f)
+                    )
+                ),
+                shape
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        GlassTintedIcon(icon, gradient, Modifier.size(size * 0.52f))
     }
 }
 
@@ -603,50 +781,30 @@ private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -> Unit) 
         )
         Column(
             Modifier.fillMaxSize().padding(14.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.Bottom)
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                Spacer(Modifier.weight(1f))
-                Box(
-                    Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = if (glass.dark) 0.08f else 0.34f))
-                        .border(1.dp, Color.White.copy(alpha = if (glass.dark) 0.18f else 0.55f), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Rounded.ArrowForward,
-                        null,
-                        Modifier.size(13.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    spec.title,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+            Text(
+                spec.title,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                spec.subtitle,
+                fontSize = 11.5.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (spec.chart != null) {
+                Spacer(Modifier.height(3.dp))
+                TileChartView(
+                    spec.chart,
+                    accent,
+                    Modifier.fillMaxWidth().height(24.dp)
                 )
-                Text(
-                    spec.subtitle,
-                    fontSize = 11.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (spec.chart != null) {
-                    Spacer(Modifier.height(3.dp))
-                    TileChartView(
-                        spec.chart,
-                        accent,
-                        Modifier.fillMaxWidth().height(24.dp)
-                    )
-                }
             }
         }
     }
@@ -739,28 +897,7 @@ private fun DeviceRow(spec: TileSpec, modifier: Modifier = Modifier, onClick: ()
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            Modifier
-                .size(40.dp)
-                .shadow(
-                    10.dp,
-                    RoundedCornerShape(13.dp),
-                    clip = false,
-                    ambientColor = spec.gradient.first().copy(alpha = 0.65f),
-                    spotColor = spec.gradient.last().copy(alpha = 0.45f)
-                )
-                .clip(RoundedCornerShape(13.dp))
-                .background(Brush.linearGradient(spec.gradient))
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color.White.copy(alpha = 0.26f), Color.Transparent)
-                    )
-                )
-                .border(1.dp, Color.White.copy(alpha = 0.50f), RoundedCornerShape(13.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(spec.icon, null, Modifier.size(20.dp), tint = Color.White)
-        }
+        GlassBadge(spec.icon, spec.gradient)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(spec.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
