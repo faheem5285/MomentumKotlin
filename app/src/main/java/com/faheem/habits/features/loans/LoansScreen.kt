@@ -522,13 +522,6 @@ private fun LoanOverview(
         }
         if (recent.isEmpty()) item { EmptyState(Icons.Rounded.CheckCircle, "All clear", "Add a lend or borrow record whenever you need to track one") }
         items(recent, key = { it.id }) { loan -> LoanRow(loan, people.firstOrNull { it.id == loan.personId }) { onSelect(loan) } }
-        item {
-            InfoBanner(
-                icon = Icons.Rounded.Lightbulb,
-                text = "Keep notes specific, like “March utilities” or “paid for dinner,” so you can recognize each record later.",
-                tint = MaterialTheme.colorScheme.secondary
-            )
-        }
     }
 }
 

@@ -413,7 +413,7 @@ fun NetworkScreen() {
             if (!granted) item {
                 InfoBanner(
                     icon = Icons.Rounded.Security,
-                    text = "Android requires Usage access to show device-wide Wi-Fi and mobile totals. The permission stays under your control.",
+                    text = "Usage access is needed for device-wide Wi-Fi and mobile totals.",
                     tint = MaterialTheme.colorScheme.primary,
                     actionLabel = "Open settings",
                     onAction = settings
@@ -422,7 +422,7 @@ fun NetworkScreen() {
             if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))) }
             item {
                 Text(
-                    "Totals use decimal MB (1 MB = 1,000,000 bytes). Android may keep recent or carrier-managed usage unavailable on some devices.",
+                    "Totals use decimal MB. Some devices hide carrier-managed usage.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 4.dp)

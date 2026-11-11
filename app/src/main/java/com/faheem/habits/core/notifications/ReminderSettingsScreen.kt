@@ -18,10 +18,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Alarm
-import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.key
@@ -29,7 +29,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -70,25 +69,10 @@ fun ReminderSettingsScreen(onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {
-                    HeroCard {
-                        Icon(
-                            if (notificationsAllowed) Icons.Rounded.NotificationsActive else Icons.Rounded.NotificationsOff,
-                            null, tint = Color.White
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text("Stay on track", fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
-                        Text(
-                            "Choose which Zylo reminders you receive and when they arrive.",
-                            fontSize = 13.sp, color = Color.White.copy(alpha = .9f)
-                        )
-                    }
-                }
-                item {
                     PremiumCard(contentPadding = PaddingValues(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text("Reminder health", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                                Text("How reliably reminders reach you", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             StatusPill(
                                 if (notificationsAllowed) "Active" else "Blocked",
@@ -208,10 +192,13 @@ fun ReminderSettingsScreen(onBack: () -> Unit) {
                 }
                 if (master && !MomentumNotificationSettings.canSchedulePrecisely(context)) item {
                     PermissionCard(
-                        text = "Precise alarm access helps reminders arrive close to the selected time. Without it, Android may delay them.",
+                        text = "Precise alarm access helps reminders arrive on time.",
                         button = "Allow precise alarms",
                         onClick = { requestExactAlarms(context) }
                     )
+                }
+                item {
+                    CustomNotificationsSection(onChanged = { revision++ })
                 }
                 item {
                     SectionHeader("Next reminders", subtitle = if (nextReminders.isEmpty()) "Nothing scheduled" else "${nextReminders.size} upcoming")
@@ -241,13 +228,6 @@ fun ReminderSettingsScreen(onBack: () -> Unit) {
                 item { SectionHeader("Reminder types") }
                 items(ReminderKinds.size) { index ->
                     ReminderCard(ReminderKinds[index], context, enabled = master, onChanged = { revision++ })
-                }
-                item {
-                    InfoBanner(
-                        icon = Icons.Rounded.Info,
-                        text = "Reminder times use your device’s local time. Android may delay background reminders to save battery. Lock-screen visibility and sound are controlled by Android notification settings and each channel.",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
                 }
             }
         }
@@ -307,6 +287,14 @@ private fun ReminderCard(kind: ReminderKind, context: Context, enabled: Boolean,
                     fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            IconButton(onClick = { openChannelSettings(context, kind.id) }) {
+                Icon(
+                    Icons.Rounded.Settings,
+                    "Notification options",
+                    Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Switch(checked = checked, enabled = enabled, onCheckedChange = {
                 MomentumNotificationSettings.setEnabled(context, kind.id, it)
                 onChanged()
@@ -347,9 +335,6 @@ private fun ReminderCard(kind: ReminderKind, context: Context, enabled: Boolean,
                     )
                 }
             }
-        }
-        TextButton(enabled = true, onClick = { openChannelSettings(context, kind.id) }) {
-            Text("Sound, vibration & lock-screen options")
         }
     }
 }

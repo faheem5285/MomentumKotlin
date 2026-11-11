@@ -476,7 +476,7 @@ private fun LazyBatteryContent(
                     }
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "Estimates blend Android foreground time with the charge-counter drop. Apps that work in the background may be grouped under System.",
+                        "Estimated from foreground time and the charge counter.",
                         fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -522,7 +522,7 @@ private fun LazyBatteryContent(
         item {
             InfoBanner(
                 icon = Icons.Rounded.BatteryChargingFull,
-                text = "Live while this screen is open. The animation follows the device battery level and charging state.",
+                text = "Live while this screen is open.",
                 tint = MaterialTheme.colorScheme.primary
             )
         }
@@ -542,9 +542,9 @@ private fun LazyBatteryContent(
                     Spacer(Modifier.height(10.dp))
                     Text(
                         when {
-                            overlayAllowed -> "Ready: $style animation will appear when the screen is on. When locked, Zylo uses a notification."
-                            notificationsAllowed -> "Notifications are ready. Allow Display over other apps for the animation to pop up over the current screen."
-                            else -> "Allow notifications for a reliable fallback, and Display over other apps for the pop-up animation."
+                            overlayAllowed -> "Ready. When the phone is locked, Zylo uses a notification instead."
+                            notificationsAllowed -> "Allow Display over other apps for the pop-up to appear over the current screen."
+                            else -> "Allow notifications for the fallback, and Display over other apps for the pop-up."
                         },
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -573,7 +573,7 @@ private fun LazyBatteryContent(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Keep listener active in background", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text("Needed after Zylo is removed from Recents. Android keeps a small ongoing notification while this is on.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Keeps the pop-up working after Zylo leaves Recents.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(checked = backgroundListener, onCheckedChange = onBackgroundListener)
                     }
@@ -583,7 +583,7 @@ private fun LazyBatteryContent(
         item {
             InfoBanner(
                 icon = Icons.Rounded.NotificationsActive,
-                text = "The automatic pop-up is optional and dismisses itself. If Android blocks overlays, or the phone is locked, Zylo shows a notification instead. Lock-screen display follows Android notification settings.",
+                text = "If overlays are blocked or the phone is locked, Zylo shows a notification instead.",
                 tint = MaterialTheme.colorScheme.secondary
             )
         }
@@ -630,7 +630,7 @@ private fun LazyBatteryContent(
                 Spacer(Modifier.height(10.dp))
                 SecondaryButton("Copy diagnostic details", onClick = onCopyDiagnostics, icon = Icons.Rounded.ContentCopy)
                 Spacer(Modifier.height(8.dp))
-                Text("After plugging in, refresh here to see whether Android delivered the event, the overlay opened, or a permission blocked it.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Refresh after plugging in to confirm delivery.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

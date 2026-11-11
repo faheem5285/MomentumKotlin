@@ -62,10 +62,6 @@ fun HabitReminderManagerSheet(
     val days = listOf("M" to 0, "Tu" to 1, "W" to 2, "Th" to 3, "F" to 4, "Sa" to 5, "Su" to 6)
 
     FormSheet("Reminders · ${habit.name}", onDismiss) {
-        Text(
-            "Add multiple times and choose the days each reminder repeats. For example, set eight times a day for water reminders.",
-            fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
         PremiumCard(contentPadding = PaddingValues(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconBubble(Icons.Rounded.NotificationsActive, MaterialTheme.colorScheme.primary, 40.dp)
@@ -106,7 +102,7 @@ fun HabitReminderManagerSheet(
         }
         SectionHeader("Reminder times", subtitle = "${reminders.size} set")
         if (reminders.isEmpty()) {
-            Text("No reminders yet. Add a time to get a notification for this habit.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("No reminders yet", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         reminders.forEach { reminder ->
             key(reminder.id, reminder.hour, reminder.minute, reminder.daysMask, revision) {
@@ -133,7 +129,6 @@ fun HabitReminderManagerSheet(
             },
             icon = Icons.Rounded.AddAlarm
         )
-        Text("Times repeat on the selected weekdays using your device’s local time. Android’s notification and alarm permissions must be enabled for on-time delivery.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

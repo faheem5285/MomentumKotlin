@@ -321,7 +321,7 @@ fun AppSettingsScreen() {
                 )
             }
             item {
-                SectionHeader("At a glance", subtitle = "The state of your workspace")
+                SectionHeader("At a glance")
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -363,7 +363,7 @@ fun AppSettingsScreen() {
                     }
                 }
             }
-            item { SectionHeader("Appearance", subtitle = "Theme, motion and accent") }
+            item { SectionHeader("Appearance") }
             item {
                 AppearanceCard(
                     themeMode = themeMode,
@@ -401,7 +401,7 @@ fun AppSettingsScreen() {
                     tint = AppModule.Vault.accent
                 )
             }
-            item { SectionHeader("Data & safety", subtitle = "Backups, storage and database health") }
+            item { SectionHeader("Data & safety") }
             item {
                 DataHealthCard(
                     databaseVersion = databaseVersion,
@@ -444,7 +444,7 @@ fun AppSettingsScreen() {
             item {
                 DataResetCard(onReset = { resetPickerOpen = true })
             }
-            item { SectionHeader("Preferences", subtitle = "Notifications, permissions and access") }
+            item { SectionHeader("Preferences") }
             item {
                 PreferencesCard(
                     onOpenNotifications = { remindersOpen = true },

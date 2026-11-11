@@ -442,7 +442,7 @@ private fun ReelsCounterScreen(count: Int, limit: Int, enabled: Boolean, onSetti
         item {
             InfoBanner(
                 icon = Icons.Rounded.Info,
-                text = "Android reports accessibility scroll events from Instagram. Zylo counts debounced events and resets each day. The count is an estimate, not a verified Reels count.",
+                text = "Counts Instagram scroll events each day. It is an estimate, not an exact Reels count.",
                 tint = MaterialTheme.colorScheme.primary
             )
         }
@@ -451,7 +451,7 @@ private fun ReelsCounterScreen(count: Int, limit: Int, enabled: Boolean, onSetti
                 Text("Privacy", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "The service is filtered to Instagram and does not retrieve screen text or content. You enable or disable it in Android Accessibility settings.",
+                    "Filtered to Instagram. No screen text or content is read.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
