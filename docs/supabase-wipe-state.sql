@@ -6,7 +6,6 @@ create table if not exists public.momentum_wipe_state (
   generation bigint not null default 0,
   updated_at timestamptz not null default now()
 );
-
 insert into public.momentum_wipe_state (id, generation)
 values (1, 0)
 on conflict (id) do nothing;
