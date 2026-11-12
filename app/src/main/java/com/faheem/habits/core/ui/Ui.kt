@@ -364,10 +364,10 @@ val categories = listOf(
 fun catOf(name: String): Cat = categories.firstOrNull { it.name == name } ?: categories.last()
 
 val BrandGradient = listOf(
-    Color(0xFF2E1065),
-    Color(0xFF6D28D9),
-    Color(0xFF0891B2),
-    Color(0xFF22D3EE)
+    Color(0xFF234AA8),
+    Color(0xFF2463E9),
+    Color(0xFF168EBA),
+    Color(0xFF58CBE5)
 )
 
 // Each module provides its own gradient; HeroCard reads it automatically.

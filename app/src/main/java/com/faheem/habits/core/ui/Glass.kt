@@ -210,60 +210,21 @@ fun ScreenBackground(
         )
         AuroraBloom(
             Modifier.align(Alignment.TopEnd).offset(x = 120.dp, y = (-188).dp),
-            size = 440.dp,
+            size = 400.dp,
             color = tint,
-            alpha = glass.glowAlpha
+            alpha = glass.glowAlpha * 0.78f
         )
         AuroraBloom(
             Modifier.align(Alignment.CenterStart).offset(x = (-190).dp, y = (-60).dp),
-            size = 400.dp,
+            size = 360.dp,
             color = glass.haloSecondary,
-            alpha = glass.glowAlpha * 0.72f
+            alpha = glass.glowAlpha * 0.58f
         )
         AuroraBloom(
             Modifier.align(Alignment.BottomEnd).offset(x = 148.dp, y = 150.dp),
-            size = 380.dp,
+            size = 340.dp,
             color = glass.haloAccent,
-            alpha = glass.glowAlpha * 0.85f
-        )
-        AuroraBloom(
-            Modifier.align(Alignment.BottomStart).offset(x = (-168).dp, y = 220.dp),
-            size = 320.dp,
-            color = tint,
-            alpha = glass.glowAlpha * 0.5f
-        )
-        // A faint diagonal beam of light across the pane.
-        Box(
-            Modifier
-                .matchParentSize()
-                .background(
-                    Brush.linearGradient(
-                        0f to Color.Transparent,
-                        0.38f to glass.haloSecondary.copy(alpha = if (dark) 0.09f else 0.12f),
-                        0.62f to Color.Transparent,
-                        1f to Color.Transparent
-                    )
-                )
-        )
-        // A soft mist layer diffuses the colour behind the frosted glass.
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Color.White.copy(alpha = if (dark) 0f else 0.10f))
-        )
-        // Lighter haze near the top keeps the canvas airy.
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(220.dp)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color.White.copy(alpha = if (dark) 0.02f else 0.18f),
-                            Color.White.copy(alpha = 0f)
-                        )
-                    )
-                )
+            alpha = glass.glowAlpha * 0.62f
         )
         content()
     }

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.CloudSync
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Schedule
@@ -61,6 +62,7 @@ import com.faheem.habits.core.data.supabase.StorageUsage
 import com.faheem.habits.core.data.supabase.SupabaseProvider
 import com.faheem.habits.core.data.supabase.SupabaseRestClient
 import com.faheem.habits.core.data.sync.SupabaseSyncRepository
+import com.faheem.habits.core.data.sync.ProjectWipeManager
 import com.faheem.habits.core.ui.ChartLegend
 import com.faheem.habits.core.ui.ChartPlaceholder
 import com.faheem.habits.core.ui.ChartSlice
@@ -126,6 +128,8 @@ fun SupabaseScreen() {
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var syncing by remember { mutableStateOf(false) }
+    var wipingProject by remember { mutableStateOf(false) }
+    var showProjectWipeConfirm by remember { mutableStateOf(false) }
 
     suspend fun load() {
         metrics = withContext(Dispatchers.IO) { loadSupabaseMetrics(context.applicationContext) }
@@ -163,6 +167,27 @@ fun SupabaseScreen() {
                 runCatching { load() }
             } finally {
                 syncing = false
+            }
+        }
+    }
+
+    fun wipeProjectCloudData() {
+        if (wipingProject) return
+        scope.launch {
+            wipingProject = true
+            error = null
+            try {
+                withContext(Dispatchers.IO) {
+                    SupabaseRestClient(context.applicationContext).wipeProjectCloudData()
+                }
+                ProjectWipeManager.applyIfNeeded(context.applicationContext)
+            } catch (e: Exception) {
+                // The Edge Function publishes the reset marker before deleting rows. If cleanup
+                // later fails part-way, still honor that marker locally and let the admin retry.
+                runCatching { ProjectWipeManager.applyIfNeeded(context.applicationContext) }
+                error = explainSupabaseError(e.message)
+            } finally {
+                wipingProject = false
             }
         }
     }
@@ -236,6 +261,22 @@ fun SupabaseScreen() {
                 failedTables = current?.counts?.count { it.error != null } ?: 0,
                 onSync = ::syncNow
             )
+        }
+        item {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                TextButton(
+                    onClick = { showProjectWipeConfirm = true },
+                    enabled = !wipingProject && !syncing
+                ) {
+                    if (wipingProject) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Rounded.Delete, contentDescription = null)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (wipingProject) "Deleting project cloud data…" else "Delete all users’ cloud data")
+                }
+            }
         }
         if (loading && current == null) {
             item {
@@ -318,6 +359,37 @@ fun SupabaseScreen() {
                 }
             }
         }
+    }
+
+    if (showProjectWipeConfirm) {
+        AlertDialog(
+            onDismissRequest = { if (!wipingProject) showProjectWipeConfirm = false },
+            title = { Text("Delete all project cloud data?") },
+            text = {
+                Text(
+                    "This permanently deletes synced records and files for every user in this Supabase project. " +
+                        "Login accounts stay, but every updated app installation clears its local records, settings, " +
+                        "and app files and signs out when it reconnects and opens. Offline devices reset later. " +
+                        "Android system usage history and OS permission grants are not controlled by this app. " +
+                        "Only a Supabase admin can do this."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showProjectWipeConfirm = false
+                        wipeProjectCloudData()
+                    },
+                    enabled = !wipingProject
+                ) { Text("Delete project data") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showProjectWipeConfirm = false },
+                    enabled = !wipingProject
+                ) { Text("Cancel") }
+            }
+        )
     }
 }
 
@@ -738,11 +810,16 @@ private fun explainSupabaseError(message: String?): String {
     return when {
         detail.contains("not configured", ignoreCase = true) ->
             "Add SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY to your user Gradle properties, then rebuild the app."
+        detail.contains("not allowed to wipe project data", ignoreCase = true) ->
+            "This Supabase account is not marked as an admin. Set app_metadata.role=admin for it using a trusted Supabase admin workflow. Details: $detail"
         detail.contains("Sign in", ignoreCase = true) ||
-            detail.contains("401") || detail.contains("403") ||
+            detail.contains("401") ||
             detail.contains("JWT", ignoreCase = true) ||
             detail.contains("token", ignoreCase = true) ->
             "Sign in to Supabase in the app first, then tap Refresh. Details: $detail"
+        detail.contains("requested function was not found", ignoreCase = true) ||
+            (detail.contains("functions/v1/", ignoreCase = true) && detail.contains("404")) ->
+            "The admin-wipe-cloud Edge Function is not deployed to this Supabase project. Deploy supabase/functions/admin-wipe-cloud and check the function's server-side Supabase keys and your app_metadata.role=admin setting. Details: $detail"
         detail.contains("relation", ignoreCase = true) ||
             detail.contains("404") ->
             "Run docs/supabase-schema.sql in the Supabase SQL Editor, then tap Refresh. Details: $detail"

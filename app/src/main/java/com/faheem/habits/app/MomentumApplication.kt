@@ -8,10 +8,21 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.faheem.habits.features.screen_time.UsageLimitWorker
+import com.faheem.habits.core.data.AppDatabase
+import com.faheem.habits.core.data.sync.SupabaseSyncScheduler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 @HiltAndroidApp
 class MomentumApplication : Application() {
+    private val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var pendingSync: Job? = null
+
     override fun onCreate() {
         super.onCreate()
         AppearancePreferences.load(this)
@@ -20,6 +31,27 @@ class MomentumApplication : Application() {
             "usage-limit-monitor",
             ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<UsageLimitWorker>(15, TimeUnit.MINUTES).build()
+        )
+
+        // Room is the source of truth. Any committed record change schedules a
+        // debounced, network constrained sync; WorkManager retries while offline.
+        AppDatabase.get(this).invalidationTracker.addObserver(
+            object : androidx.room.InvalidationTracker.Observer(
+                "habits", "completions", "habit_skips", "habit_reminders", "expenses",
+                "category_budgets", "loan_people", "loans", "loan_attachments", "loan_payments",
+                "contacts", "library_files", "todo_items", "life_rules", "life_rule_files",
+                "custom_notifications", "vault_entries"
+            ) {
+                override fun onInvalidated(tables: Set<String>) {
+                    synchronized(this@MomentumApplication) {
+                        pendingSync?.cancel()
+                        pendingSync = syncScope.launch {
+                            delay(750)
+                            SupabaseSyncScheduler.enqueue(applicationContext)
+                        }
+                    }
+                }
+            }
         )
     }
 }

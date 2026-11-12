@@ -118,6 +118,11 @@ object VaultCrypto {
 
     fun newVmk(): ByteArray = ByteArray(VMK_BYTES).also(SecureRandom()::nextBytes)
 
+    fun clearBiometricKeyForAppReset() {
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        if (keyStore.containsAlias(BIOMETRIC_ALIAS)) keyStore.deleteEntry(BIOMETRIC_ALIAS)
+    }
+
     fun wrapVmk(vmk: ByteArray, wrappingKey: ByteArray): Pair<ByteArray, ByteArray> =
         encryptBytes(vmk, wrappingKey)
 

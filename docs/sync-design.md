@@ -6,8 +6,10 @@ Room remains the source of truth. The app reads and writes local Room data
 without requiring a network or Supabase session. A unique device id identifies
 the writer, while each local sync row keeps its existing UUID, `updatedAt`,
 `deleted`, and `dirty` metadata. Sync is incremental and runs in a
-network-constrained WorkManager job, after debounced local changes, or from
-Settings with “Sync now”.
+network-constrained WorkManager job, after debounced local Room changes, or from
+Settings with “Sync now”. Record changes are observed centrally, so saves from
+any feature schedule the same automatic sync. WorkManager waits for a network
+connection and retries transient failures.
 
 Each cloud table has `id`, `user_id`, `updated_at`, `deleted_at`, `device_id`,
 and `version`, plus the entity fields. RLS is enabled on every table and every

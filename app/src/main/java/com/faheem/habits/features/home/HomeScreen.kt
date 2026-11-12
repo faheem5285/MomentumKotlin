@@ -4,7 +4,6 @@ package com.faheem.habits.features.home
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.notifications.*
 import com.faheem.habits.core.ui.*
-import com.faheem.habits.R
 import com.faheem.habits.features.settings.isModuleVisible
 import com.faheem.habits.features.habits.isScheduled
 import com.faheem.habits.features.habits.greeting
@@ -23,7 +22,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -39,16 +37,13 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -268,7 +263,6 @@ private fun loadDeviceInsights(context: Context): DeviceInsights {
 fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
     val s by vm.state.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
-    val displayName = remember { ctx.getSharedPreferences("account_profile", Context.MODE_PRIVATE).getString("display_name", "").orEmpty() }
     var screenText by remember { mutableStateOf("Tap to set up") }
     var insights by remember { mutableStateOf(DeviceInsights()) }
     var tick by remember { mutableIntStateOf(0) }
@@ -433,8 +427,6 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
         ) {
             item {
                 HomeHeader(
-                    s,
-                    displayName,
                     onSettings = { onOpen(AppModule.Settings) },
                     modifier = Modifier.homeEntrance(enter, 0)
                 )
@@ -472,160 +464,90 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
 
 @Composable
 private fun HomeHeader(
-    s: HomeState,
-    displayName: String,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val glass = LocalGlassPalette.current
-    val accent = BrandGradient.first()
-    val shape = RoundedCornerShape(MomentumTokens.radiusLarge)
+    val accent = Color(0xFF1769F5)
     Box(
-        modifier
-            .fillMaxWidth()
-            .padding(top = MomentumTokens.space2)
-            .shadow(
-                if (LocalReduceEffects.current) 0.dp else MomentumTokens.elevationMedium,
-                shape,
-                clip = false,
-                ambientColor = BrandGradient.first().copy(alpha = 0.45f),
-                spotColor = BrandGradient.last().copy(alpha = 0.32f)
-            )
-            .clip(shape)
-            .background(Brush.verticalGradient(listOf(glass.cardTop, glass.cardBottom)))
-            .background(glassSheenBrush(glass))
-            .background(neonWashBrush(glass, accent))
-            .border(1.dp, neonEdgeBrush(glass, accent), shape)
+        modifier.fillMaxWidth().padding(top = MomentumTokens.space2)
     ) {
-        // Decorative light bloom drifting off the top corner of the pane.
-        Box(
-            Modifier
-                .align(Alignment.TopEnd)
-                .offset(x = 54.dp, y = (-60).dp)
-                .size(156.dp)
-                .background(
-                    Brush.radialGradient(
-                        listOf(
-                            BrandGradient.last().copy(alpha = if (glass.dark) 0.34f else 0.22f),
-                            Color.Transparent
-                        )
-                    ),
-                    CircleShape
-                )
-        )
-        Column(Modifier.fillMaxWidth().padding(MomentumTokens.cardPadding)) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Image(
-                    painter = painterResource(R.drawable.zylo_logo),
-                    contentDescription = "Zylo logo",
-                    modifier = Modifier.size(38.dp)
-                )
-                Spacer(Modifier.width(MomentumTokens.space3))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "Zylo",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Rounded.CalendarMonth,
-                            null,
-                            Modifier.size(13.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.width(5.dp))
-                        Text(
-                            LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMM")),
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                Row(Modifier.clip(CircleShape)
+                    .background(Color.White.copy(alpha = if (glass.dark) 0.10f else 0.72f))
+                    .border(1.dp, Color.White.copy(alpha = 0.62f), CircleShape)
+                    .padding(horizontal = 11.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.CalendarMonth, null, Modifier.size(20.dp), tint = accent)
+                    Spacer(Modifier.width(8.dp))
+                    Text(LocalDate.now().format(DateTimeFormatter.ofPattern("EEE, MMM d")), fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Rounded.ChevronRight, null, Modifier.size(19.dp), tint = MaterialTheme.colorScheme.onSurface)
                 }
-                Spacer(Modifier.width(MomentumTokens.space2))
-                Box(
-                    Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(glass.cardTop)
-                        .border(1.dp, neonEdgeBrush(glass, accent), CircleShape)
-                        .clickable(
-                            role = Role.Button,
-                            onClickLabel = "Open settings",
-                            onClick = onSettings
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Rounded.Settings, "Open settings", Modifier.size(21.dp))
+                Spacer(Modifier.weight(1f))
+                Box(Modifier.size(40.dp).clip(CircleShape)
+                    .background(Color.White.copy(alpha = if (glass.dark) 0.12f else 0.68f))
+                    .border(1.dp, Color.White.copy(alpha = 0.64f), CircleShape)
+                    .clickable(role = Role.Button, onClickLabel = "Open settings", onClick = onSettings),
+                    contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.Settings, "Open settings", Modifier.size(21.dp), tint = MaterialTheme.colorScheme.onSurface)
                 }
             }
-            Spacer(Modifier.height(MomentumTokens.space4))
-            Text(
-                if (displayName.isBlank()) "Your day," else "Your day, $displayName",
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = (-0.9).sp,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                "in one place",
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = (-0.9).sp,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Spacer(Modifier.height(MomentumTokens.space2))
-            Text(
-                "Stay organized. Live smarter",
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(MomentumTokens.space4))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                HeroStat("${s.habitsDone}/${s.habitsTotal}", "Habits")
-                HeroDivider()
-                HeroStat(if (s.tasksDueToday > 0) "${s.tasksDueToday}" else "—", "Tasks today")
-                HeroDivider()
-                HeroStat(money(s.monthSpent), "Spent")
+            Row(Modifier.fillMaxWidth().padding(top = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1.45f)) {
+                    Text("Your day,",
+                        fontSize = 29.sp,
+                        lineHeight = 32.sp,
+                        fontWeight = FontWeight.Medium, letterSpacing = (-1.1).sp,
+                        color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("in one place", fontSize = 25.sp, lineHeight = 29.sp, fontWeight = FontWeight.Bold,
+                        letterSpacing = (-1.2).sp, color = accent, maxLines = 1, softWrap = false)
+                    Spacer(Modifier.height(5.dp))
+                    Text("Stay organized. Live smarter.", fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
+                    Spacer(Modifier.height(7.dp))
+                    Box(Modifier.width(70.dp).height(3.dp).rotate(-8f).clip(CircleShape)
+                        .background(Brush.horizontalGradient(listOf(Color(0xFF6624E8), accent, Color.Transparent))))
+                }
+                Spacer(Modifier.width(2.dp))
+                CalendarHeroIllustration(Modifier.weight(0.8f).height(122.dp))
             }
         }
     }
 }
 
 @Composable
-private fun RowScope.HeroStat(value: String, label: String) {
-    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            value,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            label,
-            fontSize = 10.5.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+private fun CalendarHeroIllustration(modifier: Modifier = Modifier) {
+    val deepBlue = Color(0xFF064DCB)
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth(0.98f).height(32.dp).rotate(-18f)
+            .border(5.dp, Color(0xFF63C8FF).copy(alpha = 0.82f), CircleShape))
+        Box(Modifier.size(width = 98.dp, height = 114.dp).rotate(10f)
+            .shadow(12.dp, RoundedCornerShape(20.dp)).clip(RoundedCornerShape(20.dp))
+            .background(Brush.verticalGradient(listOf(Color.White, Color(0xFFE6F0FF))))
+            .border(2.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(20.dp))) {
+            Box(Modifier.fillMaxWidth().height(38.dp)
+                .background(Brush.verticalGradient(listOf(Color(0xFF44A8FF), deepBlue))))
+            Row(Modifier.align(Alignment.TopCenter).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+                repeat(2) {
+                    Box(Modifier.width(11.dp).height(20.dp).clip(RoundedCornerShape(7.dp))
+                        .background(Brush.verticalGradient(listOf(Color(0xFFB9E9FF), Color(0xFF1670EF))))
+                        .border(2.dp, Color(0xFFDBF6FF), RoundedCornerShape(7.dp)))
+                }
+            }
+            Box(Modifier.align(Alignment.Center).offset(y = 8.dp).size(62.dp).shadow(7.dp, CircleShape)
+                .background(Brush.radialGradient(listOf(Color(0xFF39B8FF), deepBlue)), CircleShape),
+                contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Check, "A completed day", Modifier.size(38.dp), tint = Color.White)
+            }
+        }
+        Box(Modifier.align(Alignment.TopStart).offset(x = 4.dp, y = 17.dp).size(9.dp)
+            .background(Color.White.copy(alpha = 0.86f), CircleShape))
+        Box(Modifier.align(Alignment.BottomEnd).offset(x = (-3).dp, y = (-14).dp).size(13.dp)
+            .background(Brush.radialGradient(listOf(Color.White, Color(0xFF8BCBFF))), CircleShape))
     }
 }
-
-@Composable
-private fun HeroDivider() {
-    Box(
-        Modifier
-            .padding(horizontal = MomentumTokens.space2)
-            .width(1.dp)
-            .height(28.dp)
-            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
-    )
-}
-
 /**
  * One-shot entrance: a staggered fade-and-rise driven by a single shared
  * progress value so recycling list items never replay the animation.
@@ -640,164 +562,33 @@ private fun Modifier.homeEntrance(progress: State<Float>, index: Int): Modifier 
     }
 
 /**
- * A glyph rendered like etched glass: the icon is masked into a translucent
- * vertical gradient so it reads as a lit, frosted emblem rather than flat ink.
+ * High-contrast icon badge used by module tiles and device rows on Home.
  */
 @Composable
-private fun GlassTintedIcon(
+private fun ModuleIconBadge(
     icon: ImageVector,
     gradient: List<Color>,
     modifier: Modifier = Modifier,
-    intensity: Float = 1f
+    size: Dp = 48.dp
 ) {
-    val glass = LocalGlassPalette.current
     val accent = gradient.getOrElse(1) { gradient.first() }
-    Icon(
-        imageVector = icon,
-        contentDescription = null,
-        tint = Color.White,
-        modifier = modifier
-            .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-            .drawWithCache {
-                val sheen = Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = (if (glass.dark) 0.46f else 0.62f) * intensity),
-                        accent.copy(alpha = (if (glass.dark) 0.30f else 0.40f) * intensity),
-                        Color.Transparent
-                    )
-                )
-                onDrawWithContent {
-                    drawContent()
-                    drawRect(brush = sheen, blendMode = BlendMode.SrcIn)
-                }
-            }
-    )
-}
-
-/**
- * A large frosted medallion etched into the card surface: a soft halo, a
- * translucent glass plate with a bright lit edge and the gradient-tinted glyph.
- */
-@Composable
-private fun GlassModuleIcon(
-    icon: ImageVector,
-    gradient: List<Color>,
-    modifier: Modifier = Modifier
-) {
-    val glass = LocalGlassPalette.current
-    val accent = gradient.getOrElse(1) { gradient.first() }
-    val plateShape = RoundedCornerShape(percent = 30)
-    Box(modifier, contentAlignment = Alignment.Center) {
-        // Soft halo so the emblem glows against the glass.
-        Box(
-            Modifier
-                .matchParentSize()
-                .background(
-                    Brush.radialGradient(
-                        listOf(
-                            gradient.last().copy(alpha = if (glass.dark) 0.36f else 0.24f),
-                            accent.copy(alpha = 0.12f),
-                            Color.Transparent
-                        )
-                    ),
-                    CircleShape
-                )
-        )
-        // A hairline orbit ring for depth.
-        Box(
-            Modifier
-                .fillMaxSize(0.88f)
-                .border(
-                    1.dp,
-                    Color.White.copy(alpha = if (glass.dark) 0.10f else 0.22f),
-                    CircleShape
-                )
-        )
-        // Frosted plate.
-        Box(
-            Modifier
-                .fillMaxSize(0.68f)
-                .clip(plateShape)
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            Color.White.copy(alpha = if (glass.dark) 0.16f else 0.38f),
-                            gradient.first().copy(alpha = if (glass.dark) 0.18f else 0.12f),
-                            accent.copy(alpha = 0.08f)
-                        )
-                    )
-                )
-                // Diagonal specular sheen across the pane.
-                .background(
-                    Brush.linearGradient(
-                        0f to Color.White.copy(alpha = if (glass.dark) 0.24f else 0.36f),
-                        0.42f to Color.Transparent,
-                        1f to Color.Transparent
-                    )
-                )
-                .border(
-                    1.dp,
-                    Brush.verticalGradient(
-                        listOf(
-                            Color.White.copy(alpha = if (glass.dark) 0.42f else 0.68f),
-                            Color.Transparent
-                        )
-                    ),
-                    plateShape
-                )
-        )
-        // Etched glyph sitting on the plate.
-        GlassTintedIcon(icon, gradient, Modifier.fillMaxSize(0.40f))
-    }
-}
-
-/**
- * Compact frosted badge for list rows: a transparent glass tile lit by the
- * module gradient with the tinted glyph at its centre.
- */
-@Composable
-private fun GlassBadge(
-    icon: ImageVector,
-    gradient: List<Color>,
-    modifier: Modifier = Modifier,
-    size: Dp = 42.dp
-) {
-    val glass = LocalGlassPalette.current
-    val accent = gradient.getOrElse(1) { gradient.first() }
-    val shape = RoundedCornerShape(size * 0.32f)
+    val shape = RoundedCornerShape(size * 0.34f)
     Box(
         modifier
             .size(size)
             .shadow(
-                if (LocalReduceEffects.current) 0.dp else 9.dp,
+                if (LocalReduceEffects.current) 0.dp else 8.dp,
                 shape,
                 clip = false,
-                ambientColor = gradient.first().copy(alpha = 0.55f),
-                spotColor = accent.copy(alpha = 0.42f)
+                ambientColor = accent.copy(alpha = 0.30f),
+                spotColor = gradient.first().copy(alpha = 0.24f)
             )
             .clip(shape)
-            .background(
-                Brush.linearGradient(
-                    listOf(
-                        Color.White.copy(alpha = if (glass.dark) 0.18f else 0.42f),
-                        gradient.first().copy(alpha = if (glass.dark) 0.22f else 0.14f),
-                        accent.copy(alpha = 0.10f)
-                    )
-                )
-            )
-            .border(
-                1.dp,
-                Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = if (glass.dark) 0.46f else 0.72f),
-                        accent.copy(alpha = 0.20f)
-                    )
-                ),
-                shape
-            ),
+            .background(Brush.linearGradient(listOf(gradient.first(), accent, accent.copy(alpha = 0.88f))))
+            .border(1.dp, Color.White.copy(alpha = 0.58f), shape),
         contentAlignment = Alignment.Center
     ) {
-        GlassTintedIcon(icon, gradient, Modifier.size(size * 0.52f))
+        Icon(icon, contentDescription = null, modifier = Modifier.size(size * 0.55f), tint = Color.White)
     }
 }
 
@@ -834,27 +625,24 @@ private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -> Unit) 
         Box(
             Modifier
                 .align(Alignment.TopEnd)
-                .offset(x = 34.dp, y = (-48).dp)
-                .size(132.dp)
+                .offset(x = 18.dp, y = (-24).dp)
+                .size(94.dp)
                 .background(
                     Brush.radialGradient(
                         listOf(
-                            spec.gradient.last().copy(alpha = 0.34f),
-                            spec.gradient.first().copy(alpha = 0.12f),
+                            spec.gradient.last().copy(alpha = 0.24f),
+                            spec.gradient.first().copy(alpha = 0.08f),
                             spec.gradient.first().copy(alpha = 0f)
                         )
                     ),
                     CircleShape
                 )
         )
-        // Large transparent glass emblem carrying the module identity inside the card.
-        GlassModuleIcon(
-            icon = spec.icon,
-            gradient = spec.gradient,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .offset(x = 28.dp, y = (-34).dp)
-                .size(118.dp)
+        Icon(
+            imageVector = moduleWatermarkIcon(spec.module),
+            contentDescription = null,
+            modifier = Modifier.align(Alignment.TopEnd).offset(x = (-12).dp, y = 9.dp).size(70.dp),
+            tint = spec.tint.copy(alpha = if (glass.dark) 0.35f else 0.27f)
         )
         Column(
             Modifier.fillMaxSize().padding(14.dp),
@@ -887,6 +675,23 @@ private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -> Unit) 
     }
 }
 
+private fun moduleWatermarkIcon(module: AppModule?) = when (module) {
+    AppModule.Habits -> Icons.Rounded.TaskAlt
+    AppModule.ToDos -> Icons.Rounded.EventNote
+    AppModule.Money -> Icons.Rounded.Payments
+    AppModule.Loans -> Icons.Rounded.CurrencyExchange
+    AppModule.Contacts -> Icons.Rounded.Contacts
+    AppModule.Files -> Icons.Rounded.FolderOpen
+    AppModule.LifeRules -> Icons.Rounded.AutoStories
+    AppModule.Screen -> Icons.Rounded.HourglassTop
+    AppModule.Vault -> Icons.Rounded.Security
+    AppModule.Battery -> Icons.Rounded.BatteryChargingFull
+    AppModule.Network -> Icons.Rounded.Wifi
+    AppModule.Supabase -> Icons.Rounded.CloudSync
+    AppModule.Settings -> Icons.Rounded.Tune
+    null -> Icons.Rounded.Apps
+}
+
 @Composable
 private fun TileChartView(
     chart: TileChart?,
@@ -911,32 +716,12 @@ private fun TileChartView(
         is TileChart.Composition -> {
             val slices = chart.slices.filter { it.value > 0f }
             if (slices.isEmpty()) return
-            Column(
-                modifier,
-                verticalArrangement = Arrangement.spacedBy(if (dense) 0.dp else 4.dp)
-            ) {
-                StackedBar(slices, Modifier.fillMaxWidth(), height = if (dense) 8.dp else 7.dp)
-                if (!dense) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        slices.take(3).forEach { slice ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    Modifier
-                                        .size(5.dp)
-                                        .clip(CircleShape)
-                                        .background(slice.color)
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    slice.label,
-                                    fontSize = 8.5.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                    }
-                }
+            Box(modifier, contentAlignment = Alignment.Center) {
+                StackedBar(
+                    slices,
+                    Modifier.fillMaxWidth(),
+                    height = if (dense) 8.dp else 7.dp
+                )
             }
         }
     }
@@ -974,7 +759,7 @@ private fun DeviceRow(spec: TileSpec, modifier: Modifier = Modifier, onClick: ()
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        GlassBadge(spec.icon, spec.gradient)
+        ModuleIconBadge(spec.icon, spec.gradient)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(spec.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)

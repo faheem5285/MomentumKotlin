@@ -115,7 +115,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun unlockWithAccount(): ByteArray = withContext(Dispatchers.IO) {
         val accountKey = accountKeys.fetchVaultKey()
         if (accountKey != null) {
-            SupabaseSyncRepository(getApplication()).syncVaultEntries(accountKey)
+            SupabaseSyncRepository(getApplication()).syncVaultEntries(accountKey, fullPull = true)
             prefs.edit().putBoolean(accountLinkedPref, true).apply()
             return@withContext accountKey
         }
@@ -133,7 +133,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
             accountKeys.saveVaultKeyIfAbsent(generatedKey)
             val savedKey = accountKeys.fetchVaultKey()
                 ?: error("The account key was not available after saving.")
-            SupabaseSyncRepository(getApplication()).syncVaultEntries(savedKey)
+            SupabaseSyncRepository(getApplication()).syncVaultEntries(savedKey, fullPull = true)
             prefs.edit().putBoolean(accountLinkedPref, true).apply()
             savedKey
         } finally {
@@ -144,23 +144,28 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun linkExistingVault(masterPassword: String): ByteArray = withContext(Dispatchers.IO) {
         val localKey = unlock(masterPassword)
             ?: error("That existing Vault password did not unlock this device's vault.")
+        var remoteAccountKey: ByteArray? = null
         try {
-            dao.getAll().forEach { record ->
-                try {
-                    VaultCrypto.decrypt(record.nonce, record.ciphertext, localKey)
-                } catch (failure: Exception) {
-                    throw IllegalStateException("A local Vault record cannot be decrypted with the existing key.", failure)
-                }
-            }
-            val accountKey = accountKeys.fetchVaultKey()
+            val accountKey = accountKeys.fetchVaultKey().also { remoteAccountKey = it }
             if (accountKey != null) {
-                check(java.security.MessageDigest.isEqual(localKey, accountKey)) {
-                    accountKey.fill(0)
-                    "This account already has a different Vault key. The existing account data was not changed."
+                if (!java.security.MessageDigest.isEqual(localKey, accountKey)) {
+                    migrateReadableRecords(localKey, accountKey)
                 }
-                accountKey.fill(0)
+                SupabaseSyncRepository(getApplication()).syncVaultEntries(accountKey, fullPull = true)
+                prefs.edit().putBoolean(accountLinkedPref, true).apply()
+                localKey.fill(0)
+                remoteAccountKey = null
+                return@withContext accountKey
             } else {
-                SupabaseSyncRepository(getApplication()).syncVaultEntries(localKey)
+                val localRecords = dao.getAll()
+                val readableRecords = localRecords.count { record ->
+                    runCatching { VaultCrypto.decrypt(record.nonce, record.ciphertext, localKey) }.isSuccess
+                }
+                check(readableRecords > 0 || localRecords.isEmpty()) {
+                    "The old password unlocked Vault settings, but none of the local records match its key. " +
+                        "The signed-in account has no Vault key yet, so the app cannot safely link or replace its encrypted records."
+                }
+                SupabaseSyncRepository(getApplication()).syncVaultEntries(localKey, fullPull = true)
                 check(accountKeys.count("momentum_vault_entries") <= dao.getAllForSync().size) {
                     "The account has Vault records that are not present on this device. Sync them before linking the key."
                 }
@@ -172,14 +177,43 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                     "A different Vault key was linked to this account concurrently."
                 }
                 savedKey.fill(0)
+                SupabaseSyncRepository(getApplication()).syncVaultEntries(localKey, fullPull = true)
+                prefs.edit().putBoolean(accountLinkedPref, true).apply()
+                localKey
             }
-            SupabaseSyncRepository(getApplication()).syncVaultEntries(localKey)
-            prefs.edit().putBoolean(accountLinkedPref, true).apply()
-            localKey
         } catch (failure: Exception) {
             localKey.fill(0)
+            remoteAccountKey?.fill(0)
             throw failure
         }
+    }
+
+    private suspend fun migrateReadableRecords(oldKey: ByteArray, accountKey: ByteArray): Int {
+        var migrated = 0
+        dao.getAll().forEach { record ->
+            val alreadyAccountEncrypted = runCatching {
+                VaultCrypto.decrypt(record.nonce, record.ciphertext, accountKey)
+            }.isSuccess
+            if (!alreadyAccountEncrypted) {
+                val secret = runCatching {
+                    VaultCrypto.decrypt(record.nonce, record.ciphertext, oldKey)
+                }.getOrNull()
+                if (secret != null) {
+                    val encrypted = VaultCrypto.encrypt(secret, accountKey)
+                    dao.upsert(
+                        record.copy(
+                            nonce = encrypted.first,
+                            ciphertext = encrypted.second,
+                            updatedAt = System.currentTimeMillis(),
+                            dirty = true,
+                            deleted = false
+                        )
+                    )
+                    migrated++
+                }
+            }
+        }
+        return migrated
     }
 
     suspend fun setup(masterPassword: String): ByteArray = withContext(Dispatchers.IO) {
@@ -415,6 +449,17 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
         } finally {
             legacyKey.fill(0)
         }
+    }
+
+    suspend fun resetForQa() = withContext(Dispatchers.IO) {
+        SupabaseSyncRepository(getApplication()).resetModule(AppModule.Vault)
+        check(
+            prefs.edit()
+                .clear()
+                .putInt("readable_records", 0)
+                .putInt("unreadable_records", 0)
+                .commit()
+        ) { "Vault cloud data was reset, but local Vault key metadata could not be cleared." }
     }
 
     suspend fun exportEncrypted(destination: Uri) = withContext(Dispatchers.IO) {
@@ -690,22 +735,6 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
 @Composable
 fun VaultScreen(vm: VaultViewModel = viewModel()) {
     val context = LocalContext.current
-    val window = remember(context) { context.findActivity()?.window }
-    DisposableEffect(window) {
-        val wasSecure = window?.attributes?.flags?.and(WindowManager.LayoutParams.FLAG_SECURE) != 0
-        window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        val activity = context.findActivity()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            activity?.setRecentsScreenshotEnabled(false)
-        }
-        onDispose {
-            if (!wasSecure) window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                activity?.setRecentsScreenshotEnabled(true)
-            }
-        }
-    }
-
     var configured by remember { mutableStateOf(vm.isConfigured()) }
     var sessionKey by remember { mutableStateOf<ByteArray?>(null) }
     var sessionEpoch by remember { mutableIntStateOf(0) }
@@ -723,6 +752,7 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
     var pendingRecovery by remember { mutableStateOf<Uri?>(null) }
     var pendingLegacyMigration by remember { mutableStateOf(false) }
     var pendingRecordMerge by remember { mutableStateOf(false) }
+    var confirmQaReset by remember { mutableStateOf(false) }
     var recoveryPassword by remember { mutableStateOf("") }
     var legacyPassword by remember { mutableStateOf("") }
     var externalFilePickerOpen by remember { mutableStateOf(false) }
@@ -963,6 +993,51 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
             }
         )
     }
+    if (confirmQaReset) {
+        MomentumDialog(
+            onDismissRequest = { if (!busy) confirmQaReset = false },
+            title = { Text("Reset Vault QA data?") },
+            text = {
+                Text(
+                    "This permanently deletes all Vault records and the Vault key for the signed-in account, " +
+                        "plus Vault data and key settings on this device. Other Supabase modules will not be changed. " +
+                        "This cannot be undone."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !busy,
+                    onClick = {
+                        scope.launch {
+                            busy = true
+                            error = null
+                            try {
+                                vm.resetForQa()
+                                sessionKey?.fill(0)
+                                sessionKey = null
+                                items = emptyList()
+                                unreadable = 0
+                                configured = false
+                                selected = null
+                                editing = null
+                                deleteTarget = null
+                                refresh++
+                                exportMessage = "Vault QA data was cleared for this account. Other modules were not changed."
+                                confirmQaReset = false
+                            } catch (e: Exception) {
+                                error = e.message ?: "Could not reset Vault QA data."
+                            } finally {
+                                busy = false
+                            }
+                        }
+                    }
+                ) { Text(if (busy) "Clearing…" else "Delete Vault data", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(enabled = !busy, onClick = { confirmQaReset = false }) { Text("Cancel") }
+            }
+        )
+    }
 
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         if (externalFilePickerOpen) return@LifecycleEventEffect
@@ -1010,11 +1085,7 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
             linkedEmail = vm.linkedEmail(),
             legacyVaultAvailable = vm.needsAccountLink(),
             onSubmit = ::unlockWithAccount,
-            onLinkExisting = { pendingLegacyMigration = true },
-            onRestoreBackup = {
-                externalFilePickerOpen = true
-                recoveryLauncher.launch(arrayOf("application/json", "text/json", "text/plain"))
-            }
+            onLinkExisting = { pendingLegacyMigration = true }
         )
     } else {
         VaultHome(
@@ -1042,6 +1113,7 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
                 externalFilePickerOpen = true
                 csvImportLauncher.launch(arrayOf("*/*"))
             },
+            onResetQaData = { confirmQaReset = true },
             onRestoreBackup = {
                 externalFilePickerOpen = true
                 recoveryLauncher.launch(arrayOf("application/json", "text/json", "text/plain"))
@@ -1089,8 +1161,7 @@ private fun VaultGate(
     linkedEmail: String,
     legacyVaultAvailable: Boolean,
     onSubmit: () -> Unit,
-    onLinkExisting: () -> Unit,
-    onRestoreBackup: () -> Unit
+    onLinkExisting: () -> Unit
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = MomentumTokens.screenPadding, vertical = 16.dp), verticalArrangement = Arrangement.Center) {
         LazyColumn(
@@ -1143,7 +1214,6 @@ private fun VaultGate(
                 )
             }
             item {
-                SecondaryButton("Restore encrypted backup", onClick = onRestoreBackup, icon = Icons.Rounded.Restore)
                 Text(
                     "Vault locks when Zylo goes into the background. Screenshots are blocked while it is open.",
                     fontSize = 12.sp,
@@ -1167,6 +1237,7 @@ private fun VaultHome(
     onExport: () -> Unit,
     onImport: () -> Unit,
     onImportCsv: () -> Unit,
+    onResetQaData: () -> Unit,
     onRestoreBackup: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
@@ -1378,6 +1449,13 @@ private fun VaultHome(
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+            item {
+                TextButton(onClick = onResetQaData, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Rounded.DeleteForever, null, tint = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Reset Vault QA data", color = MaterialTheme.colorScheme.error)
+                }
             }
         }
         MomentumFab(

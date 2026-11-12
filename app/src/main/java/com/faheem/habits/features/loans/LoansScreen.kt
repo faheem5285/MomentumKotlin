@@ -20,6 +20,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -56,6 +57,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.DayOfWeek
 
 @HiltViewModel
 class LoanViewModel @Inject constructor(
@@ -116,6 +118,30 @@ class LoanViewModel @Inject constructor(
 
 private val LentColor = Positive
 private val BorrowedColor = AccentAmber
+
+private enum class LoanDateRange(val label: String) {
+    TODAY("Today"), THIS_WEEK("This week"), THIS_MONTH("This month"), THIS_YEAR("This year"), ALL_TIME("All time")
+}
+
+private fun LoanDateRange.includes(epochDay: Long, today: LocalDate = LocalDate.now()): Boolean {
+    val date = LocalDate.ofEpochDay(epochDay)
+    return when (this) {
+        LoanDateRange.TODAY -> date == today
+        LoanDateRange.THIS_WEEK -> !date.isBefore(today.with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))) && !date.isAfter(today)
+        LoanDateRange.THIS_MONTH -> date.year == today.year && date.month == today.month
+        LoanDateRange.THIS_YEAR -> date.year == today.year
+        LoanDateRange.ALL_TIME -> true
+    }
+}
+
+@Composable
+private fun LoanDateRangeFilters(selected: LoanDateRange, onSelect: (LoanDateRange) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+        LoanDateRange.entries.forEach { range ->
+            MomentumChip(selected = selected == range, onClick = { onSelect(range) }, label = range.label)
+        }
+    }
+}
 
 @Composable
 private fun PersonAvatar(person: LoanPerson, size: androidx.compose.ui.unit.Dp, onClick: (() -> Unit)? = null) {
@@ -178,6 +204,7 @@ fun LoansScreen(vm: LoanViewModel = hiltViewModel()) {
     val loans by vm.loans.collectAsState()
     var tab by remember { mutableIntStateOf(0) }
     var direction by remember { mutableIntStateOf(0) }
+    var dateRange by remember { mutableStateOf(LoanDateRange.ALL_TIME) }
     var query by remember { mutableStateOf("") }
     var showAdd by remember { mutableStateOf(false) }
     var showPeople by remember { mutableStateOf(false) }
@@ -190,8 +217,9 @@ fun LoansScreen(vm: LoanViewModel = hiltViewModel()) {
     var editingAccountBalance by remember { mutableStateOf(false) }
 
     val accountBalanceMinorUnits by vm.accountBalanceMinorUnits.collectAsState()
-    val openLoans = remember(loans) { loans.filter { !it.settled } }
-    val settledLoans = remember(loans) { loans.filter { it.settled } }
+    val dateFilteredLoans = remember(loans, dateRange) { loans.filter { dateRange.includes(it.epochDay) } }
+    val openLoans = remember(dateFilteredLoans) { dateFilteredLoans.filter { !it.settled } }
+    val settledLoans = remember(dateFilteredLoans) { dateFilteredLoans.filter { it.settled } }
     val toReceive = remember(openLoans) { openLoans.asSequence().filter { it.lent }.sumOf { it.amountMinorUnits } }
     val toPay = remember(openLoans) { openLoans.asSequence().filter { !it.lent }.sumOf { it.amountMinorUnits } }
     val net = toReceive - toPay
@@ -262,6 +290,8 @@ fun LoansScreen(vm: LoanViewModel = hiltViewModel()) {
             when (tab) {
                 0 -> LoanOverview(
                     openLoans, people, settledLoans.size, toReceive, toPay, net,
+                    dateRange = dateRange,
+                    onDateRange = { dateRange = it },
                     accountBalanceMinorUnits = accountBalanceMinorUnits,
                     onEditAccountBalance = { editingAccountBalance = true },
                     onOpenLedger = { tab = 1 },
@@ -276,6 +306,8 @@ fun LoansScreen(vm: LoanViewModel = hiltViewModel()) {
                     direction = direction,
                     onDirection = { direction = it },
                     settled = tab == 2,
+                    dateRange = dateRange,
+                    onDateRange = { dateRange = it },
                     onSelect = { selected = it },
                     onEmptyAdd = { showAdd = true }
                 )
@@ -392,6 +424,7 @@ private fun PersonEditorSheet(initial: LoanPerson?, onDismiss: () -> Unit, onSav
 @Composable
 private fun LoanOverview(
     openLoans: List<Loan>, people: List<LoanPerson>, settledCount: Int, toReceive: Long, toPay: Long, net: Long,
+    dateRange: LoanDateRange, onDateRange: (LoanDateRange) -> Unit,
     accountBalanceMinorUnits: Long?,
     onEditAccountBalance: () -> Unit,
     onOpenLedger: () -> Unit,
@@ -400,6 +433,7 @@ private fun LoanOverview(
     val peopleCount = openLoans.map { it.person.trim().lowercase() }.distinct().size
     val recent = openLoans.take(4)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { LoanDateRangeFilters(dateRange, onDateRange) }
         item {
             HeroCard {
                 Text("Outstanding balance", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
@@ -528,7 +562,8 @@ private fun LoanOverview(
 @Composable
 private fun LoanLedger(
     loans: List<Loan>, people: List<LoanPerson>, query: String, onQuery: (String) -> Unit, direction: Int, onDirection: (Int) -> Unit,
-    settled: Boolean, onSelect: (Loan) -> Unit, onEmptyAdd: () -> Unit
+    settled: Boolean, dateRange: LoanDateRange, onDateRange: (LoanDateRange) -> Unit,
+    onSelect: (Loan) -> Unit, onEmptyAdd: () -> Unit
 ) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
@@ -546,6 +581,9 @@ private fun LoanLedger(
                     }
                 }
             )
+        }
+        item {
+            LoanDateRangeFilters(dateRange, onDateRange)
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

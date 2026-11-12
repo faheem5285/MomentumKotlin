@@ -46,7 +46,11 @@ class SupabaseSyncRepository(
     private val client: SupabaseRestClient = SupabaseRestClient(context),
     private val fileStorage: FileStorageSync = FileStorageSync(context, db, client)
 ) {
-    suspend fun syncVaultEntries(accountKey: ByteArray? = null): Int = withContext(Dispatchers.IO) {
+    suspend fun syncVaultEntries(
+        accountKey: ByteArray? = null,
+        fullPull: Boolean = false
+    ): Int = withContext(Dispatchers.IO) {
+        if (ProjectWipeManager.applyIfNeeded(context)) return@withContext 0
         val table = "momentum_vault_entries"
         val stateDao = db.syncStateDao()
         val old = stateDao.get(table) ?: SyncState(table)
@@ -56,7 +60,7 @@ class SupabaseSyncRepository(
             val dirty = records.filter { it.dirty && (accountKey == null || it.matchesVaultKey(accountKey)) }
             val pushed = client.upsert(table, buildJsonArray { dirty.forEach { add(it.toCloud(device)) } })
             if (dirty.isNotEmpty()) db.vaultDao().markClean(dirty.map { it.uuid })
-            var cursor = old.cursor.ifBlank { SYNC_EPOCH }
+            var cursor = if (fullPull) SYNC_EPOCH else old.cursor.ifBlank { SYNC_EPOCH }
             var pulled = 0
             while (true) {
                 val batch = client.pull(table, cursor, PULL_PAGE)
@@ -86,6 +90,7 @@ class SupabaseSyncRepository(
     }
 
     suspend fun sync(): SyncRunResult = withContext(Dispatchers.IO) {
+        if (ProjectWipeManager.applyIfNeeded(context)) return@withContext SyncRunResult()
         val paused = db.syncStateDao().get("momentum_vault_entries")?.paused == true
         if (paused) return@withContext SyncRunResult()
         createFirstSyncBackup()
@@ -277,6 +282,7 @@ class SupabaseSyncRepository(
     suspend fun resetModule(module: AppModule) = withContext(Dispatchers.IO) {
         val tables = moduleTables(module)
         require(tables.isNotEmpty()) { "${module.label} does not contain synced records." }
+        if (module == AppModule.Vault) client.deleteAllVaultKeys()
         tables.forEach { client.deleteAll(it) }
         val database = db.openHelper.writableDatabase
         database.beginTransaction()
@@ -440,7 +446,9 @@ object SupabaseSyncScheduler {
         val request = OneTimeWorkRequestBuilder<SupabaseSyncWorker>()
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, java.time.Duration.ofSeconds(30)).build()
-        WorkManager.getInstance(context.applicationContext).enqueueUniqueWork("momentum-sync", ExistingWorkPolicy.KEEP, request)
+        // Keep a follow-up run if records change during an active sync.
+        WorkManager.getInstance(context.applicationContext)
+            .enqueueUniqueWork("momentum-sync", ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
 }
 

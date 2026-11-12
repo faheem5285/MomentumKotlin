@@ -61,6 +61,11 @@ class MomentumSettingsRepository @Inject constructor(
         moneySettings.edit { it[longPreferencesKey("money_limit_${category}_minor_units")] = value }
     }
 
+    suspend fun clearForProjectWipe() {
+        appSettings.edit { it.clear() }
+        moneySettings.edit { it.clear() }
+    }
+
     private companion object {
         val PERMISSION_SETUP_SEEN = booleanPreferencesKey("permission_setup_seen")
         val BUDGET_MINOR_UNITS = longPreferencesKey("budget_minor_units")

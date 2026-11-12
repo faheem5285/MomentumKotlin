@@ -8,6 +8,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -81,11 +82,11 @@ private fun ModuleScreen(module: AppModule, onBack: () -> Unit) {
         MaterialTheme(
             colorScheme = MaterialTheme.colorScheme.copy(
                 primary = accent,
-                onPrimary = Color.White,
+                onPrimary = if (accent.luminance() > 0.179f) Color(0xFF101827) else Color.White,
                 primaryContainer = accent.copy(alpha = 0.14f),
-                onPrimaryContainer = accent,
+                onPrimaryContainer = MaterialTheme.colorScheme.onSurface,
                 secondaryContainer = accent.copy(alpha = 0.12f),
-                onSecondaryContainer = accent
+                onSecondaryContainer = MaterialTheme.colorScheme.onSurface
             )
         ) {
             ScreenBackground(tint = accent) {

@@ -59,6 +59,13 @@ object SecureTokenStore {
         context.applicationContext.getSharedPreferences(PREFS, 0).edit().remove(TOKEN_KEY).commit()
     }
 
+    @Synchronized
+    fun clearForAppReset(context: Context) {
+        clear(context)
+        val store = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+        if (store.containsAlias(KEY_ALIAS)) store.deleteEntry(KEY_ALIAS)
+    }
+
     private fun getOrCreateKey(): SecretKey {
         val store = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }

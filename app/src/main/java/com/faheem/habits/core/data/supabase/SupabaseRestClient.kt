@@ -26,10 +26,11 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.put
 import com.faheem.habits.features.vault.VaultCrypto
+import java.time.Instant
 
 class SupabaseRestClient(
     private val context: Context,
-    private val http: HttpClient = HttpClient(Android)
+    private val http: HttpClient = sharedSupabaseHttpClient
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -75,6 +76,66 @@ class SupabaseRestClient(
         }
         check(response.status == HttpStatusCode.NoContent) {
             "Supabase cloud deletion failed (${response.status.value})."
+        }
+    }
+
+    /** Deletes cloud records and file objects for every user through the protected Edge Function. */
+    suspend fun wipeProjectCloudData() {
+        val token = requireToken()
+        val response = http.post {
+            url("${baseUrl()}/functions/v1/admin-wipe-cloud")
+            header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+            header("Authorization", "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody("{}")
+        }
+        check(response.status == HttpStatusCode.OK) {
+            "Project cloud wipe failed (${response.status.value}): ${response.bodyAsText().take(500)}"
+        }
+    }
+
+    suspend fun projectWipeState(): ProjectWipeState {
+        val token = requireToken()
+        val response = http.get {
+            url("${baseUrl()}/rest/v1/momentum_wipe_state")
+            header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+            header("Authorization", "Bearer $token")
+            url {
+                parameters.append("select", "generation,updated_at")
+                parameters.append("id", "eq.1")
+                parameters.append("limit", "1")
+            }
+        }
+        val responseBody = response.bodyAsText()
+        if (response.status != HttpStatusCode.OK) {
+            if (responseBody.contains("PGRST205", ignoreCase = true) ||
+                responseBody.contains("momentum_wipe_state", ignoreCase = true)
+            ) {
+                error("Supabase is missing the project wipe-state table. Run docs/supabase-wipe-state.sql in this project's SQL Editor, then retry. Details: ${responseBody.take(350)}")
+            }
+            error("Project wipe status failed (${response.status.value}): ${responseBody.take(500)}")
+        }
+        val row = json.parseToJsonElement(responseBody).jsonArray.firstOrNull()?.jsonObject
+            ?: error("Project wipe status is missing. Apply the updated Supabase schema.")
+        return ProjectWipeState(
+            generation = row["generation"]?.jsonPrimitive?.content?.toLongOrNull()
+                ?: error("Project wipe generation is invalid."),
+            updatedAtEpochMillis = row["updated_at"]?.jsonPrimitive?.content?.let {
+                runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
+            } ?: 0L
+        )
+    }
+
+    suspend fun deleteAllVaultKeys() {
+        val token = requireToken()
+        val response = http.delete {
+            url("${baseUrl()}/rest/v1/momentum_vault_keys")
+            header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+            header("Authorization", "Bearer $token")
+            url { parameters.append("user_id", "not.is.null") }
+        }
+        check(response.status == HttpStatusCode.NoContent) {
+            "Supabase Vault-key deletion failed (${response.status.value}): ${response.bodyAsText().take(500)}"
         }
     }
 
@@ -164,10 +225,26 @@ class SupabaseRestClient(
                 parameters.append("limit", "1")
             }
         }
-        check(response.status == HttpStatusCode.OK) {
-            "Vault account-key lookup failed (${response.status.value}): ${response.bodyAsText().take(500)}"
+        val responseText = response.bodyAsText()
+        if (response.status == HttpStatusCode.NotFound ||
+            responseText.contains("PGRST205", ignoreCase = true)
+        ) {
+            error(
+                "Vault account lookup failed because `momentum_vault_keys` is missing from Supabase. " +
+                    "Run the Vault account-key SQL migration from `docs/supabase-schema.sql` in the Supabase SQL Editor, then retry."
+            )
         }
-        val row = json.parseToJsonElement(response.bodyAsText()).jsonArray.firstOrNull()
+        if (response.status == HttpStatusCode.Forbidden || response.status == HttpStatusCode.Unauthorized) {
+            error(
+                "Vault account lookup was denied (${response.status.value}). Check that the signed-in account is valid " +
+                    "and the `momentum_vault_keys` SELECT policy and authenticated role grants are installed. " +
+                    responseText.take(300)
+            )
+        }
+        check(response.status == HttpStatusCode.OK) {
+            "Vault account-key lookup failed (${response.status.value}): ${responseText.take(500)}"
+        }
+        val row = json.parseToJsonElement(responseText).jsonArray.firstOrNull()
             ?: return null
         val encoded = row.jsonObject["key_material"]?.jsonPrimitive?.content
             ?: error("The account vault key record is invalid.")
@@ -233,7 +310,12 @@ class SupabaseRestClient(
     private fun baseUrl(): String = BuildConfig.SUPABASE_URL.trimEnd('/')
 }
 
+/** Reuse Ktor's connection pool across sync, health checks and file operations. */
+private val sharedSupabaseHttpClient: HttpClient = HttpClient(Android)
+
 data class StorageUsage(val objectCount: Int, val bytes: Long)
+
+data class ProjectWipeState(val generation: Long, val updatedAtEpochMillis: Long)
 
 private suspend fun HttpClient.postRest(
     table: String,

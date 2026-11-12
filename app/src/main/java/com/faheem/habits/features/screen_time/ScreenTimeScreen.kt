@@ -11,6 +11,7 @@ import android.app.AppOpsManager
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Process
 import android.provider.Settings
 import androidx.compose.foundation.clickable
@@ -101,6 +102,8 @@ fun ScreenTimeScreen() {
     var weekMinutes by remember { mutableStateOf<List<Long>>(emptyList()) }
     var reelCount by remember { mutableIntStateOf(0) }
     var reelLimit by remember { mutableIntStateOf(0) }
+    var overlayAllowed by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    var floatingCounter by remember { mutableStateOf(false) }
     var screenLimit by remember { mutableIntStateOf(0) }
     var screenLimitPeriod by remember { mutableStateOf(ScreenTimePeriod.DAILY) }
     var screenLimitUsed by remember { mutableIntStateOf(0) }
@@ -113,9 +116,11 @@ fun ScreenTimeScreen() {
     LaunchedEffect(tick, range) {
         granted = hasUsageAccess(context)
         accessibilityOn = InstagramScrollCounterService.isEnabled(context)
+        overlayAllowed = Settings.canDrawOverlays(context)
         val prefs = context.getSharedPreferences(SCREEN_TIME_PREFS, Context.MODE_PRIVATE)
         reelCount = prefs.getInt(InstagramScrollCounterService.countKey(LocalDate.now()), 0)
         reelLimit = prefs.getInt(InstagramScrollCounterService.PREF_LIMIT, 0)
+        floatingCounter = prefs.getBoolean(InstagramScrollCounterService.PREF_FLOATING_COUNTER, false) && overlayAllowed
         screenLimit = prefs.getInt(PREF_SCREEN_LIMIT, 0)
         screenLimitPeriod = ScreenTimePeriod.fromKey(prefs.getString(PREF_SCREEN_LIMIT_PERIOD, null))
         usage = if (granted) withContext(Dispatchers.IO) { loadUsage(context, range.days) } else emptyList()
@@ -169,7 +174,22 @@ fun ScreenTimeScreen() {
             when (tab) {
                 TimeTab.Overview -> ScreenOverview(usage, weekMinutes, granted, screenLimit, screenLimitPeriod, screenLimitUsed, reelCount, accessibilityOn, onUsageSettings = { openUsageSettings(context) }, onSetLimit = { showScreenLimit = true }, onSetAlarm = { showScreenAlarm = true }, onOpenReels = { tab = TimeTab.Reels }, onRefresh = { tick++ })
                 TimeTab.Apps -> UsageAppsScreen(usage, granted, range, onRange = { range = it }, onUsageSettings = { openUsageSettings(context) }, onRefresh = { tick++ })
-                TimeTab.Reels -> ReelsCounterScreen(reelCount, reelLimit, accessibilityOn, onSettings = { openAccessibilitySettings(context) }, onSetLimit = { showReelLimit = true }, onRefresh = { tick++ })
+                TimeTab.Reels -> ReelsCounterScreen(
+                    reelCount, reelLimit, accessibilityOn, floatingCounter, overlayAllowed,
+                    onSettings = { openAccessibilitySettings(context) },
+                    onSetLimit = { showReelLimit = true },
+                    onRefresh = { tick++ },
+                    onToggleFloatingCounter = { enabled ->
+                        val prefs = context.getSharedPreferences(SCREEN_TIME_PREFS, Context.MODE_PRIVATE)
+                        if (enabled && !Settings.canDrawOverlays(context)) {
+                            prefs.edit().putBoolean(InstagramScrollCounterService.PREF_FLOATING_COUNTER, true).apply()
+                            context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
+                        } else {
+                            prefs.edit().putBoolean(InstagramScrollCounterService.PREF_FLOATING_COUNTER, enabled).apply()
+                            floatingCounter = enabled
+                        }
+                    }
+                )
             }
         }
         MomentumTabs(
@@ -386,7 +406,17 @@ private fun UsageRow(app: AppUsage, maxMin: Long) {
 }
 
 @Composable
-private fun ReelsCounterScreen(count: Int, limit: Int, enabled: Boolean, onSettings: () -> Unit, onSetLimit: () -> Unit, onRefresh: () -> Unit) {
+private fun ReelsCounterScreen(
+    count: Int,
+    limit: Int,
+    enabled: Boolean,
+    floatingCounter: Boolean,
+    overlayAllowed: Boolean,
+    onSettings: () -> Unit,
+    onSetLimit: () -> Unit,
+    onRefresh: () -> Unit,
+    onToggleFloatingCounter: (Boolean) -> Unit
+) {
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp),
@@ -414,6 +444,25 @@ private fun ReelsCounterScreen(count: Int, limit: Int, enabled: Boolean, onSetti
         item {
             PremiumCard(contentPadding = PaddingValues(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Floating count in Instagram", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(
+                            when {
+                                !overlayAllowed -> "Allow display over other apps to show it"
+                                floatingCounter -> "Shown at the top while Instagram is open"
+                                else -> "Keep a small Reels count visible over Instagram"
+                            },
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = floatingCounter, onCheckedChange = onToggleFloatingCounter)
+                }
+            }
+        }
+        item {
+            PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     IconBubble(
                         if (enabled) Icons.Rounded.CheckCircle else Icons.Rounded.Security,
                         if (enabled) Positive else Warning,
@@ -422,7 +471,7 @@ private fun ReelsCounterScreen(count: Int, limit: Int, enabled: Boolean, onSetti
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(if (enabled) "Counter is on" else "Counter is off", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text("You can change access any time in Android Settings", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Required to count Instagram scrolls; you can change access in Android Settings", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 Spacer(Modifier.height(14.dp))
@@ -442,7 +491,7 @@ private fun ReelsCounterScreen(count: Int, limit: Int, enabled: Boolean, onSetti
         item {
             InfoBanner(
                 icon = Icons.Rounded.Info,
-                text = "Counts Instagram scroll events each day. It is an estimate, not an exact Reels count.",
+                text = "Counts Instagram scroll events each day, not verified Reels plays. To show the floating counter, Android also needs Display over other apps permission.",
                 tint = MaterialTheme.colorScheme.primary
             )
         }
@@ -451,7 +500,7 @@ private fun ReelsCounterScreen(count: Int, limit: Int, enabled: Boolean, onSetti
                 Text("Privacy", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Filtered to Instagram. No screen text or content is read.",
+                    "The service checks app changes to show or hide the counter, and counts Instagram scroll events only. It does not read screen text or content.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

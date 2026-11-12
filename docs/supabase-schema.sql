@@ -3,6 +3,21 @@
 
 create extension if not exists pgcrypto;
 
+-- Project-wide local-reset generation. Authenticated clients may read the
+-- generation; only the service-role Edge Function can advance it.
+create table if not exists public.momentum_wipe_state (
+  id smallint primary key check (id = 1),
+  generation bigint not null default 0,
+  updated_at timestamptz not null default now()
+);
+insert into public.momentum_wipe_state (id, generation)
+values (1, 0) on conflict (id) do nothing;
+alter table public.momentum_wipe_state enable row level security;
+drop policy if exists momentum_wipe_state_read on public.momentum_wipe_state;
+create policy momentum_wipe_state_read on public.momentum_wipe_state
+  for select to authenticated using (true);
+grant select on public.momentum_wipe_state to authenticated;
+
 -- Private bucket for file contents. File metadata remains in momentum_files;
 -- object ownership is enforced by Supabase Storage RLS.
 insert into storage.buckets (id, name, public)
@@ -351,3 +366,7 @@ create policy momentum_vault_keys_owner_update on public.momentum_vault_keys
   for update using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy momentum_vault_keys_owner_delete on public.momentum_vault_keys
   for delete using (user_id = auth.uid());
+grant select, insert, update, delete on public.momentum_vault_keys to authenticated;
+
+-- Make newly created tables visible to Supabase's PostgREST API immediately.
+notify pgrst, 'reload schema';

@@ -48,7 +48,6 @@ import androidx.compose.ui.unit.sp
 import com.faheem.habits.core.data.supabase.SupabaseAuthApi
 import com.faheem.habits.R
 import com.faheem.habits.core.data.supabase.SupabaseProvider
-import com.faheem.habits.core.data.sync.SupabaseSyncScheduler
 import com.faheem.habits.core.ui.BrandGradient
 import com.faheem.habits.core.ui.InfoBanner
 import com.faheem.habits.core.ui.MomentumTextField
@@ -185,7 +184,6 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
                                             isSignUp = false
                                         } else {
                                             SupabaseAuthApi.signIn(context.applicationContext, enteredEmail, enteredPassword)
-                                            SupabaseSyncScheduler.enqueue(context.applicationContext)
                                             onAuthenticated()
                                         }
                                     } catch (e: Exception) {

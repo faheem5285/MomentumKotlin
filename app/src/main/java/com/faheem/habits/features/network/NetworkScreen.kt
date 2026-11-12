@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CellTower
 import androidx.compose.material.icons.rounded.Language
@@ -45,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -115,6 +117,17 @@ fun NetworkScreen() {
     LaunchedEffect(period, refreshKey) {
         granted = hasUsageAccess(context)
         if (granted) {
+            val alarmPrefs = context.getSharedPreferences(NetworkIndicatorService.PREFS, Context.MODE_PRIVATE)
+            val hasConfiguredLimit = alarmPrefs.getLong(NetworkIndicatorService.KEY_WIFI_LIMIT_MB, 0L) > 0L ||
+                alarmPrefs.getLong(NetworkIndicatorService.KEY_MOBILE_LIMIT_MB, 0L) > 0L
+            val notificationsAllowed = Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (hasConfiguredLimit && notificationsAllowed && !NetworkIndicatorService.enabled(context)) {
+                startNetworkIndicator(context)
+                indicatorEnabled = true
+            }
             loading = true
             report = withContext(Dispatchers.IO) { loadNetworkReport(context, period) }
             appReport = withContext(Dispatchers.IO) {
@@ -138,33 +151,76 @@ fun NetworkScreen() {
         var limitPeriod by remember {
             mutableStateOf(NetworkLimitPeriod.fromKey(prefs.getString(NetworkIndicatorService.KEY_LIMIT_PERIOD, null)))
         }
-        AlertDialog(
+        MomentumDialog(
             onDismissRequest = { showUsageAlarm = false },
-            title = { Text("Mobile data alarm") },
+            title = {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("Data usage alarms")
+                    Text(
+                        "Choose limits for Wi-Fi and mobile data.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    MomentumTextField(wifiLimit, { wifiLimit = it.filter(Char::isDigit) }, label = { Text("Wi-Fi limit in MB (0 disables)") }, singleLine = true)
-                    MomentumTextField(mobileLimit, { mobileLimit = it.filter(Char::isDigit) }, label = { Text("Mobile data limit in MB (0 disables)") }, singleLine = true)
-                    Text("Limit period", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Wi-Fi", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
+                    MomentumTextField(
+                        value = wifiLimit,
+                        onValueChange = { wifiLimit = it.filter(Char::isDigit) },
+                        placeholder = { Text("0 turns alarm off") },
+                        trailingIcon = { Text("MB", Modifier.padding(end = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    Text("Mobile data", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
+                    MomentumTextField(
+                        value = mobileLimit,
+                        onValueChange = { mobileLimit = it.filter(Char::isDigit) },
+                        placeholder = { Text("0 turns alarm off") },
+                        trailingIcon = { Text("MB", Modifier.padding(end = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    Text("Reset limits", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                         NetworkLimitPeriod.entries.forEachIndexed { index, option ->
                             SegmentedButton(
                                 selected = limitPeriod == option,
                                 onClick = { limitPeriod = option },
                                 shape = SegmentedButtonDefaults.itemShape(index, NetworkLimitPeriod.entries.size)
-                            ) { Text(option.label, fontSize = 11.sp, maxLines = 1) }
+                            ) { Text(option.label, fontSize = 12.sp, maxLines = 1) }
                         }
                     }
-                    Text("Both limits apply per ${limitPeriod.label.lowercase()} period. Keep Network indicator enabled and allow Usage Access and notifications. Alerts repeat at the limit, then at 1.5× each previous threshold (for example 100, 150, 225 MB); monitoring does not stop at the limit.", fontSize = 12.sp)
+                    Text(
+                        "Limits reset ${limitPeriod.label.lowercase()}. Use 0 to disable an alarm. Automatic alerts need Usage Access and monitoring enabled.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
-                    prefs.edit().putLong(NetworkIndicatorService.KEY_WIFI_LIMIT_MB, wifiLimit.toLongOrNull() ?: 0L)
-                        .putLong(NetworkIndicatorService.KEY_MOBILE_LIMIT_MB, mobileLimit.toLongOrNull() ?: 0L)
+                    val wifiLimitMb = wifiLimit.toLongOrNull() ?: 0L
+                    val mobileLimitMb = mobileLimit.toLongOrNull() ?: 0L
+                    prefs.edit().putLong(NetworkIndicatorService.KEY_WIFI_LIMIT_MB, wifiLimitMb)
+                        .putLong(NetworkIndicatorService.KEY_MOBILE_LIMIT_MB, mobileLimitMb)
                         .putString(NetworkIndicatorService.KEY_LIMIT_PERIOD, limitPeriod.key)
                         .apply()
                     NetworkIndicatorService.resetAlarmProgress(context)
+                    if ((wifiLimitMb > 0L || mobileLimitMb > 0L) && !NetworkIndicatorService.enabled(context)) {
+                        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.POST_NOTIFICATIONS
+                            ) != PackageManager.PERMISSION_GRANTED
+                        ) {
+                            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            startNetworkIndicator(context)
+                            indicatorEnabled = true
+                        }
+                    }
                     showUsageAlarm = false
                 }) { Text("Save") }
             },

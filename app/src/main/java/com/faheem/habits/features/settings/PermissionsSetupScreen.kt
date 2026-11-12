@@ -130,7 +130,7 @@ fun PermissionsSetupScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             SetupPermission("Usage access", "Reads app usage totals to power Screen Time and network data summaries.", "Screen Time totals and Wi-Fi/mobile usage summaries will be unavailable.", if (usageGranted()) PermissionState.ENABLED else PermissionState.DISABLED) {
                 openSettings(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
             },
-            SetupPermission("Accessibility service", "Counts Instagram scroll events for the optional Reels estimate. Zylo does not read screen text.", "The Reels scroll estimate will remain off.", if (com.faheem.habits.features.screen_time.InstagramScrollCounterService.isEnabled(context)) PermissionState.ENABLED else PermissionState.DISABLED) {
+            SetupPermission("Accessibility service", "Checks app changes to show the optional Instagram counter and counts Instagram scrolls. Zylo does not read screen text.", "The Reels scroll estimate and floating count will remain off.", if (com.faheem.habits.features.screen_time.InstagramScrollCounterService.isEnabled(context)) PermissionState.ENABLED else PermissionState.DISABLED) {
                 openSettings(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             },
             SetupPermission("Background autostart", "Some manufacturers provide an additional autostart switch for reliable background reminders and monitoring.", "Background work may be stopped by manufacturer-specific power management.", PermissionState.UNAVAILABLE) {

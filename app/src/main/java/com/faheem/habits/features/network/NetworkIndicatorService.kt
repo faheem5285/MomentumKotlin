@@ -3,7 +3,6 @@ import com.faheem.habits.core.data.*
 import com.faheem.habits.core.notifications.*
 import com.faheem.habits.core.ui.*
 import com.faheem.habits.R
-import com.faheem.habits.app.MainActivity
 import com.faheem.habits.features.screen_time.hasUsageAccess
 
 
@@ -166,21 +165,26 @@ class NetworkIndicatorService : Service() {
     }
 
     private fun buildNotification(): Notification {
-        val open = PendingIntent.getActivity(
-            this, 9021, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val open = ZyloNotifications.openApp(this, 9021, "Network")
         val stop = PendingIntent.getService(
             this, 9022, Intent(this, NetworkIndicatorService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val wifi = wifiToday?.let(::formatBytes) ?: "Usage access off"
         val mobile = mobileToday?.let(::formatBytes) ?: "Usage access off"
+        val speed = "↓ $downloadText · ↑ $uploadText"
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_zylo)
         .setContentTitle("↓ $downloadText  ·  ↑ $uploadText")
             .setContentText("Wi-Fi $wifi · Mobile $mobile · ${usagePeriod.label} usage")
             .setStyle(NotificationCompat.BigTextStyle().bigText("Network speed: ↓ $downloadText, ↑ $uploadText\nWi-Fi usage (${usagePeriod.label.lowercase()}): $wifi\nMobile data usage (${usagePeriod.label.lowercase()}): $mobile"))
+            .setContentTitle("Network · ${usagePeriod.label.lowercase()}")
+            .setContentText("$speed  ·  Wi-Fi $wifi  ·  Mobile $mobile")
+            .setStyle(
+                NotificationCompat.BigTextStyle().bigText(
+                    "$speed\nWi-Fi $wifi  ·  Mobile $mobile"
+                )
+            )
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
@@ -206,7 +210,7 @@ class NetworkIndicatorService : Service() {
         private const val CHANNEL_ID = "persistent_network_indicator"
         private const val NOTIFICATION_ID = 9020
         private const val SAMPLE_INTERVAL_MS = 3_000L
-        private const val USAGE_REFRESH_MS = 60_000L
+        private const val USAGE_REFRESH_MS = 15_000L
         private const val BYTES_PER_MB = 1_000_000.0
         private const val ALERT_MULTIPLIER = 1.5
         private const val MAX_ALERTS_PER_CHECK = 64

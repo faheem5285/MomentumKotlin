@@ -27,86 +27,86 @@ val AccentViolet = Color(0xFF8B5CF6)
 val AccentTeal = Color(0xFF22D3EE)
 val AccentAmber = Color(0xFFFBBF24)
 
-/** The three neon lights that bleed through the frosted glass. */
-val NeonViolet = Color(0xFF8B5CF6)
-val NeonCyan = Color(0xFF22D3EE)
-val NeonMagenta = Color(0xFFF472B6)
+/** The cool blue lights used throughout the Home screen glass surfaces. */
+val NeonViolet = Color(0xFF596DEB)
+val NeonCyan = Color(0xFF36B9DD)
+val NeonMagenta = Color(0xFF9A7AE8)
 
 /**
  * Momentum neon glass palette.
  *
- * Light: a pale lilac canvas with electric violet, cyan and magenta light
- * diffusing behind milky frosted panes.
- * Dark: an ink-black canvas where the same neon hues glow through smoked glass.
+ * Light: a pale blue-lavender canvas with blue, cyan and violet light diffusing
+ * behind milky frosted panes, matching the Home screen.
+ * Dark: a deep navy canvas where the same hues glow through smoked glass.
  *
  * Surfaces intentionally carry alpha so the aurora canvas shows through them.
  */
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF7C3AED),
+    primary = Color(0xFF2463E9),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFEDE9FE),
-    onPrimaryContainer = Color(0xFF2E1065),
-    secondary = Color(0xFF0891B2),
+    primaryContainer = Color(0xFFDCE8FF),
+    onPrimaryContainer = Color(0xFF102A62),
+    secondary = Color(0xFF168EBA),
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFCFFAFE),
-    onSecondaryContainer = Color(0xFF083344),
-    tertiary = Color(0xFFBE185D),
+    secondaryContainer = Color(0xFFD7F3FA),
+    onSecondaryContainer = Color(0xFF103847),
+    tertiary = Color(0xFF7654D6),
     onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFFCE7F3),
-    onTertiaryContainer = Color(0xFF500724),
-    background = Color(0xFFF2F1FA),
-    onBackground = Color(0xFF14101F),
+    tertiaryContainer = Color(0xFFEAE3FF),
+    onTertiaryContainer = Color(0xFF2A1B57),
+    background = Color(0xFFF0F4FC),
+    onBackground = Color(0xFF151B2D),
     surface = Color(0xC2FFFFFF),
-    onSurface = Color(0xFF14101F),
-    surfaceVariant = Color(0x2E7C3AED),
-    onSurfaceVariant = Color(0xFF5A5470),
+    onSurface = Color(0xFF151B2D),
+    surfaceVariant = Color(0x2E477CE0),
+    onSurfaceVariant = Color(0xFF566178),
     surfaceTint = Color.Transparent,
-    outline = Color(0xFFB2A6D0),
-    outlineVariant = Color(0x337C3AED),
+    outline = Color(0xFFAFBCD3),
+    outlineVariant = Color(0x334778D8),
     error = Color(0xFFB3261E),
     onError = Color.White,
     errorContainer = Color(0xFFF9DEDC),
     onErrorContainer = Color(0xFF410E0B),
     scrim = Color(0x99150B26),
     surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFF8F6FE),
-    surfaceContainer = Color(0xFFF1EEFB),
-    surfaceContainerHigh = Color(0xFFF6F4FD),
+    surfaceContainerLow = Color(0xFFF7F9FE),
+    surfaceContainer = Color(0xFFEDF2FC),
+    surfaceContainerHigh = Color(0xFFF2F6FD),
     surfaceContainerHighest = Color(0xFFFFFFFF)
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFB49BFF),
-    onPrimary = Color(0xFF24105C),
-    primaryContainer = Color(0xFF4C1D95),
-    onPrimaryContainer = Color(0xFFEDE9FE),
-    secondary = Color(0xFF67E8F9),
-    onSecondary = Color(0xFF06333C),
-    secondaryContainer = Color(0xFF155E75),
-    onSecondaryContainer = Color(0xFFCFFAFE),
-    tertiary = Color(0xFFF9A8D4),
-    onTertiary = Color(0xFF4A0A2B),
-    tertiaryContainer = Color(0xFF9D174D),
-    onTertiaryContainer = Color(0xFFFCE7F3),
-    background = Color(0xFF05060E),
-    onBackground = Color(0xFFF2F0FF),
+    primary = Color(0xFF9BB9FF),
+    onPrimary = Color(0xFF102653),
+    primaryContainer = Color(0xFF1E438B),
+    onPrimaryContainer = Color(0xFFDCE8FF),
+    secondary = Color(0xFF78D8EF),
+    onSecondary = Color(0xFF073541),
+    secondaryContainer = Color(0xFF15566C),
+    onSecondaryContainer = Color(0xFFD7F3FA),
+    tertiary = Color(0xFFC1ABFF),
+    onTertiary = Color(0xFF2B1A57),
+    tertiaryContainer = Color(0xFF554094),
+    onTertiaryContainer = Color(0xFFEAE3FF),
+    background = Color(0xFF0C1426),
+    onBackground = Color(0xFFF0F4FC),
     surface = Color(0x1FFFFFFF),
-    onSurface = Color(0xFFF2F0FF),
-    surfaceVariant = Color(0x1F8B5CF6),
-    onSurfaceVariant = Color(0xFFB9B3D2),
+    onSurface = Color(0xFFF0F4FC),
+    surfaceVariant = Color(0x1F7396E8),
+    onSurfaceVariant = Color(0xFFB7C4DE),
     surfaceTint = Color.Transparent,
-    outline = Color(0x66A78BFA),
-    outlineVariant = Color(0x33A78BFA),
+    outline = Color(0x667DA2F1),
+    outlineVariant = Color(0x337DA2F1),
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
     errorContainer = Color(0xFF93000A),
     onErrorContainer = Color(0xFFFFDAD6),
     scrim = Color(0xCC000000),
-    surfaceContainerLowest = Color(0xFF060713),
-    surfaceContainerLow = Color(0xFF0B0C18),
-    surfaceContainer = Color(0xFF101120),
-    surfaceContainerHigh = Color(0xFF15162A),
-    surfaceContainerHighest = Color(0xFF1A1B33)
+    surfaceContainerLowest = Color(0xFF0A1020),
+    surfaceContainerLow = Color(0xFF101A2E),
+    surfaceContainer = Color(0xFF142039),
+    surfaceContainerHigh = Color(0xFF1A2945),
+    surfaceContainerHighest = Color(0xFF213252)
 )
 
 /**
@@ -139,13 +139,13 @@ private val LightGlass = GlassPalette(
     borderBottom = Color(0x33FFFFFF),
     sheen = Color(0x8AFFFFFF),
     chip = Color(0x4DFFFFFF),
-    panel = Color(0xFFF6F4FC),
-    panelBorder = Color(0x1A4C1D95),
-    shadow = Color(0x2E4C1D95),
+    panel = Color(0xFFF5F8FE),
+    panelBorder = Color(0x1A315AA8),
+    shadow = Color(0x2E315AA8),
     glowAlpha = 0.34f,
-    haloPrimary = Color(0xFF7C3AED),
-    haloSecondary = Color(0xFF06B6D4),
-    haloAccent = Color(0xFFDB2777)
+    haloPrimary = Color(0xFF3974EE),
+    haloSecondary = Color(0xFF36B9DD),
+    haloAccent = Color(0xFF9A7AE8)
 )
 
 private val DarkGlass = GlassPalette(
@@ -156,13 +156,13 @@ private val DarkGlass = GlassPalette(
     borderBottom = Color(0x14FFFFFF),
     sheen = Color(0x1FFFFFFF),
     chip = Color(0x1AFFFFFF),
-    panel = Color(0xFF0C0D18),
-    panelBorder = Color(0x1FA78BFA),
+    panel = Color(0xFF101A2E),
+    panelBorder = Color(0x1F7DA2F1),
     shadow = Color(0x66000000),
     glowAlpha = 0.55f,
-    haloPrimary = Color(0xFF8B5CF6),
-    haloSecondary = Color(0xFF22D3EE),
-    haloAccent = Color(0xFFF472B6)
+    haloPrimary = Color(0xFF739AFF),
+    haloSecondary = Color(0xFF58CBE5),
+    haloAccent = Color(0xFFAA91F2)
 )
 
 private val AppShapes = Shapes(

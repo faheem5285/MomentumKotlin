@@ -23,4 +23,8 @@ class SettingsViewModel @Inject constructor(
     fun markPermissionSetupSeen() {
         viewModelScope.launch { repository.setPermissionSetupSeen(true) }
     }
+
+    suspend fun clearForProjectWipe() {
+        repository.clearForProjectWipe()
+    }
 }

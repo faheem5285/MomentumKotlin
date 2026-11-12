@@ -87,7 +87,6 @@ import com.faheem.habits.R
 import com.faheem.habits.core.data.AppDatabase
 import com.faheem.habits.core.data.backup.MomentumBackup
 import com.faheem.habits.core.data.backup.WeeklyBackupSettings
-import com.faheem.habits.core.data.sync.SupabaseSyncRepository
 import com.faheem.habits.core.notifications.ReminderSettingsScreen
 import com.faheem.habits.core.settings.AppearancePreferences
 import com.faheem.habits.core.settings.ThemeMode
@@ -134,12 +133,9 @@ fun AppSettingsScreen() {
     var lastBackupAt by remember { mutableLongStateOf(WeeklyBackupSettings.lastBackupAt(context)) }
     var databaseVersion by remember { mutableIntStateOf(0) }
     var integrityMessage by remember { mutableStateOf<String?>(null) }
-    var resetPickerOpen by remember { mutableStateOf(false) }
-    var resetTarget by remember { mutableStateOf<AppModule?>(null) }
     val themeMode by AppearancePreferences.themeMode.collectAsStateWithLifecycle()
     val reduceMotion by AppearancePreferences.reduceMotion.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    val syncRepository = remember(context) { SupabaseSyncRepository(context.applicationContext) }
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
         if (uri != null) scope.launch {
@@ -232,57 +228,6 @@ fun AppSettingsScreen() {
                 }
             },
             dismissButton = { TextButton(onClick = { pendingImport = null }) { Text("Cancel") } }
-        )
-    }
-    if (resetPickerOpen) {
-        MomentumDialog(
-            onDismissRequest = { resetPickerOpen = false },
-            title = { Text("Reset module data") },
-            text = { Text("Choose one module. Its local records and matching Supabase records will be permanently deleted.") },
-            confirmButton = {
-                Column {
-                    resettableModules.forEach { module ->
-                        TextButton(
-                            onClick = {
-                                resetPickerOpen = false
-                                resetTarget = module
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(module.icon, null, tint = module.accent)
-                                Spacer(Modifier.width(10.dp))
-                                Text(module.label)
-                            }
-                        }
-                    }
-                }
-            },
-            dismissButton = { TextButton(onClick = { resetPickerOpen = false }) { Text("Cancel") } }
-        )
-    }
-    resetTarget?.let { module ->
-        MomentumDialog(
-            onDismissRequest = { resetTarget = null },
-            title = { Text("Reset ${module.label}?") },
-            text = { Text("This permanently deletes all ${module.label.lowercase(Locale.ROOT)} records on this device and in Supabase. This cannot be undone.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    resetTarget = null
-                    scope.launch {
-                        backupBusy = true
-                        backupMessage = try {
-                            withContext(Dispatchers.IO) { syncRepository.resetModule(module) }
-                            "${module.label} data was reset on this device and in Supabase."
-                        } catch (e: Exception) {
-                            "Reset failed: ${e.message ?: "unknown error"}"
-                        } finally {
-                            backupBusy = false
-                        }
-                    }
-                }) { Text("Reset permanently", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = { TextButton(onClick = { resetTarget = null }) { Text("Cancel") } }
         )
     }
     BackHandler(enabled = remindersOpen || permissionsOpen) {
@@ -441,9 +386,6 @@ fun AppSettingsScreen() {
                     onRestore = { importLauncher.launch(arrayOf("application/json", "text/json", "*/*")) }
                 )
             }
-            item {
-                DataResetCard(onReset = { resetPickerOpen = true })
-            }
             item { SectionHeader("Preferences") }
             item {
                 PreferencesCard(
@@ -457,16 +399,6 @@ fun AppSettingsScreen() {
         }
     }
 }
-
-private val resettableModules = listOf(
-    AppModule.Habits,
-    AppModule.ToDos,
-    AppModule.Money,
-    AppModule.Loans,
-    AppModule.Contacts,
-    AppModule.Files,
-    AppModule.Vault
-)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -827,26 +759,6 @@ private fun BackupRestoreCard(
                 tint = if (failed) MaterialTheme.colorScheme.error else Positive
             )
         }
-    }
-}
-
-@Composable
-private fun DataResetCard(onReset: () -> Unit) {
-    PremiumCard(accent = MaterialTheme.colorScheme.error, contentPadding = PaddingValues(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconBubble(Icons.Rounded.WarningAmber, MaterialTheme.colorScheme.error, 42.dp)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Reset module data", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                Text(
-                    "Permanently remove a module from this device and Supabase",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        SecondaryButton("Choose module to reset", onClick = onReset, icon = Icons.Rounded.DeleteForever)
     }
 }
 
