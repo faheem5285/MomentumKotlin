@@ -79,14 +79,14 @@ fun MomentumNavigationHost(
             if (module == null) {
                 LaunchedEffect(Unit) { navController.popBackStack() }
             } else {
-                ModuleScreen(module, entry.arguments?.getInt("itemId"), onBack)
+                ModuleScreen(module, onBack)
             }
         }
     }
 }
 
 @Composable
-private fun ModuleScreen(module: AppModule, itemId: Int?, onBack: () -> Unit) {
+private fun ModuleScreen(module: AppModule, onBack: () -> Unit) {
     BackHandler(onBack = onBack)
     val accent = module.accent
     CompositionLocalProvider(LocalGradient provides module.gradient) {
@@ -111,10 +111,10 @@ private fun ModuleScreen(module: AppModule, itemId: Int?, onBack: () -> Unit) {
                     )
                     Box(Modifier.weight(1f)) {
                         when (module) {
-                            AppModule.Habits -> HabitScreen(initialHabitId = itemId)
-                            AppModule.ToDos -> ToDoScreen(initialTaskId = itemId)
+                            AppModule.Habits -> HabitScreen()
+                            AppModule.ToDos -> ToDoScreen()
                             AppModule.Money -> ExpensesScreen()
-                            AppModule.Loans -> LoansScreen(initialLoanId = itemId)
+                            AppModule.Loans -> LoansScreen()
                             AppModule.Contacts -> ContactsScreen()
                             AppModule.Files -> FilesScreen()
                             AppModule.LifeRules -> LifeRulesScreen()
