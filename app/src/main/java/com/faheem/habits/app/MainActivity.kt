@@ -156,14 +156,16 @@ fun MomentumApp(
         when (SupabaseAuthApi.restoreSession(context.applicationContext)) {
             SessionRestoreResult.AUTHENTICATED -> {
                 try {
-                    val wiped = ProjectWipeManager.applyIfNeeded(context.applicationContext) {
+                    val wipeCheck = ProjectWipeManager.applyIfNeeded(context.applicationContext) {
                         settingsViewModel.clearForProjectWipe()
                     }
-                    if (wiped) {
+                    if (wipeCheck == ProjectWipeManager.CheckResult.APPLIED) {
                         authNotice = "An administrator reset app data. Sign in again to start fresh."
                     } else {
                         isAuthenticated = true
-                        SupabaseSyncScheduler.enqueue(context.applicationContext)
+                        if (wipeCheck == ProjectWipeManager.CheckResult.UNCHANGED) {
+                            SupabaseSyncScheduler.enqueue(context.applicationContext)
+                        }
                     }
                 } catch (failure: Exception) {
                     // Keep local use available, but the sync worker also checks the wipe marker
@@ -173,7 +175,14 @@ fun MomentumApp(
                 }
             }
             SessionRestoreResult.NO_SESSION -> Unit
-            SessionRestoreResult.TEMPORARY_FAILURE -> authNotice = "Could not verify your saved session. Check your internet connection and sign in again if needed. Your saved session has been kept."
+            SessionRestoreResult.TEMPORARY_FAILURE -> {
+                // A failed refresh while offline is not a sign-out. Keep the last
+                // successfully selected account's local database available; sync
+                // will retry authentication after connectivity returns.
+                isAuthenticated = SupabaseAuthApi.currentUserId(context.applicationContext)
+                    ?.isNotBlank() == true
+                authNotice = "Offline: your saved account session is kept. Changes will sync when you reconnect."
+            }
         }
         isRestoringSession = false
     }
@@ -186,13 +195,21 @@ fun MomentumApp(
             authNotice = "An administrator reset app data. Sign in again to start fresh."
         }
     }
+    LaunchedEffect(Unit) {
+        SupabaseAuthApi.signOutEvents.collect {
+            destination = MomentumDestination.Home
+            isAuthenticated = false
+            isRestoringSession = false
+            authNotice = "You signed out. Sign in again to continue."
+        }
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         if (isAuthenticated) (context as? ComponentActivity)?.lifecycleScope?.launch(Dispatchers.IO) {
             try {
-                val wiped = ProjectWipeManager.applyIfNeeded(context.applicationContext) {
+                val wipeCheck = ProjectWipeManager.applyIfNeeded(context.applicationContext) {
                     settingsViewModel.clearForProjectWipe()
                 }
-                if (wiped) {
+                if (wipeCheck == ProjectWipeManager.CheckResult.APPLIED) {
                     withContext(Dispatchers.Main) {
                         destination = MomentumDestination.Home
                         isAuthenticated = false
@@ -248,14 +265,16 @@ fun MomentumApp(
                 onAuthenticated = {
                     appScope.launch {
                         try {
-                            val wiped = ProjectWipeManager.applyIfNeeded(context.applicationContext) {
+                            val wipeCheck = ProjectWipeManager.applyIfNeeded(context.applicationContext) {
                                 settingsViewModel.clearForProjectWipe()
                             }
-                            if (wiped) {
+                            if (wipeCheck == ProjectWipeManager.CheckResult.APPLIED) {
                                 authNotice = "An administrator reset app data. Sign in again to start fresh."
                             } else {
                                 isAuthenticated = true
-                                SupabaseSyncScheduler.enqueue(context.applicationContext)
+                                if (wipeCheck == ProjectWipeManager.CheckResult.UNCHANGED) {
+                                    SupabaseSyncScheduler.enqueue(context.applicationContext)
+                                }
                             }
                         } catch (failure: Exception) {
                             authNotice = failure.message

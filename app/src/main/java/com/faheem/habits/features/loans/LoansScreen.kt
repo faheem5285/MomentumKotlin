@@ -88,7 +88,15 @@ class LoanViewModel @Inject constructor(
         viewModelScope.launch {
             val normalized = person.trim()
             val resolvedPersonId = resolvePersonId(normalized, personId)
-            dao.update(loan.copy(person = normalized, personId = resolvedPersonId))
+            dao.update(
+                loan.copy(
+                    person = normalized,
+                    personId = resolvedPersonId,
+                    updatedAt = System.currentTimeMillis(),
+                    deleted = false,
+                    dirty = true
+                )
+            )
             proofUris.forEach { insertAttachment(loan.id, it) }
         }
     }
@@ -98,7 +106,11 @@ class LoanViewModel @Inject constructor(
             ?: dao.getPeople().first().firstOrNull { it.name.equals(name, true) }?.id
             ?: dao.insertPerson(LoanPerson(name = name)).toInt()
     }
-    fun update(loan: Loan) { viewModelScope.launch { dao.update(loan) } }
+    fun update(loan: Loan) {
+        viewModelScope.launch {
+            dao.update(loan.copy(updatedAt = System.currentTimeMillis(), deleted = false, dirty = true))
+        }
+    }
     fun addAttachment(loanId: Int, uri: String) { viewModelScope.launch { insertAttachment(loanId, uri) } }
     private suspend fun insertAttachment(loanId: Int, uri: String) {
         val parsedUri = Uri.parse(uri)
@@ -113,7 +125,12 @@ class LoanViewModel @Inject constructor(
     }
     fun attachments(loanId: Int) = dao.getAttachments(loanId)
     fun toggleSettled(loan: Loan) { update(loan.copy(settled = !loan.settled)) }
-    fun remove(loan: Loan) { viewModelScope.launch { dao.delete(loan) } }
+    fun remove(loan: Loan) { viewModelScope.launch {
+        val updatedAt = System.currentTimeMillis()
+        dao.deleteAttachmentsForLoan(loan.id, updatedAt)
+        dao.deletePaymentsForLoan(loan.id, updatedAt)
+        dao.delete(loan.id, updatedAt)
+    } }
 }
 
 private val LentColor = Positive

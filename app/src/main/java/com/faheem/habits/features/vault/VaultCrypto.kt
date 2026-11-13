@@ -129,6 +129,27 @@ object VaultCrypto {
     fun unwrapVmk(iv: ByteArray, ciphertext: ByteArray, wrappingKey: ByteArray): ByteArray =
         decryptBytes(iv, ciphertext, wrappingKey)
 
+    /** Password-protects an exported backup independently from the Vault's account key. */
+    fun protectBackup(payload: ByteArray, password: CharArray): Triple<ByteArray, ByteArray, ByteArray> {
+        val salt = newSalt()
+        val key = deriveKey(password, salt)
+        return try {
+            val (iv, ciphertext) = encryptBytes(payload, key)
+            Triple(salt, iv, ciphertext)
+        } finally {
+            key.fill(0)
+        }
+    }
+
+    fun openBackup(salt: ByteArray, iv: ByteArray, ciphertext: ByteArray, password: CharArray): ByteArray {
+        val key = deriveKey(password, salt)
+        return try {
+            decryptBytes(iv, ciphertext, key)
+        } finally {
+            key.fill(0)
+        }
+    }
+
     fun biometricCipher(): Cipher {
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         if (!keyStore.containsAlias(BIOMETRIC_ALIAS)) {

@@ -26,6 +26,7 @@ const tables = [
   "momentum_custom_notifications",
   "momentum_habits",
 ];
+const STALE_WIPE_LOCK_MS = 10 * 60 * 1000;
 
 const json = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), {
@@ -75,25 +76,37 @@ Deno.serve(async (request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  let lockTimestamp: string | null = null;
   try {
     const { data: wipeState, error: wipeStateError } = await admin
       .from("momentum_wipe_state")
-      .select("generation")
+      .select("generation,wipe_in_progress,updated_at")
       .eq("id", 1)
       .maybeSingle();
     if (wipeStateError || !wipeState) {
       throw new Error("Apply the updated docs/supabase-schema.sql first; momentum_wipe_state is missing.");
     }
 
-    // Publish the reset before deletion so existing clients stop uploading old local rows.
-    const nextGeneration = Number(wipeState.generation) + 1;
-    const { error: updateWipeStateError } = await admin
-      .from("momentum_wipe_state")
-      .update({ generation: nextGeneration, updated_at: new Date().toISOString() })
-      .eq("id", 1);
-    if (updateWipeStateError) {
-      throw new Error(`Could not publish the device reset marker: ${updateWipeStateError.message}`);
+    const lockAge = Date.now() - Date.parse(wipeState.updated_at);
+    if (wipeState.wipe_in_progress && (!Number.isFinite(lockAge) || lockAge < STALE_WIPE_LOCK_MS)) {
+      return json(409, { error: "A project wipe is already running. Wait, then retry if it did not finish." });
     }
+
+    // Claim the lock with a compare-and-set update. Updated app and Storage
+    // policies reject user writes until the completed generation is published.
+    const lockTime = new Date().toISOString();
+    const { data: claimed, error: claimError } = await admin
+      .from("momentum_wipe_state")
+      .update({ wipe_in_progress: true, updated_at: lockTime })
+      .eq("id", 1)
+      .eq("wipe_in_progress", Boolean(wipeState.wipe_in_progress))
+      .eq("updated_at", wipeState.updated_at)
+      .select("id")
+      .maybeSingle();
+    if (claimError || !claimed) {
+      throw new Error(`Could not start the project wipe${claimError ? `: ${claimError.message}` : ". Another request may have started it."}`);
+    }
+    lockTimestamp = lockTime;
 
     let deletedRows = 0;
     for (const table of tables) {
@@ -130,14 +143,52 @@ Deno.serve(async (request) => {
       deletedObjects += batch.length;
     }
 
-    // Auth users and their sessions are intentionally left untouched.
+    // Publish the reset only after every table and storage object was cleared.
+    // Auth users and their server-side sessions remain untouched.
+    const completedAt = new Date().toISOString();
+    const { data: completed, error: completeError } = await admin
+      .from("momentum_wipe_state")
+      .update({
+        generation: Number(wipeState.generation) + 1,
+        wipe_in_progress: false,
+        updated_at: completedAt,
+      })
+      .eq("id", 1)
+      .eq("wipe_in_progress", true)
+      .eq("updated_at", lockTimestamp)
+      .select("generation")
+      .maybeSingle();
+    if (completeError || !completed) {
+      throw new Error(`Cloud data was deleted, but the reset marker could not be completed${completeError ? `: ${completeError.message}` : ". Retry the wipe."}`);
+    }
+    lockTimestamp = null;
+
     return json(200, {
       deletedRows,
       deletedObjects,
       authUsersPreserved: true,
-      wipeGeneration: nextGeneration,
+      wipeGeneration: completed.generation,
     });
   } catch (error) {
-    return json(500, { error: error instanceof Error ? error.message : "Cloud wipe failed." });
+    const message = error instanceof Error ? error.message : "Cloud wipe failed.";
+    if (lockTimestamp) {
+      // Keep writes blocked after a partial delete. Mark the completed failed
+      // attempt as stale so an admin can safely claim and retry immediately.
+      const retryableAt = new Date(Date.now() - STALE_WIPE_LOCK_MS - 1_000).toISOString();
+      const { error: recoveryError } = await admin
+        .from("momentum_wipe_state")
+        .update({ updated_at: retryableAt })
+        .eq("id", 1)
+        .eq("wipe_in_progress", true)
+        .eq("updated_at", lockTimestamp);
+      return json(500, {
+        error: message,
+        localDataPreserved: true,
+        cloudCleanupMayBePartial: true,
+        retryAllowed: !recoveryError,
+        staleLockRecoveryRequired: Boolean(recoveryError),
+      });
+    }
+    return json(500, { error: message });
   }
 });

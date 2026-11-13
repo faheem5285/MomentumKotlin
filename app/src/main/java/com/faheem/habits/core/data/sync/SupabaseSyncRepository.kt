@@ -11,6 +11,7 @@
 package com.faheem.habits.core.data.sync
 
 import android.content.Context
+import androidx.room.withTransaction
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
@@ -27,11 +28,18 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeParseException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 
 private const val SYNC_EPOCH = "1970-01-01T00:00:00Z"
 private const val PULL_PAGE = 200
+private const val PUSH_BATCH = 100
+private val syncRunMutex = Mutex()
+private suspend fun <T> withSyncLock(block: suspend () -> T): T =
+    syncRunMutex.withLock { withContext(Dispatchers.IO) { block() } }
+
 private val allCloudTables = listOf(
     "momentum_habits", "momentum_completions", "momentum_habit_skips", "momentum_habit_reminders",
     "momentum_expenses", "momentum_category_budgets", "momentum_loan_people", "momentum_loans",
@@ -49,8 +57,8 @@ class SupabaseSyncRepository(
     suspend fun syncVaultEntries(
         accountKey: ByteArray? = null,
         fullPull: Boolean = false
-    ): Int = withContext(Dispatchers.IO) {
-        if (ProjectWipeManager.applyIfNeeded(context)) return@withContext 0
+    ): Int = withSyncLock {
+        if (ProjectWipeManager.applyIfNeeded(context) != ProjectWipeManager.CheckResult.UNCHANGED) return@withSyncLock 0
         val table = "momentum_vault_entries"
         val stateDao = db.syncStateDao()
         val old = stateDao.get(table) ?: SyncState(table)
@@ -58,9 +66,13 @@ class SupabaseSyncRepository(
         try {
             val records = db.vaultDao().getAllForSync()
             val dirty = records.filter { it.dirty && (accountKey == null || it.matchesVaultKey(accountKey)) }
-            val pushed = client.upsert(table, buildJsonArray { dirty.forEach { add(it.toCloud(device)) } })
-            if (dirty.isNotEmpty()) db.vaultDao().markClean(dirty.map { it.uuid })
-            var cursor = if (fullPull) SYNC_EPOCH else old.cursor.ifBlank { SYNC_EPOCH }
+            val payload = dirty.map { it.toCloud(device) }
+            val pushed = pushAndMarkClean(table, payload, db.vaultDao()::markClean)
+            var cursor = if (fullPull) {
+                SyncCursor(SYNC_EPOCH).encode()
+            } else {
+                old.cursor.ifBlank { SyncCursor(SYNC_EPOCH).encode() }
+            }
             var pulled = 0
             while (true) {
                 val batch = client.pull(table, cursor, PULL_PAGE)
@@ -68,7 +80,7 @@ class SupabaseSyncRepository(
                 val previousCursor = cursor
                 batch.forEach { element ->
                     val row = element.jsonObject
-                    cursor = maxOf(cursor, row.string("updated_at"))
+                    cursor = SyncCursor(row.string("updated_at"), row.string("id")).encode()
                     applyVault(row)
                 }
                 pulled += batch.size
@@ -77,7 +89,7 @@ class SupabaseSyncRepository(
             stateDao.upsert(
                 old.copy(
                     cursor = cursor,
-                    pendingCount = 0,
+                    pendingCount = db.vaultDao().getAllForSync().count { it.dirty },
                     lastSyncEpochMillis = System.currentTimeMillis(),
                     lastError = null
                 )
@@ -89,10 +101,15 @@ class SupabaseSyncRepository(
         }
     }
 
-    suspend fun sync(): SyncRunResult = withContext(Dispatchers.IO) {
-        if (ProjectWipeManager.applyIfNeeded(context)) return@withContext SyncRunResult()
+    suspend fun sync(): SyncRunResult = withSyncLock {
+        when (ProjectWipeManager.applyIfNeeded(context)) {
+            ProjectWipeManager.CheckResult.IN_PROGRESS ->
+                return@withSyncLock SyncRunResult(projectWipeInProgress = true)
+            ProjectWipeManager.CheckResult.APPLIED -> return@withSyncLock SyncRunResult()
+            ProjectWipeManager.CheckResult.UNCHANGED -> Unit
+        }
         val paused = db.syncStateDao().get("momentum_vault_entries")?.paused == true
-        if (paused) return@withContext SyncRunResult()
+        if (paused) return@withSyncLock SyncRunResult()
         createFirstSyncBackup()
         val device = DeviceIdentity.get(context)
         var pushed = 0
@@ -102,7 +119,9 @@ class SupabaseSyncRepository(
         suspend fun attempt(table: String? = null, block: suspend () -> Unit) {
             try {
                 block()
-            } catch (failure: Throwable) {
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
                 failures += failure
                 if (table != null) {
                     val stateDao = db.syncStateDao()
@@ -120,9 +139,8 @@ class SupabaseSyncRepository(
         ) {
             val stateDao = db.syncStateDao()
             val old = stateDao.get(table) ?: SyncState(table)
-            pushed += client.upsert(table, buildJsonArray { rows.forEach { add(it) } })
-            if (uuids.isNotEmpty()) markClean(uuids)
-            var cursor = old.cursor
+            pushed += pushAndMarkClean(table, rows, uuids.toSet(), markClean)
+            var cursor = old.cursor.ifBlank { SyncCursor(SYNC_EPOCH).encode() }
             var tableConflicts = 0
             var tablePulled = 0
             while (true) {
@@ -131,7 +149,7 @@ class SupabaseSyncRepository(
                 val previousCursor = cursor
                 batch.forEach { element ->
                     val json = element.jsonObject
-                    cursor = maxOf(cursor, json.string("updated_at"))
+                    cursor = SyncCursor(json.string("updated_at"), json.string("id")).encode()
                     tableConflicts += apply(json)
                 }
                 tablePulled += batch.size
@@ -139,7 +157,7 @@ class SupabaseSyncRepository(
             }
             conflicts += tableConflicts
             pulled += tablePulled
-            stateDao.upsert(old.copy(cursor = cursor, pendingCount = 0,
+            stateDao.upsert(old.copy(cursor = cursor, pendingCount = dirtyCount(table),
                 conflictCount = old.conflictCount + tableConflicts, lastSyncEpochMillis = System.currentTimeMillis(),
                 lastError = null))
         }
@@ -253,6 +271,9 @@ class SupabaseSyncRepository(
         }
         attempt { fileStorage.restoreMissingFiles() }
         failures.firstOrNull()?.let { throw it }
+        val statusDao = db.syncStateDao()
+        val status = statusDao.get(SYNC_STATUS_TABLE) ?: SyncState(SYNC_STATUS_TABLE)
+        statusDao.upsert(status.copy(lastSyncEpochMillis = System.currentTimeMillis(), lastError = null))
         SyncRunResult(pushed, pulled, conflicts, pending = 0)
     }
 
@@ -439,9 +460,94 @@ class SupabaseSyncRepository(
         val marker = File(context.filesDir, "sync-first-local-backup.json")
         if (!marker.exists()) marker.outputStream().use { it.write(MomentumBackup.exportBytes(context)) }
     }
+
+    private suspend fun pushAndMarkClean(
+        table: String,
+        rows: List<JsonObject>,
+        markClean: suspend (List<String>) -> Unit
+    ): Int = pushAndMarkClean(table, rows, rows.map { it.string("id") }.toSet(), markClean)
+
+    private suspend fun pushAndMarkClean(
+        table: String,
+        rows: List<JsonObject>,
+        expectedIds: Set<String>,
+        markClean: suspend (List<String>) -> Unit
+    ): Int {
+        var pushed = 0
+        rows.chunked(PUSH_BATCH).forEach { batch ->
+            pushed += client.upsert(table, buildJsonArray { batch.forEach { add(it) } })
+            markCleanIfUnchanged(table, batch, expectedIds, markClean)
+        }
+        return pushed
+    }
+
+    private suspend fun markCleanIfUnchanged(
+        cloudTable: String,
+        rows: List<JsonObject>,
+        expectedIds: Set<String>,
+        markClean: suspend (List<String>) -> Unit
+    ) {
+        val localTable = localTableFor(cloudTable)
+        db.withTransaction {
+            val sqlDb = db.openHelper.writableDatabase
+            val unchangedIds = rows.mapNotNull { row ->
+                val uuid = row.string("id")
+                val updatedAt = row.instantMillis("updated_at")
+                if (uuid !in expectedIds) return@mapNotNull null
+                sqlDb.query(
+                    "SELECT 1 FROM `$localTable` WHERE uuid = ? AND updatedAt = ? LIMIT 1",
+                    arrayOf(uuid, updatedAt.toString())
+                ).use { cursor -> uuid.takeIf { cursor.moveToFirst() } }
+            }
+            if (unchangedIds.isNotEmpty()) markClean(unchangedIds)
+        }
+    }
+
+    private suspend fun dirtyCount(cloudTable: String): Int {
+        val localTable = localTableFor(cloudTable)
+        return db.openHelper.readableDatabase.query(
+            "SELECT COUNT(*) FROM `$localTable` WHERE dirty = 1"
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else 0 }
+    }
+
+    private fun localTableFor(cloudTable: String): String = when (cloudTable) {
+        "momentum_habits" -> "habits"
+        "momentum_completions" -> "completions"
+        "momentum_habit_skips" -> "habit_skips"
+        "momentum_habit_reminders" -> "habit_reminders"
+        "momentum_expenses" -> "expenses"
+        "momentum_category_budgets" -> "category_budgets"
+        "momentum_loan_people" -> "loan_people"
+        "momentum_loans" -> "loans"
+        "momentum_loan_attachments" -> "loan_attachments"
+        "momentum_loan_payments" -> "loan_payments"
+        "momentum_contacts" -> "contacts"
+        "momentum_files" -> "library_files"
+        "momentum_todos" -> "todo_items"
+        "momentum_life_rules" -> "life_rules"
+        "momentum_life_rule_files" -> "life_rule_files"
+        "momentum_custom_notifications" -> "custom_notifications"
+        "momentum_vault_entries" -> "vault_entries"
+        else -> error("Unsupported sync table: $cloudTable")
+    }
 }
 
 object SupabaseSyncScheduler {
+    private val dirtyLocalTables = listOf(
+        "habits", "completions", "habit_skips", "habit_reminders", "expenses", "category_budgets",
+        "loan_people", "loans", "loan_attachments", "loan_payments", "contacts", "library_files",
+        "todo_items", "life_rules", "life_rule_files", "custom_notifications", "vault_entries"
+    )
+
+    fun hasDirtyChanges(context: Context): Boolean {
+        val database = AppDatabase.get(context.applicationContext)
+        val sqlDb = database.openHelper.readableDatabase
+        return dirtyLocalTables.any { table ->
+            sqlDb.query("SELECT 1 FROM `$table` WHERE dirty = 1 LIMIT 1")
+                .use { it.moveToFirst() }
+        }
+    }
+
     fun enqueue(context: Context) {
         val request = OneTimeWorkRequestBuilder<SupabaseSyncWorker>()
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())

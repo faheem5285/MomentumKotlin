@@ -2,6 +2,7 @@ package com.faheem.habits.core.data.supabase
 
 import android.content.Context
 import com.faheem.habits.BuildConfig
+import com.faheem.habits.core.data.AppDatabase
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
 import io.ktor.client.request.post
@@ -17,6 +18,10 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 enum class SessionRestoreResult { AUTHENTICATED, NO_SESSION, TEMPORARY_FAILURE }
 
@@ -27,6 +32,8 @@ enum class SessionRestoreResult { AUTHENTICATED, NO_SESSION, TEMPORARY_FAILURE }
 object SupabaseAuthApi {
     private val http = HttpClient(Android)
     private val json = Json { ignoreUnknownKeys = true }
+    private val mutableSignOutEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val signOutEvents = mutableSignOutEvents.asSharedFlow()
 
     @Serializable
     private data class Credentials(val email: String, val password: String)
@@ -50,7 +57,11 @@ object SupabaseAuthApi {
     )
 
     @Serializable
-    private data class AuthUser(val email: String? = null, val user_metadata: JsonObject? = null)
+    private data class AuthUser(
+        val id: String? = null,
+        val email: String? = null,
+        val user_metadata: JsonObject? = null
+    )
 
     @Volatile
     private var accessToken: String? = null
@@ -68,10 +79,12 @@ object SupabaseAuthApi {
         val name = session.user?.user_metadata?.get("display_name")?.jsonPrimitive?.contentOrNull
             ?.trim()?.take(80).orEmpty()
         val email = session.user?.email?.trim()?.take(160).orEmpty()
-        if (name.isNotBlank() || email.isNotBlank()) {
+        val userId = session.user?.id?.trim().orEmpty()
+        if (name.isNotBlank() || email.isNotBlank() || userId.isNotBlank()) {
             val editor = context.getSharedPreferences("account_profile", Context.MODE_PRIVATE).edit()
             if (name.isNotBlank()) editor.putString("display_name", name)
             if (email.isNotBlank()) editor.putString("email", email)
+            if (userId.isNotBlank()) editor.putString("user_id", userId)
             editor.apply()
         }
     }
@@ -97,6 +110,7 @@ object SupabaseAuthApi {
     suspend fun signIn(context: Context, email: String, password: String) {
         val body = request("token?grant_type=password", json.encodeToString(Credentials(email, password)))
         val session = json.decodeFromString<AuthResponse>(body)
+        activateAccountDatabase(context.applicationContext, session)
         rememberSession(session)
         cacheProfile(context.applicationContext, session)
         val refreshToken = session.refresh_token
@@ -115,6 +129,7 @@ object SupabaseAuthApi {
                 json.encodeToString(RefreshCredentials(refreshToken))
             )
             val session = json.decodeFromString<AuthResponse>(body)
+            activateAccountDatabase(context.applicationContext, session)
             rememberSession(session)
             cacheProfile(context.applicationContext, session)
             val updatedToken = session.refresh_token
@@ -143,6 +158,42 @@ object SupabaseAuthApi {
         return when (restoreSession(context.applicationContext)) {
             SessionRestoreResult.AUTHENTICATED -> accessToken
             else -> null
+        }
+    }
+
+    fun currentUserId(context: Context): String? = context.applicationContext
+        .getSharedPreferences("account_profile", Context.MODE_PRIVATE)
+        .getString("user_id", null)
+
+    private suspend fun activateAccountDatabase(context: Context, session: AuthResponse) = withContext(Dispatchers.IO) {
+        val userId = session.user?.id?.takeIf(String::isNotBlank)
+            ?: error("Supabase did not return the signed-in account ID.")
+        AppDatabase.activateAccount(context, userId)
+    }
+
+    /** Revokes the Supabase session when online and always clears this device's saved session. */
+    suspend fun signOut(context: Context) {
+        val appContext = context.applicationContext
+        val token = runCatching { getAccessToken(appContext) }.getOrNull()
+        try {
+            if (!token.isNullOrBlank() && SupabaseProvider.isConfigured) {
+                val baseUrl = BuildConfig.SUPABASE_URL.trim().trimEnd('/')
+                    .removeSuffix("/rest/v1")
+                    .removeSuffix("/auth/v1")
+                    .trimEnd('/')
+                runCatching {
+                    http.post("$baseUrl/auth/v1/logout") {
+                        header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+                        header("Authorization", "Bearer $token")
+                    }
+                }
+            }
+        } finally {
+            SecureTokenStore.clear(appContext)
+            clearInMemorySession()
+            appContext.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
+                .edit().clear().apply()
+            mutableSignOutEvents.tryEmit(Unit)
         }
     }
 

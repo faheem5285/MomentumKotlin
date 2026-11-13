@@ -360,7 +360,8 @@ object HabitReminderScheduler {
             )
         }
         if (reminder.dateEpochDay != null) {
-            dao.updateReminder(reminder.copy(enabled = false))
+            val updatedAt = System.currentTimeMillis()
+            dao.updateReminder(reminder.copy(enabled = false, updatedAt = updatedAt, dirty = true))
             cancel(context, reminder.id)
         } else schedule(context, reminder)
     }
@@ -462,7 +463,14 @@ object ToDoReminderScheduler {
                 "To-do reminders"
             )
         }
-        dao.update(item.copy(reminderHour = null, reminderMinute = null))
+        dao.update(
+            item.copy(
+                reminderHour = null,
+                reminderMinute = null,
+                updatedAt = System.currentTimeMillis(),
+                dirty = true
+            )
+        )
         cancel(context, id)
     }
 
@@ -478,7 +486,14 @@ object ToDoReminderScheduler {
     suspend fun skip(context: Context, id: Int) {
         val dao = AppDatabase.get(context).toDoDao()
         val item = dao.getById(id) ?: return
-        dao.update(item.copy(reminderHour = null, reminderMinute = null))
+        dao.update(
+            item.copy(
+                reminderHour = null,
+                reminderMinute = null,
+                updatedAt = System.currentTimeMillis(),
+                dirty = true
+            )
+        )
         cancel(context, id)
     }
 }
@@ -543,7 +558,15 @@ class MomentumReminderReceiver : BroadcastReceiver() {
                                     ACTION_DONE -> {
                                         val dao = AppDatabase.get(context).toDoDao()
                                         dao.getById(todoId)?.let {
-                                            dao.update(it.copy(completed = true, reminderHour = null, reminderMinute = null))
+                                            dao.update(
+                                                it.copy(
+                                                    completed = true,
+                                                    reminderHour = null,
+                                                    reminderMinute = null,
+                                                    updatedAt = System.currentTimeMillis(),
+                                                    dirty = true
+                                                )
+                                            )
                                         }
                                         ToDoReminderScheduler.cancel(context, todoId)
                                     }

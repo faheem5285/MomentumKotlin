@@ -100,7 +100,11 @@ data class HomeState(
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private val db = AppDatabase.get(app)
     private val vaultReadableCount = kotlinx.coroutines.flow.callbackFlow {
-        val prefs = app.getSharedPreferences("momentum_vault", Context.MODE_PRIVATE)
+        val accountId = app.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
+            .getString("user_id", null)
+            ?.takeIf(String::isNotBlank)
+            ?: "unlinked"
+        val prefs = app.getSharedPreferences("momentum_vault_$accountId", Context.MODE_PRIVATE)
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key == "readable_records") trySend(prefs.getInt("readable_records", -1))
         }
@@ -280,7 +284,7 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
         }
     }
 
-    val tiles = remember(s, insights, screenText, ctx) { listOf(
+    val tiles = remember(s, insights, screenText) { listOf(
         TileSpec(
             "Habits",
             if (s.habitsTotal == 0) "Start your first habit" else "${s.habitsDone} of ${s.habitsTotal} done today",
@@ -384,9 +388,10 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
                 )
             }
         )
-    ).filter { spec -> spec.module?.let { isModuleVisible(ctx, it) } ?: true } }
+    ) }
+    val visibleTiles = remember(tiles, ctx) { tiles.filter { spec -> spec.module?.let { isModuleVisible(ctx, it) } ?: true } }
     val batteryLevel = insights.batteryLevel
-    val deviceTools = remember(insights, ctx) { listOf(
+    val deviceTools = remember(insights) { listOf(
         TileSpec(
             "Battery",
             insights.batteryLevel?.let { "$it% right now" } ?: "Live charging animation",
@@ -403,10 +408,11 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
             AppModule.Network.icon, AppModule.Network.gradient, AppModule.Network,
             chart = if (insights.networkWeek.any { it > 0f }) TileChart.Trend(insights.networkWeek) else null
         )
-    ).filter { spec -> spec.module?.let { isModuleVisible(ctx, it) } ?: true } }
+    ) }
+    val visibleDeviceTools = remember(deviceTools, ctx) { deviceTools.filter { spec -> spec.module?.let { isModuleVisible(ctx, it) } ?: true } }
     val settingsTile = TileSpec("Settings", "Manage modules and preferences", AppModule.Settings.icon, AppModule.Settings.gradient, AppModule.Settings)
 
-    val rows = tiles.chunked(2)
+    val rows = visibleTiles.chunked(2)
     val reduce = LocalReduceEffects.current
     var entered by remember { mutableStateOf(reduce) }
     val enter = animateFloatAsState(
@@ -450,7 +456,7 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = viewModel()) {
                     Modifier.homeEntrance(enter, rows.size + 2),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    deviceTools.forEach { spec ->
+                    visibleDeviceTools.forEach { spec ->
                         DeviceRow(spec) { spec.module?.let(onOpen) }
                     }
                 }

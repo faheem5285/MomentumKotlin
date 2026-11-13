@@ -25,7 +25,7 @@
 - Phase 8 — sync design and safety substrate: Supabase RLS schema, offline-first
   design, Keystore-backed session access tokens, Room sync state, deterministic
   conflict ordering, first-sync backup, WorkManager retry scheduling, and
-  ciphertext-only vault sync path.
+  encrypted Vault entry sync with a separate account-recovery key.
 - Phase 9 — quality and repository foundations: CI checks, Dependabot,
   current project documentation, Compose UI smoke-test scaffolding, migration
   validation through Room v13, explicit Android SDK package setup in CI, and
@@ -35,9 +35,11 @@
 
 - Physical-device verification of migrations, SAF permissions, weekly backup
   retention, import failure rollback, and Android background behavior.
-- Vault export/import recovery flow and testing with a user-entered password.
+- Physical-device testing of encrypted Vault export/import recovery with a
+  user-entered password.
 - Refactoring screens over 400 lines after data-safety work is stable.
-- Supabase synchronization and encrypted end-to-end vault sync.
+- Configured-project Supabase integration testing and physical-device
+  verification of automatic sync and encrypted Vault sync.
 - Remaining Phase 2 architecture migration listed in
   [phase-2-architecture.md](./phase-2-architecture.md).
 - Phase 4 settings controls, feature-card migration, predictive back, haptic
@@ -46,7 +48,8 @@
 - Phase 5 per-reminder sound/vibration, evening nudges, vendor-specific
   settings deep links, and physical-device delivery verification remain
   deferred; see [phase-5-reminders.md](./phase-5-reminders.md).
-- Phase 6 full encrypted import, configurable lock timeout UI, a complete
+- Phase 6 encrypted export/import paths are implemented but still need
+  physical-device recovery verification. Configurable lock timeout, a complete
   change-password screen, and rooted-device testing remain deferred; see
   [vault-security.md](./vault-security.md).
 - Phase 7 UI wiring remains deferred for the next slice: habit freeze controls,
@@ -54,9 +57,10 @@
   loan reminder actions, file thumbnail/tag management, screen-time limit
   notifications, global search, app-wide biometric lock, and About/settings
   localization.
-- Phase 8 non-vault adapters, sync Settings UI, local-change debounce, merge
-  result UI, configured-project integration tests, and complete cloud deletion
-  remain deferred; see [phase-8-supabase-sync.md](./phase-8-supabase-sync.md).
+- Phase 8 automatic non-vault/Vault adapters and local-change debounce are
+  implemented. A per-run merge summary, configured-project integration tests,
+  and physical-device sync verification remain deferred; see
+  [phase-8-supabase-sync.md](./phase-8-supabase-sync.md).
 - Phase 9 physical-device UI/accessibility verification, full isolated
   end-to-end Compose assertions, and repository metadata cleanup remain
   deferred; see [phase-9-quality-ci-repo.md](./phase-9-quality-ci-repo.md).

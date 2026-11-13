@@ -33,8 +33,7 @@ class MomentumApplication : Application() {
             PeriodicWorkRequestBuilder<UsageLimitWorker>(15, TimeUnit.MINUTES).build()
         )
 
-        // Room is the source of truth. Any committed record change schedules a
-        // debounced, network constrained sync; WorkManager retries while offline.
+        // Only dirty local records schedule work; sync-applied Room writes are clean.
         AppDatabase.get(this).invalidationTracker.addObserver(
             object : androidx.room.InvalidationTracker.Observer(
                 "habits", "completions", "habit_skips", "habit_reminders", "expenses",
@@ -47,11 +46,18 @@ class MomentumApplication : Application() {
                         pendingSync?.cancel()
                         pendingSync = syncScope.launch {
                             delay(750)
-                            SupabaseSyncScheduler.enqueue(applicationContext)
+                            if (SupabaseSyncScheduler.hasDirtyChanges(applicationContext)) {
+                                SupabaseSyncScheduler.enqueue(applicationContext)
+                            }
                         }
                     }
                 }
             }
         )
+        syncScope.launch {
+            if (SupabaseSyncScheduler.hasDirtyChanges(applicationContext)) {
+                SupabaseSyncScheduler.enqueue(applicationContext)
+            }
+        }
     }
 }

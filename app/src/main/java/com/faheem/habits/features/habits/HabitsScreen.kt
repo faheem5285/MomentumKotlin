@@ -62,15 +62,20 @@ class HabitViewModel(app: Application) : AndroidViewModel(app) {
     fun saveWithReminders(habit: Habit, drafts: List<HabitReminderDraft>) {
         if (habit.name.isBlank()) return
         viewModelScope.launch {
+            val changed = habit.copy(
+                updatedAt = System.currentTimeMillis(),
+                deleted = false,
+                dirty = true
+            )
             val id = if (habit.id == 0) {
-                dao.insertHabit(habit.copy(createdEpochDay = today())).toInt()
+                dao.insertHabit(changed.copy(createdEpochDay = today())).toInt()
             } else {
-                dao.updateHabit(habit)
-                dao.getRemindersForHabit(habit.id).forEach { old ->
+                dao.updateHabit(changed)
+                dao.getRemindersForHabit(changed.id).forEach { old ->
                     HabitReminderScheduler.cancel(getApplication(), old.id)
-                    dao.deleteReminder(old)
+                    dao.deleteReminder(old.id)
                 }
-                habit.id
+                changed.id
             }
             if (drafts.isNotEmpty()) {
                 if (!MomentumNotificationSettings.masterEnabled(getApplication())) MomentumNotificationSettings.setMasterEnabled(getApplication(), true)
@@ -92,26 +97,41 @@ class HabitViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun update(habit: Habit) {
-        viewModelScope.launch { dao.updateHabit(habit) }
+        viewModelScope.launch {
+            dao.updateHabit(habit.copy(updatedAt = System.currentTimeMillis(), deleted = false, dirty = true))
+        }
     }
 
     fun toggle(item: HabitUi, day: Long) {
         viewModelScope.launch {
             if (day in item.days) dao.deleteCompletion(item.habit.id, day)
-            else dao.insertCompletion(
-                Completion(
+            else {
+                val existing = dao.getCompletion(item.habit.id, day)
+                val completion = existing?.copy(
+                    deleted = false,
+                    dirty = true,
+                    updatedAt = System.currentTimeMillis()
+                ) ?: Completion(
                     habitId = item.habit.id,
                     epochDay = day,
                     quantity = item.habit.targetQuantity,
                     durationSeconds = item.habit.timerMinutes * 60L,
                     completedAtEpochMillis = System.currentTimeMillis()
                 )
-            )
+                dao.upsertCompletion(completion)
+            }
         }
     }
 
     fun skipDay(habit: Habit, day: Long) {
-        viewModelScope.launch { dao.upsertSkip(HabitSkip(habit.id, day)) }
+        viewModelScope.launch {
+            val existing = dao.getSkip(habit.id, day)
+            dao.upsertSkip(existing?.copy(
+                deleted = false,
+                dirty = true,
+                updatedAt = System.currentTimeMillis()
+            ) ?: HabitSkip(habit.id, day))
+        }
     }
 
     fun unskipDay(habit: Habit, day: Long) {
@@ -120,7 +140,14 @@ class HabitViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setArchived(habit: Habit, archived: Boolean) {
         viewModelScope.launch {
-            dao.updateHabit(habit.copy(archived = archived))
+            dao.updateHabit(
+                habit.copy(
+                    archived = archived,
+                    updatedAt = System.currentTimeMillis(),
+                    deleted = false,
+                    dirty = true
+                )
+            )
             dao.getRemindersForHabit(habit.id).forEach { reminder ->
                 if (archived) HabitReminderScheduler.cancel(getApplication(), reminder.id)
                 else HabitReminderScheduler.schedule(getApplication(), reminder)
@@ -130,8 +157,12 @@ class HabitViewModel(app: Application) : AndroidViewModel(app) {
 
     fun delete(habit: Habit) {
         viewModelScope.launch {
+            val updatedAt = System.currentTimeMillis()
             dao.getRemindersForHabit(habit.id).forEach { HabitReminderScheduler.cancel(getApplication(), it.id) }
-            dao.deleteHabit(habit)
+            dao.deleteCompletionsForHabit(habit.id, updatedAt)
+            dao.deleteSkipsForHabit(habit.id, updatedAt)
+            dao.deleteRemindersForHabit(habit.id, updatedAt)
+            dao.deleteHabit(habit.id, updatedAt)
         }
     }
 
@@ -146,16 +177,24 @@ class HabitViewModel(app: Application) : AndroidViewModel(app) {
 
     fun updateReminder(reminder: HabitReminder) {
         viewModelScope.launch {
-            dao.updateReminder(reminder)
-            if (dao.getHabit(reminder.habitId)?.archived == true) HabitReminderScheduler.cancel(getApplication(), reminder.id)
-            else HabitReminderScheduler.schedule(getApplication(), reminder)
+            val changed = reminder.copy(
+                updatedAt = System.currentTimeMillis(),
+                deleted = false,
+                dirty = true
+            )
+            dao.updateReminder(changed)
+            if (dao.getHabit(changed.habitId)?.archived == true) {
+                HabitReminderScheduler.cancel(getApplication(), changed.id)
+            } else {
+                HabitReminderScheduler.schedule(getApplication(), changed)
+            }
         }
     }
 
     fun deleteReminder(reminder: HabitReminder) {
         viewModelScope.launch {
             HabitReminderScheduler.cancel(getApplication(), reminder.id)
-            dao.deleteReminder(reminder)
+            dao.deleteReminder(reminder.id)
         }
     }
 }

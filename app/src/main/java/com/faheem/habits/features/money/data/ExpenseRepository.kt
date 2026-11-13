@@ -26,5 +26,5 @@ class ExpenseRepository @Inject constructor(
                 epochDay = epochDay
             )
         )
-    suspend fun delete(expense: Expense) = dao.delete(expense)
+    suspend fun delete(expense: Expense) = dao.delete(expense.id)
 }

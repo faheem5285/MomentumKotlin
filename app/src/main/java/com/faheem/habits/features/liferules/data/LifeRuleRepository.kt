@@ -17,7 +17,7 @@ class LifeRuleRepository @Inject constructor(
         return rule.id
     }
 
-    suspend fun delete(rule: LifeRule) = dao.delete(rule)
+    suspend fun delete(rule: LifeRule) = dao.delete(rule.id)
     suspend fun addFile(file: LifeRuleFile) = dao.insertFile(file)
     suspend fun deleteFile(file: LifeRuleFile) = dao.markFileDeleted(file.id, System.currentTimeMillis())
     fun files(ruleId: Int): Flow<List<LifeRuleFile>> = dao.getFiles(ruleId)

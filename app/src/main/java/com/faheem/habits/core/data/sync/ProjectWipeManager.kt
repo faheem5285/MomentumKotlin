@@ -24,22 +24,25 @@ object ProjectWipeManager {
     private val _wipeEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val wipeEvents = _wipeEvents.asSharedFlow()
 
+    enum class CheckResult { UNCHANGED, IN_PROGRESS, APPLIED }
+
     suspend fun applyIfNeeded(
         context: Context,
         clearSettings: suspend () -> Unit = {}
-    ): Boolean = mutex.withLock {
+    ): CheckResult = mutex.withLock {
         val app = context.applicationContext
         val remote = SupabaseRestClient(app).projectWipeState()
+        if (remote.wipeInProgress) return@withLock CheckResult.IN_PROGRESS
         val statePrefs = app.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
         val savedGeneration = statePrefs.getLong(APPLIED_GENERATION, Long.MIN_VALUE)
 
         if (savedGeneration != Long.MIN_VALUE && remote.generation <= savedGeneration) {
-            return@withLock false
+            return@withLock CheckResult.UNCHANGED
         }
 
         if (remote.generation == 0L) {
             statePrefs.edit().putLong(APPLIED_GENERATION, 0L).commit()
-            return@withLock false
+            return@withLock CheckResult.UNCHANGED
         }
 
         // A clean install made after the wipe has no old local data to erase.
@@ -48,7 +51,7 @@ object ProjectWipeManager {
             val installedAt = app.packageManager.getPackageInfo(app.packageName, 0).firstInstallTime
             if (remote.updatedAtEpochMillis <= installedAt) {
                 statePrefs.edit().putLong(APPLIED_GENERATION, remote.generation).commit()
-                return@withLock false
+                return@withLock CheckResult.UNCHANGED
             }
         }
 
@@ -70,7 +73,7 @@ object ProjectWipeManager {
             runCatching { MomentumReminderScheduler.scheduleAll(app) }
         }
         _wipeEvents.tryEmit(Unit)
-        true
+        CheckResult.APPLIED
     }
 
     private fun clearSharedPreferences(context: Context, preserve: Set<String>) {

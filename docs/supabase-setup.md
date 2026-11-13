@@ -1,7 +1,8 @@
 # Supabase setup for Momentum
 
-This repository is prepared to use Supabase. Room remains the source of truth
-and sync is opt-in. Read [sync-design.md](./sync-design.md) before applying
+This repository uses Supabase for automatic sync after local record changes
+when a user account is connected. Room remains the source of truth. Read
+[sync-design.md](./sync-design.md) before applying
 the paste-ready schema in [supabase-schema.sql](./supabase-schema.sql).
 The schema also creates a private `momentum-files` Storage bucket for file contents.
 
@@ -42,13 +43,20 @@ make the bucket public.
 
 The Supabase screen's **Delete all users’ cloud data** action clears Momentum
 sync tables and every object in the private `momentum-files` bucket. It never
-deletes `auth.users` or passwords. A reset generation tells updated app
-installations to clear their local database, preferences, and app-private
-files and sign out the local session when they next connect and open the app.
+deletes `auth.users` or server-side sessions. A reset generation tells updated
+app installations to clear their local database, preferences, and app-private
+files and remove their local session when they next check the marker.
 Offline devices are cleared only after reconnecting and opening the updated
 app. Android-owned usage history and OS permission grants are outside the
 app's control. This operation is project wide and cannot be authorized by the
-mobile publishable key alone.
+mobile publishable key alone. The updated schema pauses authenticated app writes
+through RLS while cleanup is running. The reset generation is advanced only
+after all table rows and storage objects have been deleted successfully. If a
+cleanup request fails, this device keeps its local data; cloud cleanup may be
+partial and the write lock stays active, so fix the reported issue and retry.
+The failed attempt leaves the lock ready for a safe retry. If the function is
+terminated before it can report the failure, retry after the 10-minute
+stale-lock window.
 Update every device to a build containing the wipe-generation check before
 running a wipe; older app versions cannot clear their local data and may sync
 it back to Supabase.
@@ -109,7 +117,10 @@ and reconnects to the project.
 - Supabase Auth and PostgREST client dependencies are included.
 - The app has Internet permission.
 - A central client provider is included.
-- The sync contract, RLS schema, and vault ciphertext-only table are documented.
+- Vault entry rows contain ciphertext and nonce. The separate
+  `momentum_vault_keys.key_material` table stores a Base64-encoded account
+  recovery key under per-user RLS; this does not provide end-to-end encryption
+  against the Supabase project administrator. See [vault-security.md](./vault-security.md).
 - All Room records are synchronized after authentication. File metadata is
   stored in Postgres and file bytes are stored in the private Storage bucket.
 - App records are not uploaded successfully until the schema/policies have

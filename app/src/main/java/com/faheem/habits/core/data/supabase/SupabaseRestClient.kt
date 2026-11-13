@@ -26,6 +26,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.put
 import com.faheem.habits.features.vault.VaultCrypto
+import com.faheem.habits.core.data.sync.SyncCursor
 import java.time.Instant
 
 class SupabaseRestClient(
@@ -33,6 +34,7 @@ class SupabaseRestClient(
     private val http: HttpClient = sharedSupabaseHttpClient
 ) {
     private val json = Json { ignoreUnknownKeys = true }
+    private val storageScanLimit = 5_000
 
     suspend fun upsert(table: String, rows: JsonArray): Int {
         if (rows.isEmpty()) return 0
@@ -41,28 +43,32 @@ class SupabaseRestClient(
             header("Prefer", "resolution=merge-duplicates,return=minimal")
             setBody(rows.toString())
         }
-        check(response.status == HttpStatusCode.Created || response.status == HttpStatusCode.OK) {
-            "Supabase push failed (${response.status.value}): ${response.bodyAsText().take(500)}"
-        }
+        response.requireStatus(setOf(HttpStatusCode.Created, HttpStatusCode.OK), "Supabase push failed")
         return rows.size
     }
 
     suspend fun pull(table: String, cursor: String, limit: Int = 200): List<JsonElement> {
         val token = requireToken()
+        val position = SyncCursor.decode(cursor)
         val response = http.get {
             url("${baseUrl()}/rest/v1/$table")
             header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
             header("Authorization", "Bearer $token")
             url {
                 parameters.append("select", "*")
-                parameters.append("updated_at", "gt.$cursor")
-                parameters.append("order", "updated_at.asc")
+                if (position.id.isBlank()) {
+                    parameters.append("updated_at", "gte.${position.updatedAt}")
+                } else {
+                    parameters.append(
+                        "or",
+                        "(updated_at.gt.${position.updatedAt},and(updated_at.eq.${position.updatedAt},id.gt.${position.id}))"
+                    )
+                }
+                parameters.append("order", "updated_at.asc,id.asc")
                 parameters.append("limit", limit.toString())
             }
         }
-        check(response.status == HttpStatusCode.OK) {
-            "Supabase pull failed (${response.status.value}): ${response.bodyAsText().take(500)}"
-        }
+        response.requireStatus(setOf(HttpStatusCode.OK), "Supabase pull failed")
         return json.parseToJsonElement(response.bodyAsText()).jsonArray
     }
 
@@ -80,6 +86,25 @@ class SupabaseRestClient(
     }
 
     /** Deletes cloud records and file objects for every user through the protected Edge Function. */
+    suspend fun isCurrentUserAdmin(): Boolean {
+        val token = SupabaseAuthApi.getAccessToken(context) ?: return false
+        val response = http.get {
+            url("${baseUrl()}/auth/v1/user")
+            header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+            header("Authorization", "Bearer $token")
+        }
+        if (response.status != HttpStatusCode.OK) return false
+
+        val user = runCatching { json.parseToJsonElement(response.bodyAsText()).jsonObject }
+            .getOrNull() ?: return false
+        val appMetadata = user["app_metadata"]?.jsonObject ?: return false
+        val singleRole = appMetadata["role"]?.jsonPrimitive?.content
+        val roles = appMetadata["roles"]?.let { value ->
+            runCatching { value.jsonArray.map { it.jsonPrimitive.content } }.getOrDefault(emptyList())
+        }.orEmpty()
+        return singleRole == "admin" || "admin" in roles
+    }
+
     suspend fun wipeProjectCloudData() {
         val token = requireToken()
         val response = http.post {
@@ -101,7 +126,7 @@ class SupabaseRestClient(
             header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
             header("Authorization", "Bearer $token")
             url {
-                parameters.append("select", "generation,updated_at")
+                parameters.append("select", "generation,updated_at,wipe_in_progress")
                 parameters.append("id", "eq.1")
                 parameters.append("limit", "1")
             }
@@ -122,7 +147,9 @@ class SupabaseRestClient(
                 ?: error("Project wipe generation is invalid."),
             updatedAtEpochMillis = row["updated_at"]?.jsonPrimitive?.content?.let {
                 runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
-            } ?: 0L
+            } ?: 0L,
+            wipeInProgress = row["wipe_in_progress"]?.jsonPrimitive?.content?.toBooleanStrictOrNull()
+                ?: error("Project wipe status is invalid. Apply the updated Supabase schema.")
         )
     }
 
@@ -162,9 +189,7 @@ class SupabaseRestClient(
             contentType(ContentType.parse(mime.ifBlank { "application/octet-stream" }))
             setBody(bytes)
         }
-        check(response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created) {
-            "Supabase file upload failed (${response.status.value}): ${response.bodyAsText().take(500)}"
-        }
+        response.requireStatus(setOf(HttpStatusCode.OK, HttpStatusCode.Created), "Supabase file upload failed")
     }
 
     suspend fun downloadStorage(bucket: String, path: String): ByteArray {
@@ -174,9 +199,7 @@ class SupabaseRestClient(
             header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
             header("Authorization", "Bearer $token")
         }
-        check(response.status == HttpStatusCode.OK) {
-            "Supabase file download failed (${response.status.value}): ${response.bodyAsText().take(500)}"
-        }
+        response.requireStatus(setOf(HttpStatusCode.OK), "Supabase file download failed")
         return response.body()
     }
 
@@ -198,16 +221,21 @@ class SupabaseRestClient(
             url("${baseUrl()}/rest/v1/$table")
             header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
             header("Authorization", "Bearer $token")
-            header("Prefer", "count=exact")
+            header("Prefer", "count=estimated")
             url {
                 parameters.append("select", "id")
+                // Deletes are synced as tombstones so other devices can remove the row.
+                // They remain physically stored in Supabase and must not inflate the
+                // user-facing count of active records.
+                parameters.append("deleted_at", "is.null")
                 parameters.append("limit", "1")
             }
 
         }
-        check(response.status == HttpStatusCode.OK || response.status == HttpStatusCode.PartialContent) {
-            "Supabase record count failed (${response.status.value}): ${response.bodyAsText().take(500)}"
-        }
+        response.requireStatus(
+            setOf(HttpStatusCode.OK, HttpStatusCode.PartialContent),
+            "Supabase record count failed"
+        )
         return response.headers["Content-Range"]
             ?.substringAfter('/')
             ?.toIntOrNull()
@@ -241,8 +269,11 @@ class SupabaseRestClient(
                     responseText.take(300)
             )
         }
-        check(response.status == HttpStatusCode.OK) {
-            "Vault account-key lookup failed (${response.status.value}): ${responseText.take(500)}"
+        if (response.status != HttpStatusCode.OK) {
+            throw SupabaseRequestException(
+                response.status.value,
+                "Vault account-key lookup failed (${response.status.value}): ${responseText.take(500)}"
+            )
         }
         val row = json.parseToJsonElement(responseText).jsonArray.firstOrNull()
             ?: return null
@@ -270,6 +301,7 @@ class SupabaseRestClient(
         var offset = 0
         var objectCount = 0
         var bytes = 0L
+        var truncated = false
         do {
             val response = http.post {
                 url("${baseUrl()}/storage/v1/object/list/$bucket")
@@ -299,8 +331,9 @@ class SupabaseRestClient(
                 }
             }
             offset += objects.size
-        } while (objects.size == 1000)
-        return StorageUsage(objectCount, bytes)
+            truncated = objects.size == 1000 && offset >= storageScanLimit
+        } while (objects.size == 1000 && offset < storageScanLimit)
+        return StorageUsage(objectCount, bytes, truncated)
     }
 
     private suspend fun requireToken(): String =
@@ -313,9 +346,13 @@ class SupabaseRestClient(
 /** Reuse Ktor's connection pool across sync, health checks and file operations. */
 private val sharedSupabaseHttpClient: HttpClient = HttpClient(Android)
 
-data class StorageUsage(val objectCount: Int, val bytes: Long)
+data class StorageUsage(val objectCount: Int, val bytes: Long, val truncated: Boolean = false)
 
-data class ProjectWipeState(val generation: Long, val updatedAtEpochMillis: Long)
+data class ProjectWipeState(
+    val generation: Long,
+    val updatedAtEpochMillis: Long,
+    val wipeInProgress: Boolean
+)
 
 private suspend fun HttpClient.postRest(
     table: String,
@@ -327,4 +364,18 @@ private suspend fun HttpClient.postRest(
     header("Authorization", "Bearer $token")
     contentType(ContentType.Application.Json)
     block()
+}
+
+class SupabaseRequestException(val statusCode: Int, message: String) : IllegalStateException(message)
+
+private suspend fun io.ktor.client.statement.HttpResponse.requireStatus(
+    accepted: Set<HttpStatusCode>,
+    operation: String
+) {
+    if (status !in accepted) {
+        throw SupabaseRequestException(
+            status.value,
+            "$operation (${status.value}): ${bodyAsText().take(500)}"
+        )
+    }
 }

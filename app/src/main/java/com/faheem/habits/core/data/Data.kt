@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.io.File
 
 const val ALL_DAYS = 127
 
@@ -396,31 +397,31 @@ interface HabitDao {
     suspend fun upsertSkipForSync(skip: HabitSkip)
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertReminderForSync(reminder: HabitReminder)
-    @Query("SELECT * FROM habits ORDER BY id")
+    @Query("SELECT * FROM habits WHERE deleted = 0 ORDER BY id")
     fun getHabits(): Flow<List<Habit>>
 
     @Query("SELECT * FROM habits ORDER BY id")
     suspend fun getAllForBackup(): List<Habit>
 
-    @Query("SELECT * FROM completions")
+    @Query("SELECT * FROM completions WHERE deleted = 0")
     fun getCompletions(): Flow<List<Completion>>
 
-    @Query("SELECT * FROM habit_skips")
+    @Query("SELECT * FROM habit_skips WHERE deleted = 0")
     fun getSkips(): Flow<List<HabitSkip>>
 
     @Query("SELECT * FROM completions")
     suspend fun getCompletionsForBackup(): List<Completion>
 
-    @Query("SELECT * FROM habit_reminders ORDER BY hour, minute, id")
+    @Query("SELECT * FROM habit_reminders WHERE deleted = 0 ORDER BY hour, minute, id")
     fun getReminders(): Flow<List<HabitReminder>>
 
     @Query("SELECT * FROM habit_reminders ORDER BY id")
     suspend fun getRemindersForBackup(): List<HabitReminder>
 
-    @Query("SELECT habit_reminders.* FROM habit_reminders INNER JOIN habits ON habits.id = habit_reminders.habitId WHERE habit_reminders.enabled = 1 AND (habit_reminders.daysMask != 0 OR habit_reminders.dateEpochDay IS NOT NULL) AND habits.archived = 0")
+    @Query("SELECT habit_reminders.* FROM habit_reminders INNER JOIN habits ON habits.id = habit_reminders.habitId WHERE habit_reminders.deleted = 0 AND habit_reminders.enabled = 1 AND (habit_reminders.daysMask != 0 OR habit_reminders.dateEpochDay IS NOT NULL) AND habits.archived = 0 AND habits.deleted = 0")
     suspend fun getRemindersForScheduling(): List<HabitReminder>
 
-    @Query("SELECT * FROM habit_reminders WHERE habitId = :habitId ORDER BY hour, minute, id")
+    @Query("SELECT * FROM habit_reminders WHERE habitId = :habitId AND deleted = 0 ORDER BY hour, minute, id")
     suspend fun getRemindersForHabit(habitId: Int): List<HabitReminder>
 
     @Query("SELECT * FROM habit_reminders WHERE id = :id LIMIT 1")
@@ -437,12 +438,23 @@ interface HabitDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertImportedReminder(reminder: HabitReminder): Long
     @Query("SELECT * FROM habit_reminders WHERE uuid = :uuid LIMIT 1") suspend fun getReminderByUuid(uuid: String): HabitReminder?
     @Update suspend fun updateReminder(reminder: HabitReminder)
-    @Delete suspend fun deleteReminder(reminder: HabitReminder)
+    @Query("UPDATE habit_reminders SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun deleteReminder(id: Int, updatedAt: Long = System.currentTimeMillis())
 
     @Insert suspend fun insertHabit(habit: Habit): Long
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertImportedHabit(habit: Habit): Long
     @Update suspend fun updateHabit(habit: Habit)
-    @Delete suspend fun deleteHabit(habit: Habit)
+    @Query("UPDATE habits SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun deleteHabit(id: Int, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE completions SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE habitId = :habitId AND deleted = 0")
+    suspend fun deleteCompletionsForHabit(habitId: Int, updatedAt: Long)
+
+    @Query("UPDATE habit_skips SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE habitId = :habitId AND deleted = 0")
+    suspend fun deleteSkipsForHabit(habitId: Int, updatedAt: Long)
+
+    @Query("UPDATE habit_reminders SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE habitId = :habitId AND deleted = 0")
+    suspend fun deleteRemindersForHabit(habitId: Int, updatedAt: Long)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertCompletion(completion: Completion)
@@ -451,14 +463,17 @@ interface HabitDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertImportedCompletion(completion: Completion): Long
     @Query("SELECT * FROM completions WHERE uuid = :uuid LIMIT 1") suspend fun getCompletionByUuid(uuid: String): Completion?
 
-    @Query("DELETE FROM completions WHERE habitId = :habitId AND epochDay = :epochDay")
-    suspend fun deleteCompletion(habitId: Int, epochDay: Long)
+    @Query("UPDATE completions SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE habitId = :habitId AND epochDay = :epochDay AND deleted = 0")
+    suspend fun deleteCompletion(habitId: Int, epochDay: Long, updatedAt: Long = System.currentTimeMillis())
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSkip(skip: HabitSkip)
 
-    @Query("DELETE FROM habit_skips WHERE habitId = :habitId AND epochDay = :epochDay")
-    suspend fun deleteSkip(habitId: Int, epochDay: Long)
+    @Query("SELECT * FROM habit_skips WHERE habitId = :habitId AND epochDay = :epochDay LIMIT 1")
+    suspend fun getSkip(habitId: Int, epochDay: Long): HabitSkip?
+
+    @Query("UPDATE habit_skips SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE habitId = :habitId AND epochDay = :epochDay AND deleted = 0")
+    suspend fun deleteSkip(habitId: Int, epochDay: Long, updatedAt: Long = System.currentTimeMillis())
 }
 
 @Dao
@@ -476,7 +491,7 @@ interface ExpenseDao {
     suspend fun markBudgetsClean(uuids: List<String>)
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertExpense(expense: Expense)
-    @Query("SELECT * FROM expenses ORDER BY epochDay DESC, id DESC")
+    @Query("SELECT * FROM expenses WHERE deleted = 0 ORDER BY epochDay DESC, id DESC")
     fun getAll(): Flow<List<Expense>>
 
     @Query("SELECT * FROM expenses ORDER BY id")
@@ -486,7 +501,8 @@ interface ExpenseDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertImported(expense: Expense): Long
     @Query("SELECT * FROM expenses WHERE uuid = :uuid LIMIT 1") suspend fun getByUuid(uuid: String): Expense?
     @Query("DELETE FROM expenses") suspend fun deleteAll()
-    @Delete suspend fun delete(expense: Expense)
+    @Query("UPDATE expenses SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun delete(id: Int, updatedAt: Long = System.currentTimeMillis())
 
     @Query("SELECT * FROM category_budgets ORDER BY monthKey DESC, category")
     fun getBudgets(): Flow<List<CategoryBudget>>
@@ -525,10 +541,15 @@ interface LoanDao {
     @Update suspend fun updateAttachment(attachment: LoanAttachment)
     @Query("UPDATE loan_people SET archived = 1, deleted = 1, updatedAt = :updatedAt, dirty = 1 WHERE id = :id")
     suspend fun deletePerson(id: Int, updatedAt: Long = System.currentTimeMillis())
-    @Query("SELECT * FROM loan_attachments WHERE loanId = :loanId ORDER BY addedAt DESC")
+    @Query("SELECT * FROM loan_attachments WHERE loanId = :loanId AND deleted = 0 ORDER BY addedAt DESC")
     fun getAttachments(loanId: Int): Flow<List<LoanAttachment>>
     @Insert suspend fun insertAttachment(attachment: LoanAttachment): Long
-    @Delete suspend fun deleteAttachment(attachment: LoanAttachment)
+    @Query("UPDATE loan_attachments SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun deleteAttachment(id: Int, updatedAt: Long = System.currentTimeMillis())
+    @Query("UPDATE loan_attachments SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE loanId = :loanId AND deleted = 0")
+    suspend fun deleteAttachmentsForLoan(loanId: Int, updatedAt: Long)
+    @Query("UPDATE loan_payments SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE loanId = :loanId AND deleted = 0")
+    suspend fun deletePaymentsForLoan(loanId: Int, updatedAt: Long)
     @Query("SELECT * FROM loans")
     suspend fun getAllForSync(): List<Loan>
     @Query("SELECT * FROM loan_payments")
@@ -543,7 +564,7 @@ interface LoanDao {
     suspend fun upsertLoan(loan: Loan)
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertPayment(payment: LoanPayment)
-    @Query("SELECT * FROM loans ORDER BY settled ASC, epochDay DESC, id DESC")
+    @Query("SELECT * FROM loans WHERE deleted = 0 ORDER BY settled ASC, epochDay DESC, id DESC")
     fun getAll(): Flow<List<Loan>>
 
     @Query("SELECT * FROM loans ORDER BY id")
@@ -554,14 +575,15 @@ interface LoanDao {
     @Query("SELECT * FROM loans WHERE uuid = :uuid LIMIT 1") suspend fun getByUuid(uuid: String): Loan?
     @Query("DELETE FROM loans") suspend fun deleteAll()
     @Update suspend fun update(loan: Loan)
-    @Delete suspend fun delete(loan: Loan)
+    @Query("UPDATE loans SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun delete(id: Int, updatedAt: Long = System.currentTimeMillis())
 
-    @Query("SELECT * FROM loan_payments WHERE loanId = :loanId ORDER BY epochDay DESC, id DESC")
+    @Query("SELECT * FROM loan_payments WHERE loanId = :loanId AND deleted = 0 ORDER BY epochDay DESC, id DESC")
     fun getPayments(loanId: Int): Flow<List<LoanPayment>>
 
     @Insert suspend fun insertPayment(payment: LoanPayment)
 
-    @Query("SELECT COALESCE(SUM(amountMinorUnits), 0) FROM loan_payments WHERE loanId = :loanId")
+    @Query("SELECT COALESCE(SUM(amountMinorUnits), 0) FROM loan_payments WHERE loanId = :loanId AND deleted = 0")
     suspend fun getPaidAmount(loanId: Int): Long
 }
 
@@ -574,7 +596,7 @@ interface FileDao {
     suspend fun markClean(uuids: List<String>)
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertForSync(file: FileItem)
-    @Query("SELECT * FROM library_files ORDER BY id DESC")
+    @Query("SELECT * FROM library_files WHERE deleted = 0 ORDER BY id DESC")
     fun getAll(): Flow<List<FileItem>>
 
     @Query("SELECT * FROM library_files ORDER BY id")
@@ -584,7 +606,8 @@ interface FileDao {
     @Query("SELECT * FROM library_files WHERE uuid = :uuid LIMIT 1") suspend fun getByUuid(uuid: String): FileItem?
     @Update suspend fun update(file: FileItem)
     @Query("DELETE FROM library_files") suspend fun deleteAll()
-    @Delete suspend fun delete(file: FileItem)
+    @Query("UPDATE library_files SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun delete(id: Int, updatedAt: Long = System.currentTimeMillis())
 }
 
 @Dao
@@ -638,13 +661,13 @@ interface ToDoDao {
     suspend fun markClean(uuids: List<String>)
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertForSync(item: ToDoItem)
-    @Query("SELECT * FROM todo_items ORDER BY completed ASC, dueEpochDay ASC, id DESC")
+    @Query("SELECT * FROM todo_items WHERE deleted = 0 ORDER BY completed ASC, dueEpochDay ASC, id DESC")
     fun getAll(): Flow<List<ToDoItem>>
 
     @Query("SELECT * FROM todo_items ORDER BY id")
     suspend fun getAllForBackup(): List<ToDoItem>
 
-    @Query("SELECT * FROM todo_items WHERE completed = 0 AND reminderHour IS NOT NULL AND reminderMinute IS NOT NULL")
+    @Query("SELECT * FROM todo_items WHERE deleted = 0 AND completed = 0 AND reminderHour IS NOT NULL AND reminderMinute IS NOT NULL")
     suspend fun getItemsForScheduling(): List<ToDoItem>
 
     @Query("SELECT * FROM todo_items WHERE id = :id LIMIT 1")
@@ -655,7 +678,8 @@ interface ToDoDao {
     @Query("SELECT * FROM todo_items WHERE uuid = :uuid LIMIT 1") suspend fun getByUuid(uuid: String): ToDoItem?
     @Query("DELETE FROM todo_items") suspend fun deleteAll()
     @Update suspend fun update(item: ToDoItem)
-    @Delete suspend fun delete(item: ToDoItem)
+    @Query("UPDATE todo_items SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun delete(id: Int, updatedAt: Long = System.currentTimeMillis())
 }
 
 @Dao
@@ -676,7 +700,8 @@ interface LifeRuleDao {
     @Query("UPDATE life_rules SET dirty = 0 WHERE uuid IN (:uuids)")
     suspend fun markClean(uuids: List<String>)
     @Update suspend fun update(rule: LifeRule)
-    @Delete suspend fun delete(rule: LifeRule)
+    @Query("UPDATE life_rules SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun delete(id: Int, updatedAt: Long = System.currentTimeMillis())
     @Query("SELECT * FROM life_rule_files WHERE ruleId = :ruleId AND deleted = 0 ORDER BY addedAt DESC")
     fun getFiles(ruleId: Int): Flow<List<LifeRuleFile>>
     @Insert suspend fun insertFile(file: LifeRuleFile): Long
@@ -691,7 +716,8 @@ interface LifeRuleDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertFileForSync(file: LifeRuleFile)
     @Update suspend fun updateFile(file: LifeRuleFile)
-    @Delete suspend fun deleteFile(file: LifeRuleFile)
+    @Query("UPDATE life_rule_files SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun deleteFile(id: Int, updatedAt: Long = System.currentTimeMillis())
     @Query("DELETE FROM life_rules") suspend fun deleteAll()
 }
 
@@ -720,7 +746,8 @@ interface CustomNotificationDao {
 
     @Insert suspend fun insert(notification: CustomNotification): Long
     @Update suspend fun update(notification: CustomNotification)
-    @Delete suspend fun delete(notification: CustomNotification)
+    @Query("UPDATE custom_notifications SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun delete(id: Int, updatedAt: Long = System.currentTimeMillis())
     @Query("DELETE FROM custom_notifications") suspend fun deleteAll()
 }
 
@@ -775,6 +802,57 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         @Volatile private var instance: AppDatabase? = null
+        private const val DATABASE_NAME = "momentum.db"
+        private const val ACCOUNT_SCOPE_PREFS = "momentum_account_database_scope"
+        private const val ACTIVE_USER_KEY = "active_user_id"
+
+        /** Keeps Room rows and sync cursors in a separate local database per Supabase user. */
+        fun activateAccount(context: Context, userId: String) = synchronized(this) {
+            val normalizedId = runCatching { UUID.fromString(userId).toString() }
+                .getOrElse { error("Supabase returned an invalid account ID.") }
+            val appContext = context.applicationContext
+            val scopePrefs = appContext.getSharedPreferences(ACCOUNT_SCOPE_PREFS, Context.MODE_PRIVATE)
+            val activeUser = scopePrefs.getString(ACTIVE_USER_KEY, null)
+            if (activeUser == normalizedId) return@synchronized
+
+            val db = instance
+            if (db != null) {
+                runCatching {
+                    db.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(TRUNCATE)").close()
+                }
+                db.close()
+                instance = null
+            }
+
+            val baseFile = appContext.getDatabasePath(DATABASE_NAME)
+            val accountDirectory = File(appContext.filesDir, "account-databases").apply {
+                check(isDirectory || mkdirs()) { "Could not prepare account-local data storage." }
+            }
+            if (baseFile.exists()) {
+                val previousFile = activeUser?.let { accountDatabaseFile(accountDirectory, it) }
+                    ?: File(accountDirectory, "unassigned-legacy-database.db")
+                baseFile.copyTo(previousFile, overwrite = true)
+            }
+            deleteDatabaseFiles(baseFile)
+
+            val accountFile = accountDatabaseFile(accountDirectory, normalizedId)
+            if (accountFile.exists()) {
+                accountFile.copyTo(baseFile, overwrite = true)
+            }
+            check(scopePrefs.edit().putString(ACTIVE_USER_KEY, normalizedId).commit()) {
+                "Could not save the active account for local data."
+            }
+        }
+
+        private fun accountDatabaseFile(directory: File, userId: String): File =
+            File(directory, "account-${userId.replace("-", "")}.db")
+
+        private fun deleteDatabaseFiles(database: File) {
+            listOf(database, File("${database.path}-wal"), File("${database.path}-shm"), File("${database.path}-journal"))
+                .forEach { file ->
+                    if (file.exists()) check(file.delete()) { "Could not switch the local account database." }
+                }
+        }
 
         // The last committed app schema was v3. Keep its data while adding the
         // habit fields and loan settlement state introduced in v4.
@@ -1159,7 +1237,7 @@ abstract class AppDatabase : RoomDatabase() {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "momentum.db"
+                    DATABASE_NAME
                 )
                     .addMigrations(MIGRATION_3_4)
                     .addMigrations(MIGRATION_4_5)

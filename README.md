@@ -12,8 +12,11 @@ one owner and is not intended for Google Play distribution.
   indicators.
 - AES-256-GCM vault with PBKDF2-HMAC-SHA256, biometric unlock, secure
   clipboard cleanup, and auto-lock protections.
-- Offline-first Room storage with versioned migrations, local backups, and
-  opt-in Supabase sync design. Vault sync sends ciphertext and nonce only.
+- Offline-first Room storage with versioned migrations and local backups.
+  Supabase sync runs automatically after local record changes when an account
+  is connected. Vault entries sync as ciphertext; a separate account-scoped
+  recovery key is also stored in Supabase, so this is not end-to-end encryption
+  against project administrators.
 - Glass-style light/dark Compose UI with lifecycle-aware state collection.
 
 ## Architecture

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.TableChart
@@ -56,13 +57,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.faheem.habits.core.data.AppDatabase
 import com.faheem.habits.core.data.SyncState
 import com.faheem.habits.core.data.supabase.StorageUsage
+import com.faheem.habits.core.data.supabase.SupabaseAuthApi
 import com.faheem.habits.core.data.supabase.SupabaseProvider
 import com.faheem.habits.core.data.supabase.SupabaseRestClient
 import com.faheem.habits.core.data.sync.SupabaseSyncRepository
 import com.faheem.habits.core.data.sync.ProjectWipeManager
+import com.faheem.habits.core.data.sync.SupabaseSyncScheduler
+import com.faheem.habits.core.data.sync.SYNC_STATUS_TABLE
 import com.faheem.habits.core.ui.ChartLegend
 import com.faheem.habits.core.ui.ChartPlaceholder
 import com.faheem.habits.core.ui.ChartSlice
@@ -81,6 +87,9 @@ import com.faheem.habits.core.ui.StatusPill
 import com.faheem.habits.core.ui.chartColor
 import com.faheem.habits.core.ui.chartSlices
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.DateFormat
@@ -124,12 +133,27 @@ fun SupabaseScreen() {
     val scope = rememberCoroutineScope()
     val database = remember { AppDatabase.get(context.applicationContext) }
     val syncStates by database.syncStateDao().observeAll().collectAsState(initial = emptyList())
+    val syncWorkInfos by remember(context) {
+        WorkManager.getInstance(context.applicationContext)
+            .getWorkInfosForUniqueWorkFlow("momentum-sync")
+    }.collectAsState(initial = emptyList())
+    val syncWorkState = syncWorkInfos.firstOrNull { it.state == WorkInfo.State.RUNNING }?.state
+        ?: syncWorkInfos.firstOrNull {
+            it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED
+        }?.state
+        ?: syncWorkInfos.lastOrNull()?.state
+    val workerError = syncWorkInfos.lastOrNull { it.state == WorkInfo.State.FAILED }
+        ?.takeIf { syncWorkState == WorkInfo.State.FAILED }
+        ?.outputData?.getString("error")
+    val syncBusy = syncWorkState == WorkInfo.State.RUNNING ||
+        syncWorkState == WorkInfo.State.ENQUEUED || syncWorkState == WorkInfo.State.BLOCKED
     var metrics by remember { mutableStateOf<SupabaseMetrics?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
-    var syncing by remember { mutableStateOf(false) }
     var wipingProject by remember { mutableStateOf(false) }
     var showProjectWipeConfirm by remember { mutableStateOf(false) }
+    var canWipeProject by remember { mutableStateOf(false) }
+    var signedOut by remember { mutableStateOf(false) }
 
     suspend fun load() {
         metrics = withContext(Dispatchers.IO) { loadSupabaseMetrics(context.applicationContext) }
@@ -155,20 +179,13 @@ fun SupabaseScreen() {
     }
 
     fun syncNow() {
-        if (syncing) return
-        scope.launch {
-            syncing = true
-            error = null
-            try {
-                withContext(Dispatchers.IO) { SupabaseSyncRepository(context.applicationContext).sync() }
-                load()
-            } catch (e: Exception) {
-                error = explainSupabaseError(e.message)
-                runCatching { load() }
-            } finally {
-                syncing = false
-            }
-        }
+        if (syncBusy) return
+        error = null
+        SupabaseSyncScheduler.enqueue(context.applicationContext)
+    }
+
+    LaunchedEffect(syncWorkState) {
+        if (syncWorkState == WorkInfo.State.SUCCEEDED) refresh()
     }
 
     fun wipeProjectCloudData() {
@@ -180,11 +197,12 @@ fun SupabaseScreen() {
                 withContext(Dispatchers.IO) {
                     SupabaseRestClient(context.applicationContext).wipeProjectCloudData()
                 }
-                ProjectWipeManager.applyIfNeeded(context.applicationContext)
+                val wipeCheck = ProjectWipeManager.applyIfNeeded(context.applicationContext)
+                if (wipeCheck == ProjectWipeManager.CheckResult.IN_PROGRESS) {
+                    error = "Cloud cleanup is still running. Local app data has not been reset yet."
+                }
             } catch (e: Exception) {
-                // The Edge Function publishes the reset marker before deleting rows. If cleanup
-                // later fails part-way, still honor that marker locally and let the admin retry.
-                runCatching { ProjectWipeManager.applyIfNeeded(context.applicationContext) }
+                // Failed or partial cloud cleanup must never reset this device's local data.
                 error = explainSupabaseError(e.message)
             } finally {
                 wipingProject = false
@@ -192,7 +210,14 @@ fun SupabaseScreen() {
         }
     }
 
-    LaunchedEffect(context) { refresh() }
+    LaunchedEffect(context) {
+        refresh()
+        canWipeProject = withContext(Dispatchers.IO) {
+            runCatching {
+                SupabaseRestClient(context.applicationContext).isCurrentUserAdmin()
+            }.getOrDefault(false)
+        }
+    }
     val current = metrics
     val totalRecords = current?.counts?.filter { it.error == null }?.sumOf { it.count } ?: 0
     val readableTables = current?.counts?.count { it.error == null } ?: 0
@@ -218,7 +243,11 @@ fun SupabaseScreen() {
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            if (syncing) "Syncing workspace…" else "Cloud workspace",
+                            when (syncWorkState) {
+                                WorkInfo.State.RUNNING -> "Syncing workspace…"
+                                WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> "Waiting to sync"
+                                else -> "Cloud workspace"
+                            },
                             fontSize = 27.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = (-0.6).sp
@@ -249,36 +278,66 @@ fun SupabaseScreen() {
                         SupabasePill(Icons.Rounded.TableChart, "$totalRecords records")
                     }
                     current?.storage?.let { storage ->
-                        SupabasePill(Icons.Rounded.Storage, formatBytes(storage.bytes))
+                        SupabasePill(Icons.Rounded.Storage, formatStorageBytes(storage))
                     }
                 }
             }
         }
-        item {
+        if (!signedOut) item {
             SyncCard(
                 syncStates = syncStates,
-                syncing = syncing,
+                workState = syncWorkState,
+                workerError = workerError,
                 failedTables = current?.counts?.count { it.error != null } ?: 0,
                 onSync = ::syncNow
             )
         }
-        item {
+        if (!signedOut) item {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 TextButton(
-                    onClick = { showProjectWipeConfirm = true },
-                    enabled = !wipingProject && !syncing
+                    onClick = {
+                        scope.launch {
+                            SupabaseAuthApi.signOut(context.applicationContext)
+                            signedOut = true
+                            error = null
+                            metrics = null
+                        }
+                    },
+                    enabled = !syncBusy && !wipingProject
                 ) {
-                    if (wipingProject) {
-                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.Rounded.Delete, contentDescription = null)
-                    }
+                    Icon(Icons.Rounded.Logout, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (wipingProject) "Deleting project cloud data…" else "Delete all users’ cloud data")
+                    Text("Sign out of Supabase")
                 }
             }
         }
-        if (loading && current == null) {
+        if (canWipeProject && !signedOut) {
+            item {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    TextButton(
+                        onClick = { showProjectWipeConfirm = true },
+                        enabled = !wipingProject && !syncBusy
+                    ) {
+                        if (wipingProject) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Rounded.Delete, contentDescription = null)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (wipingProject) "Deleting project cloud data…" else "Delete all users’ cloud data")
+                    }
+                }
+            }
+        }
+        if (signedOut) {
+            item {
+                EmptyState(
+                    Icons.Rounded.Cloud,
+                    "Signed out",
+                    "This device’s Supabase session was cleared. Sign in again before syncing."
+                )
+            }
+        } else if (loading && current == null) {
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                     CircularProgressIndicator()
@@ -361,7 +420,7 @@ fun SupabaseScreen() {
         }
     }
 
-    if (showProjectWipeConfirm) {
+    if (showProjectWipeConfirm && canWipeProject) {
         AlertDialog(
             onDismissRequest = { if (!wipingProject) showProjectWipeConfirm = false },
             title = { Text("Delete all project cloud data?") },
@@ -411,26 +470,34 @@ private fun SupabasePill(icon: ImageVector, text: String) {
 @Composable
 private fun SyncCard(
     syncStates: List<SyncState>,
-    syncing: Boolean,
+    workState: WorkInfo.State?,
+    workerError: String?,
     failedTables: Int,
     onSync: () -> Unit
 ) {
     val pending = syncStates.sumOf { it.pendingCount }
     val conflicts = syncStates.sumOf { it.conflictCount }
+    val trackedTableCount = syncStates.count { it.tableName != SYNC_STATUS_TABLE }
+    val lastError = syncStates.firstOrNull { !it.lastError.isNullOrBlank() }?.lastError ?: workerError
     val syncErrors = syncStates.count { !it.lastError.isNullOrBlank() }
     val hasSynced = syncStates.any { it.lastSyncEpochMillis > 0 }
-    val needsAttention = pending > 0 || conflicts > 0 || failedTables > 0 || syncErrors > 0
+    val syncing = workState == WorkInfo.State.RUNNING
+    val waiting = workState == WorkInfo.State.ENQUEUED ||
+        workState == WorkInfo.State.BLOCKED || pending > 0
+    val needsAttention = !waiting && (workState == WorkInfo.State.FAILED || failedTables > 0 || syncErrors > 0)
     val statusColor = when {
-        needsAttention -> MaterialTheme.colorScheme.tertiary
+        needsAttention -> MaterialTheme.colorScheme.error
         hasSynced -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.secondary
     }
     val statusText = when {
         syncing -> "Syncing"
-        needsAttention -> "Review"
-        hasSynced -> "Healthy"
-        else -> "Ready"
+        waiting -> "Waiting to sync"
+        needsAttention -> "Needs attention"
+        hasSynced -> "Synced"
+        else -> "Waiting to sync"
     }
+    var showTechnicalDetail by remember { mutableStateOf(false) }
     PremiumCard(contentPadding = PaddingValues(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconBubble(Icons.Rounded.CloudSync, statusColor, 42.dp)
@@ -456,23 +523,38 @@ private fun SyncCard(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SyncStat("Pending", pending.toString(), Modifier.weight(1f))
                 SyncStat("Conflicts", conflicts.toString(), Modifier.weight(1f))
-                SyncStat("Tracked tables", syncStates.size.toString(), Modifier.weight(1f))
+                SyncStat("Tracked tables", trackedTableCount.toString(), Modifier.weight(1f))
             }
         }
-        syncStates.firstOrNull { !it.lastError.isNullOrBlank() }?.lastError?.let { lastError ->
+        lastError?.let { detail ->
             Spacer(Modifier.height(10.dp))
             Text(
-                explainSupabaseError(lastError),
+                syncErrorSummary(detail),
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.error
             )
+            TextButton(onClick = { showTechnicalDetail = !showTechnicalDetail }) {
+                Text(if (showTechnicalDetail) "Hide error details" else "Show error details")
+            }
+            if (showTechnicalDetail) {
+                Text(
+                    detail,
+                    fontSize = 10.5.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
         Spacer(Modifier.height(14.dp))
         PrimaryButton(
-            text = if (syncing) "Syncing…" else "Sync now",
+            text = when {
+                syncing -> "Syncing…"
+                waiting -> "Waiting to sync"
+                needsAttention -> "Retry sync"
+                else -> "Sync now"
+            },
             onClick = onSync,
             icon = Icons.Rounded.CloudSync,
-            enabled = !syncing,
+            enabled = !syncing && !waiting,
             loading = syncing
         )
     }
@@ -504,21 +586,23 @@ private fun OverviewGrid(
     readableTables: Int,
     syncStates: List<SyncState>
 ) {
-    val lastSync = syncStates.filter { it.lastSyncEpochMillis > 0 }.maxOfOrNull { it.lastSyncEpochMillis }
+    val lastSync = lastSuccessfulSync(syncStates)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             MetricTile(
-                title = "Visible records",
+                title = "Estimated records",
                 value = totalRecords.toString(),
-                detail = "$readableTables of ${metrics.counts.size} tables readable",
+                detail = "$readableTables of ${metrics.counts.size} tables readable; large tables may be estimated",
                 icon = Icons.Rounded.TableChart,
                 accent = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.weight(1f)
             )
             MetricTile(
                 title = "Cloud storage",
-                value = metrics.storage?.let { formatBytes(it.bytes) } ?: "—",
-                detail = metrics.storage?.let { "${it.objectCount} object${if (it.objectCount == 1) "" else "s"}" }
+                value = metrics.storage?.let(::formatStorageBytes) ?: "—",
+                detail = metrics.storage?.let {
+                    "${it.objectCount}${if (it.truncated) "+" else ""} object${if (it.objectCount == 1 && !it.truncated) "" else "s"} scanned"
+                }
                     ?: "Storage usage unavailable",
                 icon = Icons.Rounded.Storage,
                 accent = MaterialTheme.colorScheme.secondary,
@@ -561,7 +645,7 @@ private fun StorageUsageCard(
                 Text("Your Supabase storage", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 Text(
                     storage?.let {
-                        "${formatBytes(it.bytes)} used · ${it.objectCount} object${if (it.objectCount == 1) "" else "s"}"
+                        "${formatStorageBytes(it)} used · ${it.objectCount}${if (it.truncated) "+" else ""} object${if (it.objectCount == 1 && !it.truncated) "" else "s"}"
                     } ?: "Usage unavailable",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -594,7 +678,7 @@ private fun StorageUsageCard(
         ) {
             Text("Used", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
-                storage?.let { formatBytes(it.bytes) } ?: "—",
+                storage?.let(::formatStorageBytes) ?: "—",
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -769,35 +853,50 @@ private fun recordSlices(counts: List<CloudRecord>): List<ChartSlice> {
 
 private suspend fun loadSupabaseMetrics(context: Context): SupabaseMetrics {
     val client = SupabaseRestClient(context)
-    val reach = runCatching { client.isReachable() }
-    val counts = SUPABASE_TABLES.map { (table, label) ->
-        runCatching { client.count(table) }.fold(
-    onSuccess = { CloudRecord(table, label, it) },
-    onFailure = { CloudRecord(table, label, 0, it.message) }
+    return coroutineScope {
+        val reach = async { runCatching { client.isReachable() } }
+        val counts = async {
+            SUPABASE_TABLES.map { (table, label) ->
+                async {
+                    runCatching { client.count(table) }.fold(
+                        onSuccess = { CloudRecord(table, label, it) },
+                        onFailure = { CloudRecord(table, label, 0, it.message) }
+                    )
+                }
+            }.awaitAll()
+        }
+        val storage = async { runCatching { client.storageUsage("momentum-files") } }
+        val reachResult = reach.await()
+        val storageResult = storage.await()
+        SupabaseMetrics(
+            reachable = reachResult.getOrDefault(false),
+            reachError = reachResult.exceptionOrNull()?.message,
+            counts = counts.await(),
+            storage = storageResult.getOrNull(),
+            storageError = storageResult.exceptionOrNull()?.message
         )
     }
-    val storage = runCatching { client.storageUsage("momentum-files") }
-    return SupabaseMetrics(
-        reachable = reach.getOrDefault(false),
-        reachError = reach.exceptionOrNull()?.message,
-        counts = counts,
-        storage = storage.getOrNull(),
-        storageError = storage.exceptionOrNull()?.message
-    )
 }
 
 private fun syncSummary(states: List<SyncState>): String {
-    val synced = states.filter { it.lastSyncEpochMillis > 0 }
-    if (synced.isEmpty()) return "Not synced yet. Tap Sync now to fetch cloud records."
-    val last = synced.maxOf { it.lastSyncEpochMillis }
+    val synced = states.filter { it.tableName != SYNC_STATUS_TABLE }
+    val last = lastSuccessfulSync(states)
+        ?: return "Not synced yet. Changes sync automatically when a connection is available."
     val pending = synced.sumOf { it.pendingCount }
     val conflicts = synced.sumOf { it.conflictCount }
     return buildString {
-        append("Last sync ${dayLabel(last)} at ${timeLabel(last)}")
+        append("Last successful sync ${dayLabel(last)} at ${timeLabel(last)}")
         if (pending > 0) append(" · $pending pending")
         if (conflicts > 0) append(" · $conflicts conflicts")
     }
 }
+
+private fun lastSuccessfulSync(states: List<SyncState>): Long? =
+    states.firstOrNull { it.tableName == SYNC_STATUS_TABLE }
+        ?.lastSyncEpochMillis?.takeIf { it > 0 }
+        ?: states.asSequence()
+            .filter { it.tableName != SYNC_STATUS_TABLE && it.lastSyncEpochMillis > 0 }
+            .maxOfOrNull { it.lastSyncEpochMillis }
 
 private fun timeLabel(epochMillis: Long): String =
     DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(epochMillis))
@@ -808,6 +907,12 @@ private fun dayLabel(epochMillis: Long): String =
 private fun explainSupabaseError(message: String?): String {
     val detail = message.orEmpty()
     return when {
+        detail.contains("A project wipe is already running", ignoreCase = true) ->
+            "A project cleanup is already running. Wait for it to finish, then refresh."
+        detail.contains("staleLockRecoveryRequired", ignoreCase = true) ->
+            "Cloud cleanup stopped unexpectedly. Your local data was kept. The cloud write lock is still active; retry after 10 minutes."
+        detail.contains("cloudCleanupMayBePartial", ignoreCase = true) ->
+            "Cloud cleanup did not finish. Your local data was kept. Review the details, then retry Delete all users’ cloud data."
         detail.contains("not configured", ignoreCase = true) ->
             "Add SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY to your user Gradle properties, then rebuild the app."
         detail.contains("not allowed to wipe project data", ignoreCase = true) ->
@@ -830,6 +935,24 @@ private fun explainSupabaseError(message: String?): String {
     }
 }
 
+private fun syncErrorSummary(detail: String): String = when {
+    detail.contains("cleanup is in progress", ignoreCase = true) ->
+        "Cloud sync is paused until project cleanup finishes. Retry after it completes."
+    detail.contains("401") || detail.contains("Sign in", ignoreCase = true) ||
+        detail.contains("JWT", ignoreCase = true) ->
+        "Your Supabase session may have expired. Sign in again, then retry sync."
+    detail.contains("403") || detail.contains("permission", ignoreCase = true) ||
+        detail.contains("denied", ignoreCase = true) ->
+        "Supabase denied this sync. Check the account and table permissions before retrying."
+    detail.contains("429") || (500..599).any { detail.contains("($it)") } ->
+        "Supabase is temporarily unavailable or rate-limiting requests. The app will retry."
+    detail.contains("timeout", ignoreCase = true) || detail.contains("connect", ignoreCase = true) ||
+        detail.contains("network", ignoreCase = true) || detail.contains("ioexception", ignoreCase = true) ||
+        detail.contains("host", ignoreCase = true) || detail.contains("socket", ignoreCase = true) ->
+        "The connection interrupted sync. It will retry when the network is available."
+    else -> "Sync did not finish. Review the error details, then retry."
+}
+
 private fun formatBytes(bytes: Long): String {
     if (bytes < 1024) return "$bytes B"
     val units = arrayOf("KB", "MB", "GB", "TB")
@@ -841,3 +964,6 @@ private fun formatBytes(bytes: Long): String {
     }
     return String.format(Locale.US, "%.1f %s", value, units[unit])
 }
+
+private fun formatStorageBytes(storage: StorageUsage): String =
+    "${if (storage.truncated) "≥" else ""}${formatBytes(storage.bytes)}"

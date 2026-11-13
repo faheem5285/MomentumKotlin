@@ -8,8 +8,11 @@ create extension if not exists pgcrypto;
 create table if not exists public.momentum_wipe_state (
   id smallint primary key check (id = 1),
   generation bigint not null default 0,
+  wipe_in_progress boolean not null default false,
   updated_at timestamptz not null default now()
 );
+alter table public.momentum_wipe_state
+  add column if not exists wipe_in_progress boolean not null default false;
 insert into public.momentum_wipe_state (id, generation)
 values (1, 0) on conflict (id) do nothing;
 alter table public.momentum_wipe_state enable row level security;
@@ -17,6 +20,23 @@ drop policy if exists momentum_wipe_state_read on public.momentum_wipe_state;
 create policy momentum_wipe_state_read on public.momentum_wipe_state
   for select to authenticated using (true);
 grant select on public.momentum_wipe_state to authenticated;
+
+-- Used by RLS to block app writes while the admin wipe is running. The
+-- security-definer function can read the marker despite its own RLS policy.
+create or replace function public.momentum_sync_writes_allowed()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select not coalesce(
+    (select wipe_in_progress from public.momentum_wipe_state where id = 1),
+    true
+  );
+$$;
+revoke all on function public.momentum_sync_writes_allowed() from public, anon;
+grant execute on function public.momentum_sync_writes_allowed() to authenticated;
 
 -- Private bucket for file contents. File metadata remains in momentum_files;
 -- object ownership is enforced by Supabase Storage RLS.
@@ -339,17 +359,23 @@ begin
     'momentum_contacts', 'momentum_files', 'momentum_todos', 'momentum_life_rules',
     'momentum_life_rule_files', 'momentum_custom_notifications', 'momentum_vault_entries'
   ] loop
-    execute format('create index if not exists %I_user_updated_idx on public.%I(user_id, updated_at)', table_name, table_name);
-    execute format('create index if not exists %I_user_deleted_idx on public.%I(user_id, deleted_at)', table_name, table_name);
+    execute format('create index if not exists %I on public.%I(user_id, updated_at)', table_name || '_user_updated_idx', table_name);
+    execute format('create index if not exists %I on public.%I(user_id, deleted_at)', table_name || '_user_deleted_idx', table_name);
     execute format('alter table public.%I enable row level security', table_name);
-    execute format('drop policy if exists %I_owner_select on public.%I', table_name, table_name);
-    execute format('drop policy if exists %I_owner_insert on public.%I', table_name, table_name);
-    execute format('drop policy if exists %I_owner_update on public.%I', table_name, table_name);
-    execute format('drop policy if exists %I_owner_delete on public.%I', table_name, table_name);
-    execute format('create policy %I_owner_select on public.%I for select using (user_id = auth.uid())', table_name, table_name);
-    execute format('create policy %I_owner_insert on public.%I for insert with check (user_id = auth.uid())', table_name, table_name);
-    execute format('create policy %I_owner_update on public.%I for update using (user_id = auth.uid()) with check (user_id = auth.uid())', table_name, table_name);
-    execute format('create policy %I_owner_delete on public.%I for delete using (user_id = auth.uid())', table_name, table_name);
+    execute format('drop policy if exists %I on public.%I', table_name || '_owner_select', table_name);
+    execute format('drop policy if exists %I on public.%I', table_name || '_owner_insert', table_name);
+    execute format('drop policy if exists %I on public.%I', table_name || '_owner_update', table_name);
+    execute format('drop policy if exists %I on public.%I', table_name || '_owner_delete', table_name);
+    execute format('create policy %I on public.%I for select using (user_id = auth.uid())', table_name || '_owner_select', table_name);
+    execute format('create policy %I on public.%I for insert with check (user_id = auth.uid() and public.momentum_sync_writes_allowed())', table_name || '_owner_insert', table_name);
+    execute format('create policy %I on public.%I for update using (user_id = auth.uid() and public.momentum_sync_writes_allowed()) with check (user_id = auth.uid() and public.momentum_sync_writes_allowed())', table_name || '_owner_update', table_name);
+    execute format('create policy %I on public.%I for delete using (user_id = auth.uid() and public.momentum_sync_writes_allowed())', table_name || '_owner_delete', table_name);
+    execute format('drop policy if exists momentum_wipe_guard_insert on public.%I', table_name);
+    execute format('drop policy if exists momentum_wipe_guard_update on public.%I', table_name);
+    execute format('drop policy if exists momentum_wipe_guard_delete on public.%I', table_name);
+    execute format('create policy momentum_wipe_guard_insert on public.%I as restrictive for insert to authenticated with check (public.momentum_sync_writes_allowed())', table_name);
+    execute format('create policy momentum_wipe_guard_update on public.%I as restrictive for update to authenticated using (public.momentum_sync_writes_allowed()) with check (public.momentum_sync_writes_allowed())', table_name);
+    execute format('create policy momentum_wipe_guard_delete on public.%I as restrictive for delete to authenticated using (public.momentum_sync_writes_allowed())', table_name);
   end loop;
 end $$;
 
@@ -361,12 +387,48 @@ drop policy if exists momentum_vault_keys_owner_delete on public.momentum_vault_
 create policy momentum_vault_keys_owner_select on public.momentum_vault_keys
   for select using (user_id = auth.uid());
 create policy momentum_vault_keys_owner_insert on public.momentum_vault_keys
-  for insert with check (user_id = auth.uid());
+  for insert with check (user_id = auth.uid() and public.momentum_sync_writes_allowed());
 create policy momentum_vault_keys_owner_update on public.momentum_vault_keys
-  for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+  for update using (user_id = auth.uid() and public.momentum_sync_writes_allowed())
+  with check (user_id = auth.uid() and public.momentum_sync_writes_allowed());
 create policy momentum_vault_keys_owner_delete on public.momentum_vault_keys
-  for delete using (user_id = auth.uid());
+  for delete using (user_id = auth.uid() and public.momentum_sync_writes_allowed());
+drop policy if exists momentum_wipe_guard_insert on public.momentum_vault_keys;
+drop policy if exists momentum_wipe_guard_update on public.momentum_vault_keys;
+drop policy if exists momentum_wipe_guard_delete on public.momentum_vault_keys;
+create policy momentum_wipe_guard_insert on public.momentum_vault_keys
+  as restrictive for insert to authenticated with check (public.momentum_sync_writes_allowed());
+create policy momentum_wipe_guard_update on public.momentum_vault_keys
+  as restrictive for update to authenticated using (public.momentum_sync_writes_allowed())
+  with check (public.momentum_sync_writes_allowed());
+create policy momentum_wipe_guard_delete on public.momentum_vault_keys
+  as restrictive for delete to authenticated using (public.momentum_sync_writes_allowed());
 grant select, insert, update, delete on public.momentum_vault_keys to authenticated;
+
+-- User uploads/deletes are also blocked until a project wipe completes.
+drop policy if exists momentum_files_insert on storage.objects;
+drop policy if exists momentum_files_update on storage.objects;
+drop policy if exists momentum_files_delete on storage.objects;
+create policy momentum_files_insert on storage.objects for insert
+  with check (bucket_id = 'momentum-files' and owner_id = auth.uid()::text and public.momentum_sync_writes_allowed());
+create policy momentum_files_update on storage.objects for update
+  using (bucket_id = 'momentum-files' and owner_id = auth.uid()::text and public.momentum_sync_writes_allowed())
+  with check (bucket_id = 'momentum-files' and owner_id = auth.uid()::text and public.momentum_sync_writes_allowed());
+create policy momentum_files_delete on storage.objects for delete
+  using (bucket_id = 'momentum-files' and owner_id = auth.uid()::text and public.momentum_sync_writes_allowed());
+drop policy if exists momentum_wipe_storage_guard_insert on storage.objects;
+drop policy if exists momentum_wipe_storage_guard_update on storage.objects;
+drop policy if exists momentum_wipe_storage_guard_delete on storage.objects;
+create policy momentum_wipe_storage_guard_insert on storage.objects
+  as restrictive for insert to authenticated
+  with check (bucket_id <> 'momentum-files' or public.momentum_sync_writes_allowed());
+create policy momentum_wipe_storage_guard_update on storage.objects
+  as restrictive for update to authenticated
+  using (bucket_id <> 'momentum-files' or public.momentum_sync_writes_allowed())
+  with check (bucket_id <> 'momentum-files' or public.momentum_sync_writes_allowed());
+create policy momentum_wipe_storage_guard_delete on storage.objects
+  as restrictive for delete to authenticated
+  using (bucket_id <> 'momentum-files' or public.momentum_sync_writes_allowed());
 
 -- Make newly created tables visible to Supabase's PostgREST API immediately.
 notify pgrst, 'reload schema';
