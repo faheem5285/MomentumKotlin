@@ -21,7 +21,10 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,6 +45,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,6 +70,7 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
     var displayName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(initialMessage) }
     var isError by remember { mutableStateOf(initialMessage != null) }
@@ -157,17 +162,28 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
                         label = { Text("Password") },
                         leadingIcon = { Icon(Icons.Rounded.Lock, null) },
                         singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(
+                                onClick = { passwordVisible = !passwordVisible },
+                                enabled = !busy
+                            ) {
+                                Icon(
+                                    imageVector = if (passwordVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                    contentDescription = if (passwordVisible) "Hide password" else "Show password"
+                                )
+                            }
+                        },
                         enabled = !busy
                     )
                     Spacer(Modifier.height(16.dp))
                     PrimaryButton(
                         text = if (isSignUp) "Create account" else "Sign in",
                         onClick = {
-                            if (email.isBlank() || password.length < 6 || (isSignUp && displayName.isBlank())) {
+                            if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches() || password.length < 6 || (isSignUp && displayName.isBlank())) {
                                 isError = true
-                                message = if (isSignUp) "Enter your name, a valid email, and a password with at least 6 characters."
-                                else "Enter a valid email and a password with at least 6 characters."
+                                message = if (isSignUp) "Enter your name, a valid email address, and a password with at least 6 characters."
+                                else "Enter a valid email address and a password with at least 6 characters."
                             } else {
                                 val enteredEmail = email.trim()
                                 val enteredPassword = password
