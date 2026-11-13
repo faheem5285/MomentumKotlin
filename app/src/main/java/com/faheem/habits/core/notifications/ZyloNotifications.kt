@@ -10,6 +10,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.annotation.SuppressLint
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.faheem.habits.R
@@ -187,6 +188,7 @@ object ZyloNotifications {
         syncSummary(context, group, channelId, summaryId, summaryTitle)
     }
 
+    @SuppressLint("MissingPermission")
     fun syncSummary(
         context: Context,
         group: String,
@@ -194,6 +196,7 @@ object ZyloNotifications {
         summaryId: Int,
         summaryTitle: String
     ) {
+        if (!MomentumNotificationSettings.notificationsAllowed(context)) return
         val manager = NotificationManagerCompat.from(context)
         val active = runCatching {
             manager.activeNotifications.count { item ->
@@ -211,7 +214,11 @@ object ZyloNotifications {
                 .setOnlyAlertOnce(true)
                 .setContentIntent(openApp(context, summaryId))
                 .build()
-            runCatching { manager.notify(summaryId, summary) }
+            try {
+                manager.notify(summaryId, summary)
+            } catch (_: SecurityException) {
+                // Permission may be revoked after the check and before delivery.
+            }
         } else {
             manager.cancel(summaryId)
         }
