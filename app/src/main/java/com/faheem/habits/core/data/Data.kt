@@ -824,6 +824,7 @@ abstract class AppDatabase : RoomDatabase() {
         private const val ACTIVE_USER_KEY = "active_user_id"
 
         /** Keeps Room rows and sync cursors in a separate local database per Supabase user. */
+        @Suppress("TooGenericExceptionCaught")
         fun activateAccount(context: Context, userId: String) = synchronized(this) {
             val normalizedId = runCatching { UUID.fromString(userId).toString() }
                 .getOrElse { error("Supabase returned an invalid account ID.") }
