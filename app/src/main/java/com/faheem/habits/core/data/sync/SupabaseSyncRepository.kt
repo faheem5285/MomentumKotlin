@@ -23,6 +23,11 @@ import com.faheem.habits.core.data.supabase.SupabaseRestClient
 import com.faheem.habits.features.vault.VaultCrypto
 import com.faheem.habits.core.ui.AppModule
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -458,7 +463,32 @@ class SupabaseSyncRepository(
     }
     private suspend fun createFirstSyncBackup() {
         val marker = File(context.filesDir, "sync-first-local-backup.json")
-        if (!marker.exists()) marker.outputStream().use { it.write(MomentumBackup.exportBytes(context)) }
+        if (marker.isFile && marker.length() > 0L) return
+
+        val bytes = MomentumBackup.exportBytes(context)
+        val temporary = File.createTempFile("sync-first-backup-", ".tmp", context.filesDir)
+        try {
+            FileOutputStream(temporary).use { output ->
+                output.write(bytes)
+                output.fd.sync()
+            }
+            try {
+                Files.move(
+                    temporary.toPath(),
+                    marker.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(temporary.toPath(), marker.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
+        } catch (failure: Exception) {
+            temporary.delete()
+            if (failure is IOException) throw failure
+            throw IOException("Could not save the first-sync local backup.", failure)
+        } finally {
+            if (temporary.exists()) temporary.delete()
+        }
     }
 
     private suspend fun pushAndMarkClean(
