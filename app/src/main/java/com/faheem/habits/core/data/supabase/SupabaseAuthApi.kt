@@ -110,13 +110,13 @@ object SupabaseAuthApi {
     suspend fun signIn(context: Context, email: String, password: String) {
         val body = request("token?grant_type=password", json.encodeToString(Credentials(email, password)))
         val session = json.decodeFromString<AuthResponse>(body)
-        activateAccountDatabase(context.applicationContext, session)
-        rememberSession(session)
-        cacheProfile(context.applicationContext, session)
         val refreshToken = session.refresh_token
         check(!refreshToken.isNullOrBlank()) {
             "Sign-in succeeded but Supabase did not return a refresh token."
         }
+        activateAccountDatabase(context.applicationContext, session)
+        rememberSession(session)
+        cacheProfile(context.applicationContext, session)
         SecureTokenStore.saveRefreshToken(context.applicationContext, refreshToken)
     }
 
@@ -129,13 +129,13 @@ object SupabaseAuthApi {
                 json.encodeToString(RefreshCredentials(refreshToken))
             )
             val session = json.decodeFromString<AuthResponse>(body)
-            activateAccountDatabase(context.applicationContext, session)
-            rememberSession(session)
-            cacheProfile(context.applicationContext, session)
             val updatedToken = session.refresh_token
             check(!updatedToken.isNullOrBlank()) {
                 "Supabase did not return a refreshed session token."
             }
+            activateAccountDatabase(context.applicationContext, session)
+            rememberSession(session)
+            cacheProfile(context.applicationContext, session)
             SecureTokenStore.saveRefreshToken(context.applicationContext, updatedToken)
             SessionRestoreResult.AUTHENTICATED
         } catch (e: AuthHttpException) {
