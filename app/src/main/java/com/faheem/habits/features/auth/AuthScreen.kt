@@ -181,7 +181,7 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
                     PrimaryButton(
                         text = if (isSignUp) "Create account" else "Sign in",
                         onClick = {
-                            if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches() || password.length < 6 || (isSignUp && displayName.isBlank())) {
+                            if (!isAuthInputValid(email, password, isSignUp, displayName)) {
                                 isError = true
                                 message = if (isSignUp) "Enter your name, a valid email address, and a password with at least 6 characters."
                                 else "Enter a valid email address and a password with at least 6 characters."
@@ -270,4 +270,17 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
             )
         }
     }
+}
+
+
+private fun isAuthInputValid(
+    email: String,
+    password: String,
+    isSignUp: Boolean,
+    displayName: String
+): Boolean {
+    val hasValidEmail = android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()
+    val hasValidPassword = password.length >= 6
+    val hasRequiredName = !isSignUp || displayName.isNotBlank()
+    return hasValidEmail && hasValidPassword && hasRequiredName
 }
