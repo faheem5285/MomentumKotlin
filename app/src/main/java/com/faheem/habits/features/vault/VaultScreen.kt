@@ -1267,8 +1267,7 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
             error = error,
             linkedEmail = vm.linkedEmail(),
             legacyVaultAvailable = vm.needsAccountLink(),
-            onSubmit = ::unlockWithAccount,
-            onLinkExisting = { pendingLegacyMigration = true }
+            onSubmit = ::unlockWithAccount
         )
     } else {
         VaultHome(
@@ -1276,7 +1275,6 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
             unreadable = unreadable,
             linkedEmail = vm.linkedEmail(),
             legacyBackupAvailable = vm.isConfigured(),
-            onRecoverOldRecords = { legacyPassword = ""; pendingRecordMerge = true },
             onLock = {
                 sessionEpoch++
                 key.fill(0); sessionKey = null; items = emptyList(); selected = null
@@ -1284,23 +1282,11 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
             },
             onAdd = { editing = null; editorOpen = true },
             onSelect = { selected = it },
-            onExport = {
-                externalFilePickerOpen = true
-                vaultExportLauncher.launch("momentum-vault-encrypted.json")
-            },
-            onImport = {
-                externalFilePickerOpen = true
-                vaultImportLauncher.launch(arrayOf("application/json", "text/json", "text/plain"))
-            },
             onImportCsv = {
                 externalFilePickerOpen = true
                 csvImportLauncher.launch(arrayOf("*/*"))
             },
-            onResetQaData = { confirmQaReset = true },
-            onRestoreBackup = {
-                externalFilePickerOpen = true
-                recoveryLauncher.launch(arrayOf("application/json", "text/json", "text/plain"))
-            }
+            onResetQaData = { confirmQaReset = true }
         )
         exportMessage?.let { Text(it, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
     }
@@ -1343,8 +1329,7 @@ private fun VaultGate(
     error: String?,
     linkedEmail: String,
     legacyVaultAvailable: Boolean,
-    onSubmit: () -> Unit,
-    onLinkExisting: () -> Unit
+    onSubmit: () -> Unit
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = MomentumTokens.screenPadding, vertical = 16.dp), verticalArrangement = Arrangement.Center) {
         LazyColumn(
@@ -1413,15 +1398,11 @@ private fun VaultHome(
     unreadable: Int,
     linkedEmail: String,
     legacyBackupAvailable: Boolean,
-    onRecoverOldRecords: () -> Unit,
     onLock: () -> Unit,
     onAdd: () -> Unit,
     onSelect: (VaultListItem) -> Unit,
-    onExport: () -> Unit,
-    onImport: () -> Unit,
     onImportCsv: () -> Unit,
     onResetQaData: () -> Unit,
-    onRestoreBackup: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
     var type by remember { mutableStateOf("All") }
