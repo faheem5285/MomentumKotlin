@@ -45,18 +45,21 @@ internal fun screenTimeMinutes(context: Context, period: ScreenTimePeriod): Long
 internal fun checkScreenTimeAlarm(context: Context) {
     val prefs = context.getSharedPreferences(SCREEN_TIME_PREFS, Context.MODE_PRIVATE)
     val limit = prefs.getInt(PREF_SCREEN_ALARM, 0)
-    if (limit <= 0) return
-    val period = ScreenTimePeriod.fromKey(prefs.getString(PREF_SCREEN_ALARM_PERIOD, null))
-    val periodId = period.periodId()
-    if (prefs.getString(PREF_SCREEN_ALARM_LAST_PERIOD, "") == periodId) return
-    val usedMinutes = screenTimeMinutes(context, period) ?: return
-    if (usedMinutes >= limit) {
-        com.faheem.habits.core.notifications.UsageLimitNotifications.notifyScreenTime(
-            context,
-            usedMinutes.toInt(),
-            limit,
-            period.label
-        )
-        prefs.edit().putString(PREF_SCREEN_ALARM_LAST_PERIOD, periodId).apply()
+    if (limit > 0) {
+        val period = ScreenTimePeriod.fromKey(prefs.getString(PREF_SCREEN_ALARM_PERIOD, null))
+        val periodId = period.periodId()
+        if (prefs.getString(PREF_SCREEN_ALARM_LAST_PERIOD, "") != periodId) {
+            screenTimeMinutes(context, period)
+                ?.takeIf { it >= limit }
+                ?.let { usedMinutes ->
+                    com.faheem.habits.core.notifications.UsageLimitNotifications.notifyScreenTime(
+                        context,
+                        usedMinutes.toInt(),
+                        limit,
+                        period.label
+                    )
+                    prefs.edit().putString(PREF_SCREEN_ALARM_LAST_PERIOD, periodId).apply()
+                }
+        }
     }
 }
