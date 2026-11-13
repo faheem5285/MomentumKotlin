@@ -27,8 +27,9 @@ internal object CustomNotificationTimeCalculator {
                 .map { now.toLocalDate().plusDays(it).atTime(hour, minute).atZone(now.zone) }
                 .firstOrNull { it.isAfter(now) }
 
-            WEEKLY -> {
-                if (notification.daysMask == 0) return null
+            WEEKLY -> if (notification.daysMask == 0) {
+                null
+            } else {
                 (0L..7L).asSequence()
                     .map { now.toLocalDate().plusDays(it).atTime(hour, minute).atZone(now.zone) }
                     .firstOrNull { candidate ->
