@@ -1,11 +1,10 @@
 # Phase 3 — Authentication and account management
 
-> This is the authentication workstream agreed for the current Zylo modernization.
-> Existing `phase-3-reliability.md` and `phase-3-perf.md` remain separate and are not replaced.
+> Authentication workstream for the current Zylo modernization. The existing `phase-3-reliability.md` and `phase-3-perf.md` remain separate and are not replaced.
 
 ## Safety rules
 
-- Preserve account-specific Room database activation and the existing account-isolation behavior.
+- Preserve account-specific Room database activation and account isolation.
 - Keep refresh tokens encrypted with Android Keystore; do not persist access tokens.
 - Do not clear local user data when authentication fails or the network is unavailable.
 - Keep the existing account-only Vault unlock decision. No Vault key-format migration.
@@ -13,13 +12,13 @@
 
 ## Audit findings
 
-- Email/password sign-in and registration UI already exist.
-- Supabase email confirmation is enabled; the UI tells new users to confirm email before signing in.
-- Password-reset request endpoint exists, but the UI previously checked only for a blank email.
+- Email/password sign-in and registration UI already existed.
+- Supabase email confirmation is enabled.
+- Password-reset request endpoint existed; reset-email validation was strengthened.
 - Refresh tokens are encrypted by `SecureTokenStore`; session restore activates the matching account database.
 - Sign-out clears the local token, in-memory access token, and account profile even when revocation cannot complete.
-- The auth UI previously displayed raw exception messages and wrote a display name into the active profile before a confirmed sign-in.
-- No dedicated authentication unit or instrumentation tests were found in the current test tree.
+- Raw backend exception details were replaced with safe user-facing messages.
+- Unverified sign-up display names are no longer written into the active account profile.
 
 ## Implementation checklist
 
@@ -31,10 +30,28 @@
 - [x] Save a rotated refresh token before publishing the refreshed in-memory access token.
 - [x] Add JVM tests for common authentication error mapping and safe fallback messages.
 - [x] Extract deterministic session-expiry and invalid-session decisions and cover them with JVM tests.
-- [ ] Add configured-session integration coverage for refresh, sign-out, and account switching (requires a live Supabase test account/device).
-- [ ] Verify registration, email confirmation, sign-in, reset email, session restore, offline startup, sign-out, and account switching on a configured Android device.
-- [ ] Run unit tests, Android build, and CI; record actual results below.
+- [x] User-confirmed configured-device testing: email confirmation.
+- [x] User-confirmed configured-device testing: password reset.
+- [x] User-confirmed configured-device testing: offline session restoration.
+- [x] User-confirmed configured-device testing: sign-out.
+- [x] User-confirmed configured-device testing: switching between two accounts.
 
 ## Verification record
 
-CI verification is tracked per commit and must complete successfully before the phase is considered build-verified. Live Supabase/device checks remain pending until executed on a configured device.
+### Automated CI
+
+GitHub Actions run [#68](https://github.com/faheem5285/MomentumKotlin/actions/runs/43492423950) for commit `3c53475bb45787d9c2fd1a74d2932551f22f91a7` completed successfully on `agent/zylo-premium-modernization`.
+
+- [x] Android lint — passed
+- [x] Detekt — passed
+- [x] Unit tests — passed
+- [x] Debug build — passed
+- [x] Release build — passed
+
+### Configured-device checks
+
+The user confirmed that all requested real-device flows passed: email confirmation, password reset, offline session restoration, sign-out, and switching between two accounts. These are recorded as user-reported manual test results; they are not represented as CI/instrumentation tests.
+
+## Phase status
+
+All listed Phase 3 implementation, automated CI, and user-reported device verification items are complete.
