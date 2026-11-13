@@ -100,7 +100,12 @@ class ToDoViewModel @Inject constructor(
 }
 
 @Composable
-fun ToDoScreen(vm: ToDoViewModel = hiltViewModel()) {
+@Suppress("CyclomaticComplexMethod")
+fun ToDoScreen(
+    vm: ToDoViewModel = hiltViewModel(),
+    initialTaskId: Int? = null,
+    openRequestToken: Long? = null
+) {
     val tasks by vm.items.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var editing by remember { mutableStateOf<ToDoItem?>(null) }
@@ -110,6 +115,11 @@ fun ToDoScreen(vm: ToDoViewModel = hiltViewModel()) {
     var query by remember { mutableStateOf("") }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
     var month by remember { mutableStateOf(YearMonth.now()) }
+    LaunchedEffect(initialTaskId, openRequestToken, tasks) {
+        initialTaskId?.let { id ->
+            tasks.firstOrNull { it.id == id }?.let { editing = it }
+        }
+    }
     val openTasks = tasks.filterNot { it.completed }
     val today = LocalDate.now()
     val overdueCount = openTasks.count { LocalDate.ofEpochDay(it.dueEpochDay).isBefore(today) }

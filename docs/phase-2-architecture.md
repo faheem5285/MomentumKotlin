@@ -11,8 +11,11 @@ architecture items below are complete and the verification checklist passes.
   repositories/ViewModels for to-dos, expenses, and files.
 - Added Preferences DataStore repositories with one-time migration from the
   existing `momentum_app_settings` and `momentum` SharedPreferences files.
+- Routed Home module visibility through DataStore and kept backup export/import
+  reading and restoring those same DataStore preferences.
 - Added Navigation Compose with module routes and `momentum://module/{module}`
-  deep links while retaining the existing destination API.
+  deep links. Item IDs from habit, to-do, and loan notifications/deep links are
+  passed to the relevant feature and open the matching record.
 - Migrated the refactored screens to `collectAsStateWithLifecycle`.
 - Moved the Habits screen's persistence and reminder operations behind an
   injected `HabitRepository`; its ViewModel now uses Hilt and all Habits tabs
@@ -38,17 +41,20 @@ queries, scheduling calls, and money conversion behavior.
 - `gradlew.bat :app:compileDebugKotlin`
 - `gradlew.bat :app:testDebugUnitTest assembleDebug`
 - `gradlew.bat :app:compileDebugAndroidTestKotlin`
+- `gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.faheem.habits.core.data.AppDatabaseMigrationTest"`
 
-Instrumentation tests and deep-link launches still require a connected device.
+The Room migration instrumentation class passes on the connected Android 16
+device. UI smoke tests were not re-run after the final changes because Android
+installation was rejected by the device (`INSTALL_FAILED_USER_RESTRICTED`).
 
 ## Deferred
 
-- Replace remaining feature/service SharedPreferences with DataStore-backed
-  repositories, including legacy key migration tests for each store.
+- Audit and migrate remaining eligible feature settings to DataStore, with
+  legacy migration tests. Keep service lifecycle, OS-integrated, security,
+  account-scope, and fast boot/notification settings synchronous where their
+  call sites require it.
 - Complete per-screen immutable `UiState`/event contracts and split remaining
   files over 400 lines.
-- Add exact item deep links and notification payload routing for habit, to-do,
-  and loan IDs; current module-level routing is not item-level routing.
 - Revisit dependency versions against the latest stable Android toolchain
   before raising compile/target SDK; this phase keeps the known-good toolchain
   to avoid an unverified behavior change.

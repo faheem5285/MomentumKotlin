@@ -20,6 +20,8 @@ import com.faheem.habits.core.data.LoanPayment
 import com.faheem.habits.core.data.LoanPerson
 import com.faheem.habits.core.data.ToDoItem
 import com.faheem.habits.core.data.CustomNotification
+import com.faheem.habits.core.settings.MomentumSettingsBackup
+import com.faheem.habits.core.settings.MomentumSettingsRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -74,29 +76,13 @@ class MomentumBackupRoundTripTest {
     fun failedReplacePreservesDatabaseAndExportedPreferences() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
-        val appPrefs = context.getSharedPreferences("momentum_app_settings", 0)
-        val moneyPrefs = context.getSharedPreferences("momentum", 0)
-        val appKeys = appPrefs.all.filterKeys { it == "permission_setup_seen" || it.startsWith("module_enabled_") }
-        val moneyKeys = moneyPrefs.all.filterKeys { it in setOf("budget", "budget_minor_units") || it.startsWith("money_limit_") }
-        fun restorePrefs(prefs: android.content.SharedPreferences, original: Map<String, *>, matches: (String) -> Boolean) {
-            val editor = prefs.edit()
-            prefs.all.keys.filter(matches).forEach(editor::remove)
-            original.forEach { (key, value) ->
-                when (value) {
-                    is Boolean -> editor.putBoolean(key, value)
-                    is Int -> editor.putInt(key, value)
-                    is Long -> editor.putLong(key, value)
-                    is Float -> editor.putFloat(key, value)
-                    is String -> editor.putString(key, value)
-                    is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
-                }
-            }
-            check(editor.commit())
-        }
+        val settings = MomentumSettingsRepository(context)
+        val settingsBackup = MomentumSettingsBackup(context)
+        val originalSettings = settingsBackup.exportPreferences()
         try {
             db.habitDao().insertHabit(Habit(name = "Keep this habit"))
-            appPrefs.edit().putBoolean("module_enabled_backup_restore_test", true).commit()
-            moneyPrefs.edit().putLong("money_limit_backup_restore_test", 500L).commit()
+            settings.setModuleVisible("backup_restore_test", true)
+            settings.setCategoryBudgetMinorUnits("backup_restore_test", 500L)
             val invalidHabit = JSONObject()
                 .put("uuid", UUID.randomUUID().toString())
                 .put("name", "")
@@ -122,11 +108,11 @@ class MomentumBackupRoundTripTest {
 
             assertTrue(failed)
             assertEquals("Keep this habit", db.habitDao().getAllForBackup().single().name)
-            assertTrue(appPrefs.getBoolean("module_enabled_backup_restore_test", false))
-            assertEquals(500L, moneyPrefs.getLong("money_limit_backup_restore_test", 0L))
+            val preserved = settingsBackup.exportPreferences()
+            assertEquals(true, preserved.first.getBoolean("module_enabled_backup_restore_test"))
+            assertEquals(500L, preserved.second.getLong("money_limit_backup_restore_test_minor_units"))
         } finally {
-            restorePrefs(appPrefs, appKeys) { it == "permission_setup_seen" || it.startsWith("module_enabled_") }
-            restorePrefs(moneyPrefs, moneyKeys) { it in setOf("budget", "budget_minor_units") || it.startsWith("money_limit_") }
+            settingsBackup.importPreferences(originalSettings.first, originalSettings.second, replace = true)
             db.close()
         }
     }
@@ -135,7 +121,12 @@ class MomentumBackupRoundTripTest {
     fun exportImportRoundTripAndRepeatedMergeAreUuidIdempotent() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+        val settings = MomentumSettingsRepository(context)
+        val settingsBackup = MomentumSettingsBackup(context)
+        val originalSettings = settingsBackup.exportPreferences()
         try {
+            settings.setModuleVisible("backup_round_trip_test", false)
+            settings.setCategoryBudgetMinorUnits("backup_round_trip_test", 1_234L)
             val habitId = db.habitDao().insertHabit(
                 Habit(name = "Round trip habit", scheduleType = "times_per_week", frequencyPerWeek = 4,
                     targetQuantity = 3, quantityUnit = "pages", timerMinutes = 15, category = "Health",
@@ -191,7 +182,27 @@ class MomentumBackupRoundTripTest {
 
             val snapshot = MomentumBackup.exportBytes(context, db)
             assertTrue(String(snapshot, Charsets.UTF_8).contains("\"schemaVersion\": 20"))
+            val preferenceBackup = JSONObject(String(snapshot, Charsets.UTF_8))
+            assertEquals(
+                false,
+                preferenceBackup.getJSONObject("settings").getBoolean("module_enabled_backup_round_trip_test")
+            )
+            assertEquals(
+                1_234L,
+                preferenceBackup.getJSONObject("budgets").getLong("money_limit_backup_round_trip_test_minor_units")
+            )
+            settings.setModuleVisible("backup_round_trip_test", true)
+            settings.setCategoryBudgetMinorUnits("backup_round_trip_test", 9_999L)
             MomentumBackup.restoreBytes(context, snapshot, replace = true, db = db)
+            val restoredPreferences = settingsBackup.exportPreferences()
+            assertEquals(
+                false,
+                restoredPreferences.first.getBoolean("module_enabled_backup_round_trip_test")
+            )
+            assertEquals(
+                1_234L,
+                restoredPreferences.second.getLong("money_limit_backup_round_trip_test_minor_units")
+            )
             MomentumBackup.restoreBytes(context, snapshot, replace = false, db = db)
             MomentumBackup.restoreBytes(context, snapshot, replace = false, db = db)
 
@@ -219,6 +230,7 @@ class MomentumBackupRoundTripTest {
             assertEquals(1, db.lifeRuleDao().getAllFilesForSync().size)
             assertEquals(1, db.customNotificationDao().getAllForBackup().size)
         } finally {
+            settingsBackup.importPreferences(originalSettings.first, originalSettings.second, replace = true)
             db.close()
         }
     }

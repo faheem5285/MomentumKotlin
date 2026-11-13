@@ -1,3 +1,5 @@
+@file:Suppress("FunctionNaming")
+
 package com.faheem.habits.features.habits
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.notifications.*
@@ -283,11 +285,17 @@ fun HabitDetailSheet(ui: HabitUi, onDismiss: () -> Unit, onEdit: () -> Unit, onA
 }
 
 @Composable
-fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -> Unit) {
+@Suppress("CyclomaticComplexMethod")
+fun TodayScreen(
+    vm: HabitViewModel,
+    onBrowseTemplates: () -> Unit,
+    initialHabitId: Int? = null,
+    openRequestToken: Long? = null
+) {
     val all by vm.all.collectAsStateWithLifecycle()
     val todayDay = today()
     var selected by remember { mutableLongStateOf(todayDay) }
-    var detailId by remember { mutableStateOf<Int?>(null) }
+    var detailId by remember(initialHabitId, openRequestToken) { mutableStateOf(initialHabitId) }
     var reminderHabitId by remember { mutableStateOf<Int?>(null) }
     var editing by remember { mutableStateOf<HabitUi?>(null) }
     var creating by remember { mutableStateOf(false) }

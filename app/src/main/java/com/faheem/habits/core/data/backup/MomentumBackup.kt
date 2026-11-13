@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.room.withTransaction
 import com.faheem.habits.core.data.*
+import com.faheem.habits.core.settings.MomentumSettingsBackup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -21,8 +22,6 @@ object MomentumBackup {
     private val LEGACY_SCHEMA_VERSIONS = setOf(11, 13)
     private const val MAX_BYTES = 10 * 1024 * 1024
     private const val MAX_ROWS = 10_000
-    private const val APP_PREFS = "momentum_app_settings"
-    private const val MONEY_PREFS = "momentum"
 
     data class Preview(
         val habits: Int,
@@ -44,6 +43,7 @@ object MomentumBackup {
     }
 
     suspend fun exportBytes(context: Context, db: AppDatabase = AppDatabase.get(context)): ByteArray = withContext(Dispatchers.IO) {
+        val (settingsBackup, budgetBackup) = MomentumSettingsBackup(context).exportPreferences()
         val root = db.withTransaction {
             val result = JSONObject()
                 .put("format", "momentum-backup")
@@ -173,8 +173,8 @@ object MomentumBackup {
                 .put("categoryBudgets", categoryBudgets)
                 .put("lifeRules", lifeRules).put("lifeRuleFiles", lifeRuleFiles)
                 .put("customNotifications", customNotifications)
-                .put("budgets", exportPreferences(context.getSharedPreferences(MONEY_PREFS, Context.MODE_PRIVATE), setOf("budget", "budget_minor_units"), "money_limit_"))
-                .put("settings", exportPreferences(context.getSharedPreferences(APP_PREFS, Context.MODE_PRIVATE), emptySet(), "module_enabled_").put("permission_setup_seen", context.getSharedPreferences(APP_PREFS, Context.MODE_PRIVATE).getBoolean("permission_setup_seen", false)))
+                .put("budgets", budgetBackup)
+                .put("settings", settingsBackup)
             result
         }
         val bytes = root.toString(2).toByteArray(Charsets.UTF_8)
@@ -432,8 +432,11 @@ object MomentumBackup {
                     added++
                 }
             }
-            importPreferences(root.optJSONObject("budgets"), context.getSharedPreferences(MONEY_PREFS, Context.MODE_PRIVATE), setOf("budget", "budget_minor_units"), "money_limit_", replace)
-            importPreferences(root.optJSONObject("settings"), context.getSharedPreferences(APP_PREFS, Context.MODE_PRIVATE), setOf("permission_setup_seen"), "module_enabled_", replace)
+            MomentumSettingsBackup(context).importPreferences(
+                root.optJSONObject("settings"),
+                root.optJSONObject("budgets"),
+                replace
+            )
         }
         return "${if(replace) "Replaced with" else "Added"} $added records. Vault entries are kept separately and were not imported."
     }
@@ -452,36 +455,6 @@ object MomentumBackup {
         return rules
     }
 
-    private fun exportPreferences(prefs: android.content.SharedPreferences, exact: Set<String>, prefix: String): JSONObject = JSONObject().apply {
-        prefs.all.filterKeys { it in exact || it.startsWith(prefix) }.forEach { (key,value) -> when(value) {
-            is Boolean -> put(key,value); is Int -> put(key,value); is Long -> put(key,value); is Float -> put(key,value.toDouble()); is String -> put(key,value)
-        } }
-    }
-    private fun importPreferences(values: JSONObject?, prefs: android.content.SharedPreferences, exact: Set<String>, prefix: String, replace: Boolean) {
-        if(values==null && !replace) return
-        val editor=prefs.edit()
-        if (replace) prefs.all.keys.filter { it in exact || it.startsWith(prefix) }.forEach(editor::remove)
-        if (values != null) importPreferenceValues(values, editor, exact, prefix)
-        check(editor.commit()) { "Could not restore app settings." }
-    }
-    private fun importPreferenceValues(
-        values: JSONObject,
-        editor: android.content.SharedPreferences.Editor,
-        exact: Set<String>,
-        prefix: String
-    ) {
-        for (i in 0 until values.length()) {
-            val key = values.names()?.getString(i) ?: continue
-            if (key !in exact && !key.startsWith(prefix)) continue
-            when (val value = values.get(key)) {
-                is Boolean -> editor.putBoolean(key, value)
-                is Int -> editor.putInt(key, value)
-                is Long -> editor.putLong(key, value)
-                is Double -> editor.putFloat(key, value.toFloat())
-                is String -> editor.putString(key, value)
-            }
-        }
-    }
     private fun validUuid(obj: JSONObject, key: String = "uuid"): String {
         val value=obj.optString(key); require(value.length in 1..64 && runCatching { UUID.fromString(value); true }.getOrDefault(false)) { "Missing or invalid UUID." }; return value
     }

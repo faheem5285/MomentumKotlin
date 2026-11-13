@@ -190,7 +190,12 @@ private fun openProofFile(context: android.content.Context, uri: String, mime: S
 }
 
 @Composable
-fun LoansScreen(vm: LoanViewModel = hiltViewModel()) {
+@Suppress("CyclomaticComplexMethod")
+fun LoansScreen(
+    vm: LoanViewModel = hiltViewModel(),
+    initialLoanId: Int? = null,
+    openRequestToken: Long? = null
+) {
     val loans by vm.loans.collectAsStateWithLifecycle()
     var tab by remember { mutableIntStateOf(0) }
     var direction by remember { mutableIntStateOf(0) }
@@ -205,6 +210,12 @@ fun LoansScreen(vm: LoanViewModel = hiltViewModel()) {
     var deleting by remember { mutableStateOf<Loan?>(null) }
     var deletingPerson by remember { mutableStateOf<LoanPerson?>(null) }
     var editingAccountBalance by remember { mutableStateOf(false) }
+
+    LaunchedEffect(initialLoanId, openRequestToken, loans) {
+        initialLoanId?.let { id ->
+            loans.firstOrNull { it.id == id }?.let { selected = it }
+        }
+    }
 
     val accountBalanceMinorUnits by vm.accountBalanceMinorUnits.collectAsStateWithLifecycle()
     val dateFilteredLoans = remember(loans, dateRange) { loans.filter { dateRange.includes(it.epochDay) } }

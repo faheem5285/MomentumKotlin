@@ -1,3 +1,5 @@
+@file:Suppress("FunctionNaming")
+
 package com.faheem.habits.features.habits
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.ui.*
@@ -121,7 +123,11 @@ private val habitTabs = listOf(
 )
 
 @Composable
-fun HabitScreen(vm: HabitViewModel = hiltViewModel()) {
+fun HabitScreen(
+    vm: HabitViewModel = hiltViewModel(),
+    initialHabitId: Int? = null,
+    openRequestToken: Long? = null
+) {
     var tab by remember { mutableIntStateOf(0) }
     val tabs = remember {
         habitTabs.map { MomentumTab(it.label, it.icon) }
@@ -131,7 +137,12 @@ fun HabitScreen(vm: HabitViewModel = hiltViewModel()) {
         Box(Modifier.weight(1f)) {
             Crossfade(targetState = tab, label = "habitTab") { t ->
                 when (t) {
-                    0 -> TodayScreen(vm, onBrowseTemplates = { tab = 1 })
+                    0 -> TodayScreen(
+                        vm,
+                        onBrowseTemplates = { tab = 1 },
+                        initialHabitId = initialHabitId,
+                        openRequestToken = openRequestToken
+                    )
                     1 -> TemplatesScreen(vm)
                     2 -> InsightsScreen(vm)
                     else -> ManageScreen(vm)

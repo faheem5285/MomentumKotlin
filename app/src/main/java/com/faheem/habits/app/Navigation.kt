@@ -1,3 +1,5 @@
+@file:Suppress("FunctionNaming")
+
 package com.faheem.habits.app
 
 import androidx.activity.compose.BackHandler
@@ -10,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.navigation.NavType
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -33,7 +36,11 @@ import com.faheem.habits.features.vault.VaultScreen
 
 sealed interface MomentumDestination {
     data object Home : MomentumDestination
-    data class Module(val module: AppModule, val itemId: Int? = null) : MomentumDestination
+    data class Module(
+        val module: AppModule,
+        val itemId: Int? = null,
+        val requestToken: Long? = null
+    ) : MomentumDestination
 }
 
 @Composable
@@ -45,16 +52,11 @@ fun MomentumNavigationHost(
 ) {
     val navController = rememberNavController()
     LaunchedEffect(destination) {
-        val route = when (destination) {
-            MomentumDestination.Home -> "home"
-            is MomentumDestination.Module -> buildString {
-                append("module/${destination.module.name.lowercase()}")
-                destination.itemId?.let { append("?itemId=$it") }
+        if (!matchesDestination(destination, navController.currentBackStackEntry)) {
+            navController.navigate(destination.route()) {
+                popUpTo("home") { inclusive = false }
+                launchSingleTop = true
             }
-        }
-        navController.navigate(route) {
-            popUpTo("home") { inclusive = false }
-            launchSingleTop = true
         }
     }
     NavHost(navController, startDestination = "home", modifier = modifier) {
@@ -67,11 +69,17 @@ fun MomentumNavigationHost(
                     type = NavType.IntType
                     nullable = true
                     defaultValue = null
+                },
+                navArgument("requestToken") {
+                    type = NavType.LongType
+                    nullable = true
+                    defaultValue = null
                 }
             ),
             deepLinks = listOf(
                 navDeepLink { uriPattern = "momentum://module/{module}" },
-                navDeepLink { uriPattern = "momentum://module/{module}?itemId={itemId}" }
+                navDeepLink { uriPattern = "momentum://module/{module}?itemId={itemId}" },
+                navDeepLink { uriPattern = "momentum://module/{module}?itemId={itemId}&requestToken={requestToken}" }
             )
         ) { entry ->
             val module = entry.arguments?.getString("module")
@@ -79,14 +87,21 @@ fun MomentumNavigationHost(
             if (module == null) {
                 LaunchedEffect(Unit) { navController.popBackStack() }
             } else {
-                ModuleScreen(module, entry.arguments?.getInt("itemId"), onBack)
+                ModuleScreen(
+                    module,
+                    entry.arguments?.getInt("itemId", Int.MIN_VALUE)?.takeUnless { it == Int.MIN_VALUE },
+                    entry.arguments?.getLong("requestToken", Long.MIN_VALUE)
+                        ?.takeUnless { it == Long.MIN_VALUE },
+                    onBack
+                )
             }
         }
     }
 }
 
 @Composable
-private fun ModuleScreen(module: AppModule, itemId: Int?, onBack: () -> Unit) {
+@Suppress("CyclomaticComplexMethod")
+private fun ModuleScreen(module: AppModule, itemId: Int?, requestToken: Long?, onBack: () -> Unit) {
     BackHandler(onBack = onBack)
     val accent = module.accent
     CompositionLocalProvider(LocalGradient provides module.gradient) {
@@ -111,10 +126,10 @@ private fun ModuleScreen(module: AppModule, itemId: Int?, onBack: () -> Unit) {
                     )
                     Box(Modifier.weight(1f)) {
                         when (module) {
-                            AppModule.Habits -> HabitScreen(initialHabitId = itemId)
-                            AppModule.ToDos -> ToDoScreen(initialTaskId = itemId)
+                            AppModule.Habits -> HabitScreen(initialHabitId = itemId, openRequestToken = requestToken)
+                            AppModule.ToDos -> ToDoScreen(initialTaskId = itemId, openRequestToken = requestToken)
                             AppModule.Money -> ExpensesScreen()
-                            AppModule.Loans -> LoansScreen(initialLoanId = itemId)
+                            AppModule.Loans -> LoansScreen(initialLoanId = itemId, openRequestToken = requestToken)
                             AppModule.Contacts -> ContactsScreen()
                             AppModule.Files -> FilesScreen()
                             AppModule.LifeRules -> LifeRulesScreen()
@@ -124,6 +139,35 @@ private fun ModuleScreen(module: AppModule, itemId: Int?, onBack: () -> Unit) {
                             AppModule.Network -> NetworkScreen()
                             AppModule.Supabase -> SupabaseScreen()
                             AppModule.Settings -> AppSettingsScreen()
+                        }
+                    }
+
+                    private fun MomentumDestination.route(): String = when (this) {
+                        MomentumDestination.Home -> "home"
+                        is MomentumDestination.Module -> buildString {
+                            append("module/${module.name.lowercase()}")
+                            itemId?.let { append("?itemId=$it") }
+                            requestToken?.let {
+                                append(if (itemId == null) "?" else "&")
+                                append("requestToken=$it")
+                            }
+                        }
+                    }
+
+                    private fun matchesDestination(
+                        destination: MomentumDestination,
+                        currentEntry: NavBackStackEntry?
+                    ): Boolean = when (destination) {
+                        MomentumDestination.Home -> currentEntry?.destination?.route == "home"
+                        is MomentumDestination.Module -> {
+                            val args = currentEntry?.arguments
+                            val currentItemId = args?.getInt("itemId", Int.MIN_VALUE)?.takeUnless { it == Int.MIN_VALUE }
+                            val currentRequestToken = args?.getLong("requestToken", Long.MIN_VALUE)
+                                ?.takeUnless { it == Long.MIN_VALUE }
+                            currentEntry?.destination?.route?.startsWith("module/") == true &&
+                                args?.getString("module").equals(destination.module.name, ignoreCase = true) &&
+                                currentItemId == destination.itemId &&
+                                currentRequestToken == destination.requestToken
                         }
                     }
                 }

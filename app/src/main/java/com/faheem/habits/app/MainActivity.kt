@@ -116,11 +116,16 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun notificationTargetFrom(intent: Intent?): NotificationTarget? {
-        val moduleName = intent?.getStringExtra(ZyloNotifications.EXTRA_TARGET_MODULE) ?: return null
-        val itemId = if (intent.hasExtra(ZyloNotifications.EXTRA_TARGET_ITEM_ID)) {
+        val deepLink = intent?.data?.takeIf {
+            it.scheme == "momentum" && it.host == "module"
+        }
+        val moduleName = intent?.getStringExtra(ZyloNotifications.EXTRA_TARGET_MODULE)
+            ?: deepLink?.pathSegments?.firstOrNull()
+            ?: return null
+        val itemId = if (intent?.hasExtra(ZyloNotifications.EXTRA_TARGET_ITEM_ID) == true) {
             intent.getIntExtra(ZyloNotifications.EXTRA_TARGET_ITEM_ID, -1).takeIf { it > 0 }
         } else {
-            null
+            deepLink?.getQueryParameter("itemId")?.toIntOrNull()?.takeIf { it > 0 }
         }
         return NotificationTarget(moduleName, itemId, System.currentTimeMillis())
     }
@@ -154,7 +159,7 @@ fun MomentumApp(
     LaunchedEffect(notificationTarget) {
         val moduleName = notificationTarget?.moduleName ?: return@LaunchedEffect
         AppModule.entries.firstOrNull { it.name.equals(moduleName, true) }?.let {
-            destination = MomentumDestination.Module(it, notificationTarget.itemId)
+            destination = MomentumDestination.Module(it, notificationTarget.itemId, notificationTarget.token)
         }
     }
     LaunchedEffect(context) {

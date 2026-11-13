@@ -14,9 +14,10 @@
 
 ## Measurements
 
-Baseline and after numbers are intentionally not fabricated. The current
-environment can compile the benchmark module but cannot produce reliable
-Macrobenchmark numbers without a supported physical/device or emulator run.
+Baseline and after numbers are intentionally not fabricated. Although an
+Android 16 device is connected, this environment has not yet produced reliable
+Macrobenchmark numbers; the benchmark run still needs to be performed in a
+supported profiling configuration.
 
 | Scenario | Before | After | Device/build |
 |---|---:|---:|---|

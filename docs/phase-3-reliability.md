@@ -9,7 +9,9 @@
 ## Verification
 
 - `:app:testDebugUnitTest` — passed.
-- The tests cover deterministic calendar decisions. Android alarm delivery, reboot restoration, and notification display still require device-level checks.
+- `:app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.faheem.habits.core.data.AppDatabaseMigrationTest"` — passed all five Room migration/backup tests on Android 16. The v3→v20 chain, every individual migration, money conversion, and representative row preservation are covered.
+- `VaultCryptoTest` covers encryption round-trip, wrong-key rejection, ciphertext tamper rejection, verifier checks, and key rewrapping.
+- Android alarm delivery, reboot restoration, and notification display still require device-level checks.
 
 ## Device verification checklist
 
@@ -22,6 +24,6 @@
 
 ## Remaining Phase 3 work
 
-- Add Room migration fixtures for the supported schema chain and tests for migration data preservation.
-- Add domain tests for money/loan calculations and vault crypto round-trip, wrong-key, and tamper rejection.
+- Add focused loan aggregation/domain tests; money conversion and Vault crypto have unit coverage.
 - Exercise service and permission-denial flows on representative Android versions and OEM battery policies.
+- Re-run the complete instrumentation suite after Android permits test APK installation; the last UI run was blocked by `INSTALL_FAILED_USER_RESTRICTED`.
