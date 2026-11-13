@@ -131,7 +131,7 @@ object SupabaseAuthApi {
                 json.encodeToString(RefreshCredentials(refreshToken))
             )
             val session = json.decodeFromString<AuthResponse>(body)
-            val updatedToken = session.refresh_token
+            val updatedToken = session.refreshToken
             check(!updatedToken.isNullOrBlank()) {
                 "Supabase did not return a refreshed session token."
             }
