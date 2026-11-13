@@ -5,14 +5,6 @@ import org.xmlpull.v1.XmlPullParser
 import java.io.InputStream
 import java.util.zip.ZipInputStream
 
-internal data class ImportedContact(
-    val name: String,
-    val phoneNumbers: List<String> = emptyList(),
-    val email: String = "",
-    val address: String = "",
-    val notes: String = ""
-)
-
 internal fun parseContacts(input: InputStream, fileName: String): List<ImportedContact> {
     val extension = fileName.substringAfterLast('.', "").lowercase()
     if (extension == "vcf" || extension == "vcard") {
