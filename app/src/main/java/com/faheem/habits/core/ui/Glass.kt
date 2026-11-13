@@ -208,24 +208,26 @@ fun ScreenBackground(
                     )
                 )
         )
-        AuroraBloom(
-            Modifier.align(Alignment.TopEnd).offset(x = 120.dp, y = (-188).dp),
-            size = 400.dp,
-            color = tint,
-            alpha = glass.glowAlpha * 0.78f
-        )
-        AuroraBloom(
-            Modifier.align(Alignment.CenterStart).offset(x = (-190).dp, y = (-60).dp),
-            size = 360.dp,
-            color = glass.haloSecondary,
-            alpha = glass.glowAlpha * 0.58f
-        )
-        AuroraBloom(
-            Modifier.align(Alignment.BottomEnd).offset(x = 148.dp, y = 150.dp),
-            size = 340.dp,
-            color = glass.haloAccent,
-            alpha = glass.glowAlpha * 0.62f
-        )
+        if (!LocalReduceEffects.current) {
+            AuroraBloom(
+                Modifier.align(Alignment.TopEnd).offset(x = 120.dp, y = (-188).dp),
+                size = 400.dp,
+                color = tint,
+                alpha = glass.glowAlpha * 0.78f
+            )
+            AuroraBloom(
+                Modifier.align(Alignment.CenterStart).offset(x = (-190).dp, y = (-60).dp),
+                size = 360.dp,
+                color = glass.haloSecondary,
+                alpha = glass.glowAlpha * 0.58f
+            )
+            AuroraBloom(
+                Modifier.align(Alignment.BottomEnd).offset(x = 148.dp, y = 150.dp),
+                size = 340.dp,
+                color = glass.haloAccent,
+                alpha = glass.glowAlpha * 0.62f
+            )
+        }
         content()
     }
 }
@@ -317,7 +319,7 @@ fun PremiumCard(
                         .fillMaxHeight()
                         .clip(CircleShape)
                         .shadow(
-                            10.dp,
+                            if (LocalReduceEffects.current) 0.dp else 10.dp,
                             CircleShape,
                             clip = false,
                             ambientColor = accent.copy(alpha = 0.7f),
@@ -424,7 +426,7 @@ fun GlassBottomBar(content: @Composable RowScope.() -> Unit) {
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(horizontal = MomentumTokens.space4, vertical = MomentumTokens.space2)
-            .glassShadow(MomentumTokens.elevationHigh, shape, glass, glow)
+            .glassShadow(glassElevation(GlassLevel.High), shape, glass, glow)
             .clip(shape)
             .background(Brush.verticalGradient(listOf(top, bottom)))
             .background(glassSheenBrush(glass))
