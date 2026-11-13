@@ -482,9 +482,8 @@ class SupabaseSyncRepository(
             } catch (_: AtomicMoveNotSupportedException) {
                 Files.move(temporary.toPath(), marker.toPath(), StandardCopyOption.REPLACE_EXISTING)
             }
-        } catch (failure: Exception) {
+        } catch (failure: IOException) {
             temporary.delete()
-            if (failure is IOException) throw failure
             throw IOException("Could not save the first-sync local backup.", failure)
         } finally {
             if (temporary.exists()) temporary.delete()
