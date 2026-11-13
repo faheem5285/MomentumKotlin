@@ -7,6 +7,9 @@ import com.faheem.habits.core.data.FileItem
 import com.faheem.habits.core.data.supabase.SupabaseRestClient
 import java.io.File
 import java.io.IOException
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 private const val FILE_BUCKET = "momentum-files"
 
@@ -53,7 +56,7 @@ class FileStorageSync(
             val extension = file.name.substringAfterLast('.', "").trim()
                 .takeIf { it.isNotBlank() }?.let { ".$it" }.orEmpty()
             val destination = File(restoreDirectory, "${file.uuid}$extension")
-            destination.writeBytes(bytes)
+            writeAtomically(destination, bytes)
             db.fileDao().update(file.copy(uri = Uri.fromFile(destination).toString(), dirty = false))
         }
         db.loanDao().getAllPeopleForSync().filterNot { it.deleted }.forEach { person ->
@@ -84,10 +87,39 @@ class FileStorageSync(
         val extension = name.substringAfterLast('.', "").trim().takeIf { it.isNotBlank() }?.let { ".$it" }.orEmpty()
         val directory = File(context.filesDir, "synced-files/$folder").apply { mkdirs() }
         val destination = File(directory, "${path.replace('/', '-')}$extension")
-        destination.writeBytes(bytes)
+        writeAtomically(destination, bytes)
         return Uri.fromFile(destination).toString()
     }
 
+    /**
+     * Write restored content beside its destination, then replace the destination in one
+     * filesystem operation. An interrupted restore must not leave a partial local copy.
+     */
+    private fun writeAtomically(destination: File, bytes: ByteArray) {
+        val parent = destination.parentFile
+            ?: throw IOException("Could not determine restore directory for '${destination.name}'.")
+        if (!parent.exists() && !parent.mkdirs()) {
+            throw IOException("Could not create restore directory for '${destination.name}'.")
+        }
+        val temporary = File.createTempFile(".${destination.name}-", ".restore", parent)
+        try {
+            temporary.outputStream().use { output ->
+                output.write(bytes)
+                output.fd.sync()
+            }
+            try {
+                Files.move(temporary.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(temporary.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
+        } catch (error: Exception) {
+            temporary.delete()
+            if (error is IOException) throw error
+            throw IOException("Could not safely restore '${destination.name}'.", error)
+        } finally {
+            if (temporary.exists()) temporary.delete()
+        }
+    }
     private fun canRead(resolver: android.content.ContentResolver, uri: String): Boolean =
         try {
             resolver.openInputStream(Uri.parse(uri))?.use { true } ?: false
