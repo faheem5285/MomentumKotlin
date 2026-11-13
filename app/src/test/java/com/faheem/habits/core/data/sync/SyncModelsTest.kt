@@ -17,6 +17,24 @@ class SyncModelsTest {
     }
 
     @Test
+    fun tombstoneWinsAnExactTimestampTieToPreventResurrection() {
+        val active = SyncCandidate("id", 11, "device-z", false)
+        val deleted = SyncCandidate("id", 11, "device-a", true)
+
+        assertTrue(deleted.winsOver(active))
+        assertFalse(active.winsOver(deleted))
+    }
+
+    @Test
+    fun deviceIdBreaksTiesWhenDeletionStateMatches() {
+        val first = SyncCandidate("id", 11, "device-a", false)
+        val second = SyncCandidate("id", 11, "device-b", false)
+
+        assertTrue(second.winsOver(first))
+        assertFalse(first.winsOver(second))
+    }
+
+    @Test
     fun cursorRoundTripsAndReadsLegacyTimestamp() {
         val cursor = SyncCursor("2026-01-02T03:04:05Z", "record-id")
         assertEquals(cursor, SyncCursor.decode(cursor.encode()))

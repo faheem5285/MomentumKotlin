@@ -19,9 +19,17 @@ data class SyncCandidate(
     val deleted: Boolean
 )
 
+/**
+ * Deterministic last-write-wins ordering.
+ *
+ * A tombstone wins an exact timestamp tie so an equal-time active copy cannot
+ * resurrect a record that another device has deleted. Device ID is the final
+ * stable tie-breaker for otherwise equivalent candidates.
+ */
 fun SyncCandidate.winsOver(other: SyncCandidate): Boolean =
     updatedAt > other.updatedAt ||
-        (updatedAt == other.updatedAt && deviceId > other.deviceId)
+        (updatedAt == other.updatedAt && deleted && !other.deleted) ||
+        (updatedAt == other.updatedAt && deleted == other.deleted && deviceId > other.deviceId)
 
 data class SyncRunResult(
     val pushed: Int = 0,
@@ -46,4 +54,3 @@ data class SyncCursor(val updatedAt: String, val id: String = "") {
 
 fun isRetryableSyncStatus(statusCode: Int): Boolean =
     statusCode == 408 || statusCode == 429 || statusCode in 500..599
-
