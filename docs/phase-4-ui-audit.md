@@ -1,0 +1,66 @@
+# Phase 4.1 — UI/UX audit and implementation plan
+
+## Audit scope
+
+Reviewed the current navigation host, app entry point, shared theme and glass primitives, Home screen, and existing Phase 4 documentation. The repository also contains dedicated feature screens for Habits, To-dos, Money, Loans, Files, Vault, Screen Time, Battery, Network, Contacts, Life Rules, Supabase, and Settings.
+
+This is a source-level audit. Device screenshots, touch testing, font-scale testing, and reference-image comparison still require a configured Android device.
+
+## Current foundations worth preserving
+
+- `MomentumTheme` centralizes light/dark palettes, typography, shapes, dynamic wallpaper colors, and reduce-effects preference.
+- `Glass.kt` provides shared glass cards, sheets, bars, spacing/radius tokens, and visual effects.
+- `Ui.kt` provides shared hero, empty-state, and metric presentation components.
+- `Navigation.kt` uses typed destinations and a single navigation host, with notification deep links and module-level accent theming.
+- Home and feature screens already use Compose lifecycle-aware state collection in several places.
+- The app has existing data-safety, authentication, reminder, Vault, and sync foundations that must not be changed as a side effect of visual work.
+
+## Findings and priorities
+
+### P0 — Consistency and accessibility
+
+- The shared design system exists, but the Phase 4 implementation notes confirm that many feature-local Material cards have not yet been migrated. Migrate incrementally; do not mass-replace cards without checking their layout and interaction behavior.
+- Apply shared spacing, typography, shape, and surface hierarchy consistently across feature screens.
+- Audit icon-only actions, semantic labels, minimum touch targets, contrast, and large-font behavior.
+- Ensure reduce-effects preference suppresses non-essential motion and expensive visual effects consistently.
+
+### P1 — Navigation and interaction polish
+
+- Keep the existing typed route contract and notification deep links intact.
+- Review back navigation and predictive-back behavior before changing navigation dependencies or route ownership.
+- Add subtle, preference-aware haptic feedback only to meaningful completion/confirmation actions.
+- Standardize loading, empty, error, offline, and permission-required states using shared components.
+
+### P2 — Screen-by-screen refinement
+
+- Home: clarify the primary daily summary and quick actions; avoid increasing dashboard density.
+- Habits and To-dos: prioritize quick completion and clear due/status information.
+- Money and Loans: improve readability of totals, trends, and transaction/payment actions.
+- Files and Vault: prioritize clear security/privacy messaging and safe destructive-action confirmation.
+- Screen Time, Battery, Network, Contacts, Life Rules, Supabase, and Settings: make status, permissions, and next actions easy to understand.
+- Preserve all existing feature behavior and data.
+
+## Implementation sequence
+
+1. Establish a shared component and accessibility checklist.
+2. Refine shared primitives and interaction feedback.
+3. Modernize Home as the reference screen.
+4. Migrate feature screens in small, reviewable groups.
+5. Add consistent state handling and accessibility refinements.
+6. Run CI after each meaningful slice and perform device review before declaring visual verification complete.
+
+## Guardrails
+
+- Do not alter Room schemas, migrations, account database activation, sync conflict policy, Vault cryptography/key format, authentication, or reminder scheduling as part of UI-only changes.
+- Do not remove features or settings to simplify layouts.
+- Keep changes small and reversible; update screenshots/reference notes when device review is available.
+- Record only checks that actually ran. CI success is not a substitute for physical-device visual/accessibility verification.
+
+## Audit status
+
+- [x] Source-level navigation and app-entry review.
+- [x] Shared theme/glass/component review.
+- [x] Home screen structure review.
+- [x] Existing Phase 4 deferred-work review.
+- [ ] Full device/reference-image review.
+- [ ] Complete per-screen accessibility and interaction pass.
