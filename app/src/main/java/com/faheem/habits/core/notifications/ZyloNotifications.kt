@@ -167,7 +167,11 @@ object ZyloNotifications {
 
     fun post(context: Context, id: Int, notification: Notification) {
         if (!MomentumNotificationSettings.notificationsAllowed(context)) return
-        runCatching { NotificationManagerCompat.from(context).notify(id, notification) }
+        try {
+            NotificationManagerCompat.from(context).notify(id, notification)
+        } catch (_: SecurityException) {
+            // Notification permission can be revoked between the permission check and delivery.
+        }
     }
 
     fun postGrouped(
