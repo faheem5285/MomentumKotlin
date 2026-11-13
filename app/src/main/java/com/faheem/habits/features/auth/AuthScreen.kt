@@ -194,8 +194,6 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
                                     try {
                                         if (isSignUp) {
                                             SupabaseAuthApi.signUp(enteredEmail, enteredPassword, displayName.trim().take(80))
-                                            context.getSharedPreferences("account_profile", android.content.Context.MODE_PRIVATE)
-                                                .edit().putString("display_name", displayName.trim()).apply()
                                             isError = false
                                             message = "Account created. Check your email to confirm it, then sign in."
                                             isSignUp = false
@@ -206,7 +204,7 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
                                         }
                                     } catch (e: Exception) {
                                         isError = true
-                                        message = e.message ?: "Authentication failed. Please try again."
+                                        message = userFacingAuthError(e)
                                     } finally {
                                         busy = false
                                     }
@@ -220,18 +218,20 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
                     if (!isSignUp) {
                         TextButton(
                             onClick = {
-                                if (email.isBlank()) {
+                                val resetEmail = email.trim()
+                                if (!android.util.Patterns.EMAIL_ADDRESS.matcher(resetEmail).matches()) {
                                     isError = true
-                                    message = "Enter your email first so we can send a password reset link."
+                                    message = "Enter a valid email address first."
                                 } else scope.launch {
                                     busy = true
+                                    message = null
                                     try {
-                                        SupabaseAuthApi.sendPasswordReset(email.trim())
+                                        SupabaseAuthApi.sendPasswordReset(resetEmail)
                                         isError = false
                                         message = "If an account exists for that email, a password reset link has been sent."
                                     } catch (e: Exception) {
                                         isError = true
-                                        message = e.message ?: "Could not send the reset email. Try again."
+                                        message = userFacingAuthError(e)
                                     } finally { busy = false }
                                 }
                             },
@@ -272,6 +272,27 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
     }
 }
 
+
+private fun userFacingAuthError(error: Throwable): String {
+    val detail = error.message.orEmpty()
+    return when {
+        detail.contains("invalid login credentials", ignoreCase = true) ->
+            "The email or password is incorrect. Check your details and try again."
+        detail.contains("email not confirmed", ignoreCase = true) ->
+            "Please confirm your email using the link we sent, then sign in."
+        detail.contains("user already registered", ignoreCase = true) ->
+            "An account already exists for this email. Try signing in instead."
+        detail.contains("password should be at least", ignoreCase = true) ||
+            detail.contains("weak password", ignoreCase = true) ->
+            "Choose a stronger password and try again."
+        detail.contains("rate limit", ignoreCase = true) ->
+            "Too many attempts. Please wait a little and try again."
+        detail.contains("not configured", ignoreCase = true) ->
+            "Account services are not configured. Please contact support."
+        else ->
+            "We couldn't complete that request. Check your connection and try again."
+    }
+}
 
 private fun isAuthInputValid(
     email: String,
