@@ -22,6 +22,8 @@ architecture items below are complete and the verification checklist passes.
   awareness.
 - Moved Home's aggregate Room queries and vault-count observation behind an
   injected `HomeRepository`; the screen now obtains its ViewModel through Hilt.
+- Moved Vault DAO access behind an injected `VaultRepository` and migrated the
+  Vault screen to a Hilt-provided ViewModel.
 - Added Detekt configuration and a baseline so legacy code does not block the
   build.
 
@@ -35,19 +37,18 @@ queries, scheduling calls, and money conversion behavior.
 
 - `gradlew.bat :app:compileDebugKotlin`
 - `gradlew.bat :app:testDebugUnitTest assembleDebug`
+- `gradlew.bat :app:compileDebugAndroidTestKotlin`
 
 Instrumentation tests and deep-link launches still require a connected device.
 
 ## Deferred
 
-- Move the remaining feature ViewModel (vault) to
-  constructor-injected repositories; Settings already uses Hilt injection.
 - Replace remaining feature/service SharedPreferences with DataStore-backed
   repositories, including legacy key migration tests for each store.
 - Complete per-screen immutable `UiState`/event contracts and split remaining
   files over 400 lines.
 - Add exact item deep links and notification payload routing for habit, to-do,
-  and loan IDs.
+  and loan IDs; current module-level routing is not item-level routing.
 - Revisit dependency versions against the latest stable Android toolchain
   before raising compile/target SDK; this phase keeps the known-good toolchain
   to avoid an unverified behavior change.

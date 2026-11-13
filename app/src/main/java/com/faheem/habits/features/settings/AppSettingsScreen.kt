@@ -2,7 +2,6 @@
 
 package com.faheem.habits.features.settings
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -82,6 +81,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.faheem.habits.BuildConfig
 import com.faheem.habits.R
 import com.faheem.habits.core.data.AppDatabase
@@ -112,16 +112,11 @@ import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Locale
 
-private const val PREFS_APP = "momentum_app_settings"
-private fun modulePref(module: AppModule) = "module_enabled_${module.name}"
-
-fun isModuleVisible(context: Context, module: AppModule): Boolean =
-    module == AppModule.Settings || context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE)
-        .getBoolean(modulePref(module), true)
-
 @Composable
 fun AppSettingsScreen() {
     val context = LocalContext.current
+    val settingsViewModel: SettingsViewModel = hiltViewModel()
+    val moduleVisibility by settingsViewModel.moduleVisibility.collectAsStateWithLifecycle()
     var version by remember { mutableIntStateOf(0) }
     var remindersOpen by remember { mutableStateOf(false) }
     var permissionsOpen by remember { mutableStateOf(false) }
@@ -249,7 +244,7 @@ fun AppSettingsScreen() {
 
     key(version) {
         val modules = AppModule.entries.filter { it != AppModule.Settings }
-        val visibleCount = modules.count { isModuleVisible(context, it) }
+        val visibleCount = modules.count { moduleVisibility[it.name] ?: true }
         val hiddenCount = modules.size - visibleCount
         val integrityHealthy = integrityMessage == "ok"
 
@@ -328,7 +323,7 @@ fun AppSettingsScreen() {
                     subtitle = "$visibleCount of ${modules.size} shown on Home",
                     actionLabel = "Show all",
                     onAction = {
-                        context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE).edit().clear().apply()
+                        settingsViewModel.showAllModules()
                         version++
                     }
                 )
@@ -336,10 +331,9 @@ fun AppSettingsScreen() {
             items(modules, key = { "${version}-${it.name}" }) { module ->
                 ModuleToggleCard(
                     module = module,
-                    visible = isModuleVisible(context, module),
+                    visible = moduleVisibility[module.name] ?: true,
                     onCheckedChange = { checked ->
-                        context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE).edit()
-                            .putBoolean(modulePref(module), checked).apply()
+                        settingsViewModel.setModuleVisible(module.name, checked)
                         version++
                     }
                 )

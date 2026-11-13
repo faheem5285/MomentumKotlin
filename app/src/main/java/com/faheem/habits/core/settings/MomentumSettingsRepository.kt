@@ -34,6 +34,13 @@ class MomentumSettingsRepository @Inject constructor(
     fun moduleVisible(moduleName: String): Flow<Boolean> =
         appSettings.data.map { it[booleanPreferencesKey("module_enabled_$moduleName")] ?: true }
 
+    fun moduleVisibility(moduleNames: List<String>): Flow<Map<String, Boolean>> =
+        appSettings.data.map { preferences ->
+            moduleNames.associateWith { name ->
+                preferences[booleanPreferencesKey("module_enabled_$name")] ?: true
+            }
+        }
+
     val budgetMinorUnits: Flow<Long> = moneySettings.data.map { it[BUDGET_MINOR_UNITS] ?: 0L }
     val loansAccountBalanceMinorUnits: Flow<Long?> =
         moneySettings.data.map { it[LOANS_ACCOUNT_BALANCE_MINOR_UNITS] }
@@ -47,6 +54,14 @@ class MomentumSettingsRepository @Inject constructor(
 
     suspend fun setModuleVisible(moduleName: String, visible: Boolean) {
         appSettings.edit { it[booleanPreferencesKey("module_enabled_$moduleName")] = visible }
+    }
+
+    suspend fun showAllModules(moduleNames: List<String>) {
+        appSettings.edit { preferences ->
+            moduleNames.forEach { name ->
+                preferences[booleanPreferencesKey("module_enabled_$name")] = true
+            }
+        }
     }
 
     suspend fun setBudgetMinorUnits(value: Long) {

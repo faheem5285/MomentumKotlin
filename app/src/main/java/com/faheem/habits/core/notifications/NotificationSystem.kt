@@ -341,7 +341,14 @@ object HabitReminderScheduler {
             val notification = ZyloNotifications.base(context, channelId("habits"))
                 .setContentTitle(habit.name)
                 .setContentText("Your habit reminder is ready.")
-                .setContentIntent(ZyloNotifications.openApp(context, requestCode(reminderId), targetModule(AppModule.Habits)))
+                .setContentIntent(
+                    ZyloNotifications.openApp(
+                        context,
+                        requestCode(reminderId),
+                        targetModule(AppModule.Habits),
+                        habit.id
+                    )
+                )
                 .setGroup(ZyloNotifications.GROUP_HABITS)
                 .addAction(0, "Done", actionPendingIntent(context, ACTION_DONE, requestCode(reminderId), "reminder_id", reminderId))
                 .addAction(0, "Snooze 5m", actionPendingIntent(context, ACTION_SNOOZE, requestCode(reminderId) + 1, "reminder_id", reminderId, 5))
@@ -445,7 +452,14 @@ object ToDoReminderScheduler {
             val notification = ZyloNotifications.base(context, ZyloNotifications.CHANNEL_TODOS)
                 .setContentTitle(item.title)
                 .setContentText("Scheduled for today")
-                .setContentIntent(ZyloNotifications.openApp(context, requestCode(id), targetModule(AppModule.ToDos)))
+                .setContentIntent(
+                    ZyloNotifications.openApp(
+                        context,
+                        requestCode(id),
+                        targetModule(AppModule.ToDos),
+                        item.id
+                    )
+                )
                 .setGroup(ZyloNotifications.GROUP_TODOS)
                 .addAction(0, "Done", actionPendingIntent(context, ACTION_DONE, requestCode(id), "todo_id", id))
                 .addAction(0, "Snooze 5m", actionPendingIntent(context, ACTION_SNOOZE, requestCode(id) + 1, "todo_id", id, 5))

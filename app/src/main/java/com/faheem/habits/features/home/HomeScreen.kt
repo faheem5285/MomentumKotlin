@@ -3,7 +3,7 @@
 package com.faheem.habits.features.home
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.ui.*
-import com.faheem.habits.features.settings.isModuleVisible
+import com.faheem.habits.features.settings.SettingsViewModel
 import com.faheem.habits.features.battery.BatteryLevelHistory
 import com.faheem.habits.features.network.loadAppNetworkReport
 import com.faheem.habits.features.network.trafficText
@@ -152,8 +152,13 @@ private fun loadDeviceInsights(context: Context): DeviceInsights {
 }
 
 @Composable
-fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = hiltViewModel()) {
+fun HomeScreen(
+    onOpen: (AppModule) -> Unit,
+    vm: HomeViewModel = hiltViewModel(),
+    settingsViewModel: SettingsViewModel = hiltViewModel()
+) {
     val s by vm.state.collectAsStateWithLifecycle()
+    val moduleVisibility by settingsViewModel.moduleVisibility.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     var screenText by remember { mutableStateOf("Tap to set up") }
     var insights by remember { mutableStateOf(DeviceInsights()) }
@@ -277,7 +282,9 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = hiltViewModel())
             }
         )
     ) }
-    val visibleTiles = remember(tiles, ctx) { tiles.filter { spec -> spec.module?.let { isModuleVisible(ctx, it) } ?: true } }
+    val visibleTiles = remember(tiles, moduleVisibility) {
+        tiles.filter { spec -> spec.module?.let { moduleVisibility[it.name] ?: true } ?: true }
+    }
     val batteryLevel = insights.batteryLevel
     val deviceTools = remember(insights) { listOf(
         TileSpec(
@@ -297,7 +304,9 @@ fun HomeScreen(onOpen: (AppModule) -> Unit, vm: HomeViewModel = hiltViewModel())
             chart = if (insights.networkWeek.any { it > 0f }) TileChart.Trend(insights.networkWeek) else null
         )
     ) }
-    val visibleDeviceTools = remember(deviceTools, ctx) { deviceTools.filter { spec -> spec.module?.let { isModuleVisible(ctx, it) } ?: true } }
+    val visibleDeviceTools = remember(deviceTools, moduleVisibility) {
+        deviceTools.filter { spec -> spec.module?.let { moduleVisibility[it.name] ?: true } ?: true }
+    }
     val settingsTile = TileSpec("Settings", "Manage modules and preferences", AppModule.Settings.icon, AppModule.Settings.gradient, AppModule.Settings)
 
     val rows = visibleTiles.chunked(2)

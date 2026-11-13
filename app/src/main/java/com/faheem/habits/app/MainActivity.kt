@@ -72,7 +72,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Destination requested by a notification tap. The token lets repeated taps reopen the module. */
-data class NotificationTarget(val moduleName: String, val token: Long)
+data class NotificationTarget(val moduleName: String, val itemId: Int?, val token: Long)
 
 @dagger.hilt.android.AndroidEntryPoint
 class MainActivity : FragmentActivity() {
@@ -117,7 +117,12 @@ class MainActivity : FragmentActivity() {
 
     private fun notificationTargetFrom(intent: Intent?): NotificationTarget? {
         val moduleName = intent?.getStringExtra(ZyloNotifications.EXTRA_TARGET_MODULE) ?: return null
-        return NotificationTarget(moduleName, System.currentTimeMillis())
+        val itemId = if (intent.hasExtra(ZyloNotifications.EXTRA_TARGET_ITEM_ID)) {
+            intent.getIntExtra(ZyloNotifications.EXTRA_TARGET_ITEM_ID, -1).takeIf { it > 0 }
+        } else {
+            null
+        }
+        return NotificationTarget(moduleName, itemId, System.currentTimeMillis())
     }
 
     private fun scheduleRemindersSafely() {
@@ -149,7 +154,7 @@ fun MomentumApp(
     LaunchedEffect(notificationTarget) {
         val moduleName = notificationTarget?.moduleName ?: return@LaunchedEffect
         AppModule.entries.firstOrNull { it.name.equals(moduleName, true) }?.let {
-            destination = MomentumDestination.Module(it)
+            destination = MomentumDestination.Module(it, notificationTarget.itemId)
         }
     }
     LaunchedEffect(context) {

@@ -33,7 +33,7 @@ import com.faheem.habits.features.vault.VaultScreen
 
 sealed interface MomentumDestination {
     data object Home : MomentumDestination
-    data class Module(val module: AppModule) : MomentumDestination
+    data class Module(val module: AppModule, val itemId: Int? = null) : MomentumDestination
 }
 
 @Composable
@@ -47,35 +47,46 @@ fun MomentumNavigationHost(
     LaunchedEffect(destination) {
         val route = when (destination) {
             MomentumDestination.Home -> "home"
-            is MomentumDestination.Module -> "module/${destination.module.name.lowercase()}"
-        }
-        if (navController.currentDestination?.route != route) {
-            navController.navigate(route) {
-                popUpTo("home") { inclusive = false }
-                launchSingleTop = true
+            is MomentumDestination.Module -> buildString {
+                append("module/${destination.module.name.lowercase()}")
+                destination.itemId?.let { append("?itemId=$it") }
             }
+        }
+        navController.navigate(route) {
+            popUpTo("home") { inclusive = false }
+            launchSingleTop = true
         }
     }
     NavHost(navController, startDestination = "home", modifier = modifier) {
         composable("home") { HomeScreen(onOpen = onOpenModule) }
         composable(
-            route = "module/{module}",
-            arguments = listOf(navArgument("module") { type = NavType.StringType }),
-            deepLinks = listOf(navDeepLink { uriPattern = "momentum://module/{module}" })
+            route = "module/{module}?itemId={itemId}",
+            arguments = listOf(
+                navArgument("module") { type = NavType.StringType },
+                navArgument("itemId") {
+                    type = NavType.IntType
+                    nullable = true
+                    defaultValue = null
+                }
+            ),
+            deepLinks = listOf(
+                navDeepLink { uriPattern = "momentum://module/{module}" },
+                navDeepLink { uriPattern = "momentum://module/{module}?itemId={itemId}" }
+            )
         ) { entry ->
             val module = entry.arguments?.getString("module")
                 ?.let { name -> AppModule.entries.firstOrNull { it.name.equals(name, true) } }
             if (module == null) {
                 LaunchedEffect(Unit) { navController.popBackStack() }
             } else {
-                ModuleScreen(module, onBack)
+                ModuleScreen(module, entry.arguments?.getInt("itemId"), onBack)
             }
         }
     }
 }
 
 @Composable
-private fun ModuleScreen(module: AppModule, onBack: () -> Unit) {
+private fun ModuleScreen(module: AppModule, itemId: Int?, onBack: () -> Unit) {
     BackHandler(onBack = onBack)
     val accent = module.accent
     CompositionLocalProvider(LocalGradient provides module.gradient) {
@@ -100,10 +111,10 @@ private fun ModuleScreen(module: AppModule, onBack: () -> Unit) {
                     )
                     Box(Modifier.weight(1f)) {
                         when (module) {
-                            AppModule.Habits -> HabitScreen()
-                            AppModule.ToDos -> ToDoScreen()
+                            AppModule.Habits -> HabitScreen(initialHabitId = itemId)
+                            AppModule.ToDos -> ToDoScreen(initialTaskId = itemId)
                             AppModule.Money -> ExpensesScreen()
-                            AppModule.Loans -> LoansScreen()
+                            AppModule.Loans -> LoansScreen(initialLoanId = itemId)
                             AppModule.Contacts -> ContactsScreen()
                             AppModule.Files -> FilesScreen()
                             AppModule.LifeRules -> LifeRulesScreen()

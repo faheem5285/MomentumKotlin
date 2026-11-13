@@ -1162,32 +1162,53 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     "CREATE TABLE IF NOT EXISTS `loan_people` (" +
-                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
-                        "`name` TEXT NOT NULL, `phone` TEXT NOT NULL DEFAULT '', " +
-                        "`address` TEXT NOT NULL DEFAULT '', `profileImageUri` TEXT NOT NULL DEFAULT '', " +
-                        "`notes` TEXT NOT NULL DEFAULT '', `archived` INTEGER NOT NULL DEFAULT 0, " +
-                        "`uuid` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL DEFAULT 0, " +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, " +
+                        "`phone` TEXT NOT NULL, `address` TEXT NOT NULL, `profileImageUri` TEXT NOT NULL, " +
+                        "`notes` TEXT NOT NULL, `archived` INTEGER NOT NULL, " +
+                        "`uuid` TEXT NOT NULL DEFAULT '', `updatedAt` INTEGER NOT NULL DEFAULT 0, " +
                         "`deleted` INTEGER NOT NULL DEFAULT 0, `dirty` INTEGER NOT NULL DEFAULT 1)"
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_loan_people_archived` ON `loan_people` (`archived`)")
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_loan_people_uuid` ON `loan_people` (`uuid`)")
-                db.execSQL("ALTER TABLE `loans` ADD COLUMN `title` TEXT NOT NULL DEFAULT ''")
-                db.execSQL("ALTER TABLE `loans` ADD COLUMN `status` TEXT NOT NULL DEFAULT 'pending'")
-                db.execSQL("ALTER TABLE `loans` ADD COLUMN `personId` INTEGER")
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_loans_personId` ON `loans` (`personId`)")
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_loans_status` ON `loans` (`status`)")
+                db.execSQL(
+                    "INSERT INTO loan_people (name, phone, address, profileImageUri, notes, archived, uuid) " +
+                        "SELECT DISTINCT TRIM(person), '', '', '', '', 0, lower(hex(randomblob(16))) " +
+                        "FROM loans WHERE TRIM(person) <> ''"
+                )
+                db.execSQL(
+                    "CREATE TABLE `loans_new` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `person` TEXT NOT NULL, " +
+                        "`amountMinorUnits` INTEGER NOT NULL, `lent` INTEGER NOT NULL, `note` TEXT NOT NULL, " +
+                        "`epochDay` INTEGER NOT NULL, `settled` INTEGER NOT NULL, `uuid` TEXT NOT NULL DEFAULT '', " +
+                        "`updatedAt` INTEGER NOT NULL DEFAULT 0, `deleted` INTEGER NOT NULL DEFAULT 0, " +
+                        "`dirty` INTEGER NOT NULL DEFAULT 1, `dueEpochDay` INTEGER, `title` TEXT NOT NULL DEFAULT '', " +
+                        "`status` TEXT NOT NULL DEFAULT 'pending', `personId` INTEGER, " +
+                        "FOREIGN KEY(`personId`) REFERENCES `loan_people`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL)"
+                )
+                db.execSQL(
+                    "INSERT INTO `loans_new` (id, person, amountMinorUnits, lent, note, epochDay, settled, uuid, " +
+                        "updatedAt, deleted, dirty, dueEpochDay, title, status, personId) " +
+                        "SELECT id, person, amountMinorUnits, lent, note, epochDay, settled, uuid, updatedAt, " +
+                        "deleted, dirty, dueEpochDay, '', 'pending', " +
+                        "(SELECT id FROM loan_people WHERE name = TRIM(loans.person) LIMIT 1) FROM loans"
+                )
+                db.execSQL("DROP TABLE `loans`")
+                db.execSQL("ALTER TABLE `loans_new` RENAME TO `loans`")
+                db.execSQL("CREATE INDEX `index_loans_settled` ON `loans` (`settled`)")
+                db.execSQL("CREATE INDEX `index_loans_epochDay` ON `loans` (`epochDay`)")
+                db.execSQL("CREATE UNIQUE INDEX `index_loans_uuid` ON `loans` (`uuid`)")
+                db.execSQL("CREATE INDEX `index_loans_personId` ON `loans` (`personId`)")
+                db.execSQL("CREATE INDEX `index_loans_status` ON `loans` (`status`)")
                 db.execSQL(
                     "CREATE TABLE IF NOT EXISTS `loan_attachments` (" +
                         "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `loanId` INTEGER NOT NULL, " +
-                        "`name` TEXT NOT NULL, `uri` TEXT NOT NULL, `mime` TEXT NOT NULL DEFAULT '', " +
-                        "`addedAt` INTEGER NOT NULL DEFAULT 0, `uuid` TEXT NOT NULL, " +
+                        "`name` TEXT NOT NULL, `uri` TEXT NOT NULL, `mime` TEXT NOT NULL, " +
+                        "`addedAt` INTEGER NOT NULL DEFAULT 0, `uuid` TEXT NOT NULL DEFAULT '', " +
                         "`updatedAt` INTEGER NOT NULL DEFAULT 0, `deleted` INTEGER NOT NULL DEFAULT 0, " +
                         "`dirty` INTEGER NOT NULL DEFAULT 1, FOREIGN KEY(`loanId`) REFERENCES `loans`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)"
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_loan_attachments_loanId` ON `loan_attachments` (`loanId`)")
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_loan_attachments_uuid` ON `loan_attachments` (`uuid`)")
-                db.execSQL("INSERT INTO loan_people (name, uuid) SELECT DISTINCT TRIM(person), lower(hex(randomblob(16))) FROM loans WHERE TRIM(person) <> ''")
-                db.execSQL("UPDATE loans SET personId = (SELECT id FROM loan_people p WHERE p.name = TRIM(loans.person) LIMIT 1)")
             }
         }
 
@@ -1196,9 +1217,9 @@ abstract class AppDatabase : RoomDatabase() {
                     db.execSQL(
                         "CREATE TABLE IF NOT EXISTS `life_rule_files` (" +
                             "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `ruleId` INTEGER NOT NULL, " +
-                            "`name` TEXT NOT NULL, `uri` TEXT NOT NULL, `mime` TEXT NOT NULL DEFAULT '', " +
-                            "`folderPath` TEXT NOT NULL DEFAULT '', `addedAt` INTEGER NOT NULL DEFAULT 0, " +
-                            "`uuid` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL DEFAULT 0, " +
+                                "`name` TEXT NOT NULL, `uri` TEXT NOT NULL, `mime` TEXT NOT NULL, " +
+                                "`folderPath` TEXT NOT NULL, `addedAt` INTEGER NOT NULL DEFAULT 0, " +
+                                "`uuid` TEXT NOT NULL DEFAULT '', `updatedAt` INTEGER NOT NULL DEFAULT 0, " +
                             "`deleted` INTEGER NOT NULL DEFAULT 0, `dirty` INTEGER NOT NULL DEFAULT 1, " +
                             "FOREIGN KEY(`ruleId`) REFERENCES `life_rules`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)"
                     )

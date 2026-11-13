@@ -45,6 +45,7 @@ object ZyloNotifications {
     const val SUMMARY_STATUS = 58_004
 
     const val EXTRA_TARGET_MODULE = "com.faheem.habits.extra.TARGET_MODULE"
+    const val EXTRA_TARGET_ITEM_ID = "com.faheem.habits.extra.TARGET_ITEM_ID"
 
     private const val CHANNEL_GROUP_REMINDERS = "zylo_reminders"
     private const val CHANNEL_GROUP_BACKGROUND = "zylo_background"
@@ -142,7 +143,12 @@ object ZyloNotifications {
             .setAutoCancel(true)
             .setShowWhen(true)
 
-    fun openApp(context: Context, requestCode: Int, targetModule: String? = null): PendingIntent {
+    fun openApp(
+        context: Context,
+        requestCode: Int,
+        targetModule: String? = null,
+        targetItemId: Int? = null
+    ): PendingIntent {
         val intent = Intent(context, MainActivity::class.java)
             .addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -150,6 +156,7 @@ object ZyloNotifications {
                     Intent.FLAG_ACTIVITY_SINGLE_TOP
             )
         if (targetModule != null) intent.putExtra(EXTRA_TARGET_MODULE, targetModule)
+            if (targetItemId != null) intent.putExtra(EXTRA_TARGET_ITEM_ID, targetItemId)
         return PendingIntent.getActivity(
             context,
             requestCode,

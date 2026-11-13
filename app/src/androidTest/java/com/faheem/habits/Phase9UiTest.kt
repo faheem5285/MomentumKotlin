@@ -6,6 +6,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.platform.ComposeView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.faheem.habits.app.MainActivity
 import com.faheem.habits.app.MomentumDestination
@@ -50,14 +51,20 @@ class Phase9UiTest {
     }
 
     private fun openModule(module: AppModule) {
-        rule.setContent {
-            MomentumTheme {
-                MomentumNavigationHost(
-                    destination = MomentumDestination.Module(module),
-                    onOpenModule = {},
-                    onBack = {}
-                )
-            }
+        rule.activity.runOnUiThread {
+            rule.activity.setContentView(
+                ComposeView(rule.activity).apply {
+                    setContent {
+                        MomentumTheme {
+                            MomentumNavigationHost(
+                                destination = MomentumDestination.Module(module),
+                                onOpenModule = {},
+                                onBack = {}
+                            )
+                        }
+                    }
+                }
+            )
         }
     }
 }
