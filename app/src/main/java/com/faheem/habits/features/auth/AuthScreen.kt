@@ -162,6 +162,7 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
                         label = { Text("Password") },
                         leadingIcon = { Icon(Icons.Rounded.Lock, null) },
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
                             IconButton(
@@ -198,6 +199,7 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
                                             isError = false
                                             message = "Account created. Check your email to confirm it, then sign in."
                                             isSignUp = false
+                                            passwordVisible = false
                                         } else {
                                             SupabaseAuthApi.signIn(context.applicationContext, enteredEmail, enteredPassword)
                                             onAuthenticated()
@@ -241,6 +243,7 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
                     TextButton(
                         onClick = {
                             isSignUp = !isSignUp
+                            passwordVisible = false
                             message = null
                         },
                         enabled = !busy,
