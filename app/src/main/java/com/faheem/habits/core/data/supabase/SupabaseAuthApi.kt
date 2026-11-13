@@ -95,7 +95,7 @@ object SupabaseAuthApi {
     }
 
     private fun hasFreshToken(): Boolean =
-        !accessToken.isNullOrBlank() && System.currentTimeMillis() < accessTokenExpiresAt - 60_000L
+        AuthSessionPolicy.hasFreshAccessToken(accessToken, accessTokenExpiresAt, System.currentTimeMillis())
 
     private class AuthHttpException(val status: Int, detail: String) :
         IllegalStateException("Supabase authentication failed ($status): $detail")
@@ -151,7 +151,7 @@ object SupabaseAuthApi {
             rememberSession(session)
             SessionRestoreResult.AUTHENTICATED
         } catch (e: AuthHttpException) {
-            if (e.status in listOf(400, 401, 403)) {
+            if (AuthSessionPolicy.shouldClearSession(e.status)) {
                 SecureTokenStore.clear(appContext)
                 clearInMemorySession()
                 SessionRestoreResult.NO_SESSION

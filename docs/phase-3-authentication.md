@@ -30,10 +30,11 @@
 - [x] Serialize concurrent refresh-token rotation and reuse a fresh session when another caller has already refreshed it.
 - [x] Save a rotated refresh token before publishing the refreshed in-memory access token.
 - [x] Add JVM tests for common authentication error mapping and safe fallback messages.
-- [ ] Add configured-session integration coverage for refresh, sign-out, and account switching.
+- [x] Extract deterministic session-expiry and invalid-session decisions and cover them with JVM tests.
+- [ ] Add configured-session integration coverage for refresh, sign-out, and account switching (requires a live Supabase test account/device).
 - [ ] Verify registration, email confirmation, sign-in, reset email, session restore, offline startup, sign-out, and account switching on a configured Android device.
 - [ ] Run unit tests, Android build, and CI; record actual results below.
 
 ## Verification record
 
-No Phase 3 verification is claimed until the corresponding automated or device test has actually run.
+CI verification is tracked per commit and must complete successfully before the phase is considered build-verified. Live Supabase/device checks remain pending until executed on a configured device.
