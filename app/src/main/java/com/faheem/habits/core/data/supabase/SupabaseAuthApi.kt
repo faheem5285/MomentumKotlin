@@ -143,9 +143,10 @@ object SupabaseAuthApi {
             check(!updatedToken.isNullOrBlank()) {
                 "Supabase did not return a refreshed session token."
             }
-            activateAccountDatabase(appContext, session)
-            // Persist the rotated token before exposing the new access token.
+            // Supabase may invalidate the old refresh token as soon as it rotates.
+            // Persist the replacement before database activation can fail.
             SecureTokenStore.saveRefreshToken(appContext, updatedToken)
+            activateAccountDatabase(appContext, session)
             cacheProfile(appContext, session)
             rememberSession(session)
             SessionRestoreResult.AUTHENTICATED
