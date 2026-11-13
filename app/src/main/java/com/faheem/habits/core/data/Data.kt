@@ -11,6 +11,11 @@ import java.util.UUID
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 const val ALL_DAYS = 127
 
@@ -829,8 +834,14 @@ abstract class AppDatabase : RoomDatabase() {
 
             val db = instance
             if (db != null) {
-                runCatching {
-                    db.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(TRUNCATE)").close()
+                val checkpointBusy = db.openHelper.writableDatabase
+                    .query("PRAGMA wal_checkpoint(TRUNCATE)")
+                    .use { cursor ->
+                        check(cursor.moveToFirst()) { "Could not verify the local database checkpoint." }
+                        cursor.getInt(0)
+                    }
+                check(checkpointBusy == 0) {
+                    "The local database is busy. Your data was not switched; please try again."
                 }
                 db.close()
                 instance = null
@@ -840,19 +851,62 @@ abstract class AppDatabase : RoomDatabase() {
             val accountDirectory = File(appContext.filesDir, "account-databases").apply {
                 check(isDirectory || mkdirs()) { "Could not prepare account-local data storage." }
             }
-            if (baseFile.exists()) {
-                val previousFile = activeUser?.let { accountDatabaseFile(accountDirectory, it) }
-                    ?: File(accountDirectory, "unassigned-legacy-database.db")
-                baseFile.copyTo(previousFile, overwrite = true)
+            val previousFile = if (baseFile.exists()) {
+                (activeUser?.let { accountDatabaseFile(accountDirectory, it) }
+                    ?: File(accountDirectory, "unassigned-legacy-database.db")).also {
+                    copyFileAtomically(baseFile, it)
+                }
+            } else {
+                null
             }
-            deleteDatabaseFiles(baseFile)
 
             val accountFile = accountDatabaseFile(accountDirectory, normalizedId)
-            if (accountFile.exists()) {
-                accountFile.copyTo(baseFile, overwrite = true)
+            try {
+                if (accountFile.exists()) {
+                    copyFileAtomically(accountFile, baseFile)
+                } else {
+                    deleteDatabaseFiles(baseFile)
+                }
+                check(scopePrefs.edit().putString(ACTIVE_USER_KEY, normalizedId).commit()) {
+                    "Could not save the active account for local data."
+                }
+            } catch (failure: Exception) {
+                // Restore the prior database if activation fails after the old copy was saved.
+                if (previousFile?.exists() == true) {
+                    copyFileAtomically(previousFile, baseFile)
+                } else if (baseFile.exists()) {
+                    deleteDatabaseFiles(baseFile)
+                }
+                throw failure
             }
-            check(scopePrefs.edit().putString(ACTIVE_USER_KEY, normalizedId).commit()) {
-                "Could not save the active account for local data."
+        }
+
+        private fun copyFileAtomically(source: File, destination: File) {
+            val parent = destination.parentFile
+                ?: error("Could not determine the local database directory.")
+            check(parent.isDirectory || parent.mkdirs()) {
+                "Could not prepare the local database directory."
+            }
+            val temporary = File.createTempFile(".${destination.name}-", ".copy", parent)
+            try {
+                FileInputStream(source).use { input ->
+                    FileOutputStream(temporary).use { output ->
+                        input.copyTo(output)
+                        output.fd.sync()
+                    }
+                }
+                try {
+                    Files.move(
+                        temporary.toPath(),
+                        destination.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE
+                    )
+                } catch (_: AtomicMoveNotSupportedException) {
+                    Files.move(temporary.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                }
+            } finally {
+                if (temporary.exists()) temporary.delete()
             }
         }
 
