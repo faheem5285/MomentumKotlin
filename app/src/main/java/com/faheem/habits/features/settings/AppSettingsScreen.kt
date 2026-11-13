@@ -190,12 +190,17 @@ fun AppSettingsScreen() {
             onDismissRequest = { pendingImport = null },
             title = { Text("Import preview") },
             text = {
-                Text(
-                    "${preview.habits} habits, ${preview.expenses} expenses, ${preview.todos} to-dos, " +
-                        "${preview.loans} loans, ${preview.files} file records, ${preview.rules} life entries and " +
-                        "${preview.notifications} custom notifications will be imported. " +
-                        "File contents and Vault entries are excluded."
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "This backup contains ${preview.recordCount} records, including habits, tasks, " +
+                            "expenses, loans, contacts, and files."
+                    )
+                    Text("Merge adds missing records. Replace deletes existing backup-supported records first.")
+                    Text(
+                        "This JSON is not encrypted. Vault entries and file contents are excluded; " +
+                            "file access may need to be restored."
+                    )
+                }
             },
             confirmButton = {
                 Row {
@@ -717,7 +722,7 @@ private fun BackupRestoreCard(
             Column(Modifier.weight(1f)) {
                 Text("Backup & restore", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 Text(
-                    "Move your records between devices",
+                    "Export or restore app records",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -726,7 +731,7 @@ private fun BackupRestoreCard(
         }
         Spacer(Modifier.height(10.dp))
         Text(
-            "Restores add records without deleting existing data. Vault entries and file contents stay on this device.",
+            "JSON backups are not encrypted. They exclude Vault entries and file contents; imported file access may need to be restored.",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -829,17 +834,17 @@ private fun AboutCard() {
             Column(Modifier.weight(1f)) {
                 Text("Zylo ${BuildConfig.VERSION_NAME}", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 Text(
-                    "Local-first. Private by design.",
+                    "Account required · local-first storage",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            StatusPill("Offline ready", Positive)
+            StatusPill("Sign-in required", AppModule.Settings.accent)
         }
         Spacer(Modifier.height(10.dp))
         Text(
-            "Module data lives in an encrypted-at-rest Room database on this device. " +
-                "Supabase sync only runs after you sign in, and the Vault keeps its own keys.",
+            "General records use Zylo's app-private Room database; Zylo does not separately encrypt it. " +
+                "Vault records sync encrypted, but account recovery stores the key in Supabase, where project administrators may access it.",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

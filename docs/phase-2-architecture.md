@@ -11,6 +11,9 @@
 - Added Navigation Compose with module routes and `momentum://module/{module}`
   deep links while retaining the existing destination API.
 - Migrated the refactored screens to `collectAsStateWithLifecycle`.
+- Moved the Habits screen's persistence and reminder operations behind an
+  injected `HabitRepository`; its ViewModel now uses Hilt and all Habits tabs
+  collect state with lifecycle awareness.
 - Added Detekt configuration and a baseline so legacy code does not block the
   build.
 
@@ -29,8 +32,8 @@ Instrumentation tests and deep-link launches still require a connected device.
 
 ## Deferred
 
-- Move the remaining feature ViewModels (habits, loans, home, vault, and
-  settings) to constructor-injected repositories.
+- Move the remaining feature ViewModels (loans, home, and vault) to
+  constructor-injected repositories; Settings already uses Hilt injection.
 - Replace remaining feature/service SharedPreferences with DataStore-backed
   repositories, including legacy key migration tests for each store.
 - Complete per-screen immutable `UiState`/event contracts and split remaining

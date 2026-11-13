@@ -22,13 +22,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private fun categoryColorIndex(cat: String): Int = TemplateCategories.indexOf(cat).coerceAtLeast(0)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TemplatesScreen(vm: HabitViewModel) {
-    val all by vm.all.collectAsState()
+    val all by vm.all.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     var query by remember { mutableStateOf("") }
     var cat by remember { mutableStateOf("All") }

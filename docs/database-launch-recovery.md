@@ -1,5 +1,9 @@
 # Database launch crash recovery
 
+> Historical incident record: this fix advanced Room from v9 to v10. The
+> current app schema is v20; use the current roadmap and exported schema for
+> present-day migration status.
+
 ## Cause
 
 After the data classes moved into `com.faheem.habits.core.data`, Room generated a new schema identity hash, but the database version remained 9. Existing installs had the same table structure and records, but Room rejected the changed identity hash while the home screen loaded its database flows.

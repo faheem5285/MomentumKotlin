@@ -2,8 +2,10 @@
 
 ## Contract
 
-Room remains the source of truth. The app reads and writes local Room data
-without requiring a network or Supabase session. A unique device id identifies
+Room remains the source of truth. The data layer reads and writes local Room
+data without requiring a network or Supabase session. Product login currently
+requires a signed-in Supabase account before users can enter the modules; after
+sign-in, local records remain available offline. A unique device id identifies
 the writer, while each local sync row keeps its existing UUID, `updatedAt`,
 `deleted`, and `dirty` metadata. A central Room invalidation observer watches
 all synced entity tables. It debounces committed changes for 750 ms, then checks

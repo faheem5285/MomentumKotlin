@@ -1070,7 +1070,11 @@ fun VaultScreen(vm: VaultViewModel = viewModel()) {
             title = { Text("Link existing vault") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Enter the existing Vault password once. After linking, your signed-in account will unlock Vault on this and other devices.")
+                    Text(
+                        "Enter the existing Vault password once. Your signed-in account will then unlock Vault on other devices. " +
+                            "Account recovery stores the key in Supabase, where project administrators may be able to access it " +
+                            "and decrypt synced Vault entries."
+                    )
                     MomentumTextField(
                         value = legacyPassword,
                         onValueChange = { legacyPassword = it.take(128); error = null },

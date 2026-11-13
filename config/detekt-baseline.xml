@@ -76,7 +76,7 @@
     <ID>FunctionNaming:HabitsInsightsScreen.kt$@Composable private fun StatCard(icon: ImageVector, color: Color, value: String, label: String, modifier: Modifier)</ID>
     <ID>FunctionNaming:HabitsManageScreen.kt$@Composable fun ManageScreen(vm: HabitViewModel)</ID>
     <ID>FunctionNaming:HabitsManageScreen.kt$@Composable private fun ManageCard(ui: HabitUi, modifier: Modifier, actions: @Composable RowScope.() -&gt; Unit)</ID>
-    <ID>FunctionNaming:HabitsScreen.kt$@Composable fun HabitScreen(vm: HabitViewModel = viewModel())</ID>
+    <ID>FunctionNaming:HabitsScreen.kt$@Composable fun HabitScreen(vm: HabitViewModel = hiltViewModel())</ID>
     <ID>FunctionNaming:HabitsTemplatesScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun TemplatesScreen(vm: HabitViewModel)</ID>
     <ID>FunctionNaming:HabitsToday.kt$@Composable fun HabitDetailSheet(ui: HabitUi, onDismiss: () -&gt; Unit, onEdit: () -&gt; Unit, onArchive: () -&gt; Unit, onManageReminders: () -&gt; Unit)</ID>
     <ID>FunctionNaming:HabitsToday.kt$@Composable fun StreakChip(count: Int)</ID>

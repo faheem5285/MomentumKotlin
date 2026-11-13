@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -283,7 +284,7 @@ fun HabitDetailSheet(ui: HabitUi, onDismiss: () -> Unit, onEdit: () -> Unit, onA
 
 @Composable
 fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -> Unit) {
-    val all by vm.all.collectAsState()
+    val all by vm.all.collectAsStateWithLifecycle()
     val todayDay = today()
     var selected by remember { mutableLongStateOf(todayDay) }
     var detailId by remember { mutableStateOf<Int?>(null) }

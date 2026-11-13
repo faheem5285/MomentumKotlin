@@ -20,10 +20,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun ManageScreen(vm: HabitViewModel) {
-    val all by vm.all.collectAsState()
+    val all by vm.all.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<HabitUi?>(null) }
     var creating by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf<Habit?>(null) }

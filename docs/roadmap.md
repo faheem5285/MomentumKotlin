@@ -1,4 +1,4 @@
-# Momentum roadmap
+# Zylo roadmap
 
 ## Completed
 
@@ -28,7 +28,7 @@
   encrypted Vault entry sync with a separate account-recovery key.
 - Phase 9 — quality and repository foundations: CI checks, Dependabot,
   current project documentation, Compose UI smoke-test scaffolding, migration
-  validation through Room v13, explicit Android SDK package setup in CI, and
+  validation through Room v20, explicit Android SDK package setup in CI, and
   executable Gradle wrapper permissions.
 
 ## Deferred

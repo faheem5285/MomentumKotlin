@@ -485,6 +485,10 @@ interface ExpenseDao {
     suspend fun getAllBudgetsForSync(): List<CategoryBudget>
     @Query("SELECT * FROM category_budgets WHERE uuid = :uuid LIMIT 1")
     suspend fun getBudgetByUuid(uuid: String): CategoryBudget?
+    @Query("SELECT * FROM category_budgets WHERE category = :category AND monthKey = :monthKey LIMIT 1")
+    suspend fun getBudget(category: String, monthKey: String): CategoryBudget?
+    @Query("DELETE FROM category_budgets")
+    suspend fun deleteAllBudgets()
     @Query("UPDATE expenses SET dirty = 0 WHERE uuid IN (:uuids)")
     suspend fun markClean(uuids: List<String>)
     @Query("UPDATE category_budgets SET dirty = 0 WHERE uuid IN (:uuids)")
@@ -541,6 +545,8 @@ interface LoanDao {
     @Update suspend fun updateAttachment(attachment: LoanAttachment)
     @Query("UPDATE loan_people SET archived = 1, deleted = 1, updatedAt = :updatedAt, dirty = 1 WHERE id = :id")
     suspend fun deletePerson(id: Int, updatedAt: Long = System.currentTimeMillis())
+    @Query("DELETE FROM loan_people")
+    suspend fun deleteAllPeople()
     @Query("SELECT * FROM loan_attachments WHERE loanId = :loanId AND deleted = 0 ORDER BY addedAt DESC")
     fun getAttachments(loanId: Int): Flow<List<LoanAttachment>>
     @Insert suspend fun insertAttachment(attachment: LoanAttachment): Long
@@ -756,6 +762,8 @@ interface ContactDao {
     @Query("SELECT * FROM contacts WHERE deleted = 0 ORDER BY name COLLATE NOCASE")
     fun getAll(): Flow<List<Contact>>
     @Query("SELECT * FROM contacts ORDER BY id")
+    suspend fun getAllForBackup(): List<Contact>
+    @Query("SELECT * FROM contacts ORDER BY id")
     suspend fun getAllForSync(): List<Contact>
     @Query("SELECT * FROM contacts WHERE uuid = :uuid LIMIT 1")
     suspend fun getByUuid(uuid: String): Contact?
@@ -765,8 +773,12 @@ interface ContactDao {
     suspend fun upsertForSync(contact: Contact)
     @Insert
     suspend fun insert(contact: Contact): Long
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertImported(contact: Contact): Long
     @Update
     suspend fun update(contact: Contact)
+    @Query("DELETE FROM contacts")
+    suspend fun deleteAll()
     @Query("UPDATE contacts SET deleted = 1, updatedAt = :updatedAt, dirty = 1 WHERE id = :id")
     suspend fun softDelete(id: Int, updatedAt: Long = System.currentTimeMillis())
 }

@@ -3,6 +3,16 @@
 **Date:** 2026-10-29  
 **Scope:** Phase 1 data-safety audit and implementation record.
 
+> **Historical snapshot:** implementation details below describe the repository
+> on the audit date and are not the current release checklist. Product
+> decisions since then: Zylo is the public app name; an account is required to
+> open the app; after sign-in, local data remains available offline. The
+> general Room database is not separately encrypted by Zylo. JSON backups are
+> unencrypted and exclude Vault entries and file contents. Account-based Vault
+> recovery stores its key in Supabase, where project administrators may be able
+> to access it. See the current [README](../README.md) and
+> [roadmap](./roadmap.md) for current status.
+
 ## Executive summary
 
 Momentum already has a broad set of personal productivity modules: habits and reminders, tasks, money and loans, files, a password vault, screen-time/Reels tracking, network usage, and battery/charging tools. The app is a native Kotlin/Jetpack Compose application with Room persistence and a single-activity shell. The modules are present, but the next step toward dependable, enterprise-quality software is to improve the foundations: protect user data, prove behavior with repeatable checks, clarify permission/background behavior, and make the structure and release process maintainable.

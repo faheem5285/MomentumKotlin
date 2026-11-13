@@ -1,8 +1,11 @@
-# Momentum
+# Zylo
 
-Momentum is a personal, offline-first Android app for habits, to-dos, money,
-loans, files, screen time, reminders, and an encrypted vault. It is built for
-one owner and is not intended for Google Play distribution.
+Zylo is a private, single-owner Android app for habits, to-dos, money, loans,
+contacts, files, screen time, reminders, and an encrypted vault. A Supabase
+account is required to open the app. After sign-in, Room is the local source of
+truth and the app remains usable offline; sync resumes when a connection is
+available. Zylo is not intended for Google Play distribution. The repository,
+package names, and cloud tables retain the Momentum identifier.
 
 ## Features
 
@@ -12,11 +15,17 @@ one owner and is not intended for Google Play distribution.
   indicators.
 - AES-256-GCM vault with PBKDF2-HMAC-SHA256, biometric unlock, secure
   clipboard cleanup, and auto-lock protections.
-- Offline-first Room storage with versioned migrations and local backups.
-  Supabase sync runs automatically after local record changes when an account
-  is connected. Vault entries sync as ciphertext; a separate account-scoped
-  recovery key is also stored in Supabase, so this is not end-to-end encryption
-  against project administrators.
+- General records use Room in Android app-private storage. The Room database
+  is not separately encrypted by Zylo.
+- Local changes sync automatically after sign-in when a network is available.
+  Vault entries sync as ciphertext, but account recovery stores the Vault key
+  in Supabase; project administrators may be able to access it and decrypt
+  synced Vault entries. This is not end-to-end encryption against the project
+  administrator.
+- JSON backups can merge or replace supported app records. They are not
+  encrypted and exclude Vault entries and file contents. Vault transfers use a
+  separate password-protected export; external file access may need to be
+  restored on another device.
 - Glass-style light/dark Compose UI with lifecycle-aware state collection.
 
 ## Architecture

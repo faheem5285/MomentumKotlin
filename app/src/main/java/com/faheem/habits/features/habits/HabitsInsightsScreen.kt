@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.LocalDate
 
 private val Gold = Color(0xFFF59E0B)
@@ -68,7 +69,7 @@ private fun AchievementCard(a: Achievement, modifier: Modifier) {
 
 @Composable
 fun InsightsScreen(vm: HabitViewModel) {
-    val all by vm.all.collectAsState()
+    val all by vm.all.collectAsStateWithLifecycle()
     val ins = remember(all) { computeInsights(all, today()) }
     val achs = remember(ins) { achievements(ins) }
     val active = all.filter { !it.habit.archived }.sortedByDescending { it.current }
