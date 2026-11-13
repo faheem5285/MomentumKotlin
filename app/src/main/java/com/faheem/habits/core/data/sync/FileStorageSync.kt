@@ -21,28 +21,23 @@ class FileStorageSync(
     suspend fun uploadPending() {
         val resolver = context.contentResolver
         db.fileDao().getAllForSync().filter { it.dirty && !it.deleted }.forEach { file ->
-            val bytes = resolver.openInputStream(Uri.parse(file.uri))?.use { it.readBytes() }
-                ?: throw IOException("Could not read file '${file.name}' for cloud backup.")
+            val bytes = readBytes(resolver, file.uri, "Could not read file '${file.name}' for cloud backup.")
             client.uploadStorage(FILE_BUCKET, file.uuid, bytes, file.mime)
         }
         db.loanDao().getAllPeopleForSync().filter { it.dirty && !it.deleted && it.profileImageUri.isNotBlank() }.forEach { person ->
-            val bytes = resolver.openInputStream(Uri.parse(person.profileImageUri))?.use { it.readBytes() }
-                ?: throw IOException("Could not read profile photo for '${person.name}'.")
+            val bytes = readBytes(resolver, person.profileImageUri, "Could not read profile photo for '${person.name}'.")
             client.uploadStorage(FILE_BUCKET, "loan-people/${person.uuid}/profile", bytes, resolver.getType(Uri.parse(person.profileImageUri)).orEmpty())
         }
         db.contactDao().getAllForSync().filter { it.dirty && !it.deleted && it.profileImageUri.isNotBlank() }.forEach { contact ->
-            val bytes = resolver.openInputStream(Uri.parse(contact.profileImageUri))?.use { it.readBytes() }
-                ?: throw IOException("Could not read profile photo for '${contact.name}'.")
+            val bytes = readBytes(resolver, contact.profileImageUri, "Could not read profile photo for '${contact.name}'.")
             client.uploadStorage(FILE_BUCKET, "contacts/${contact.uuid}/profile", bytes, resolver.getType(Uri.parse(contact.profileImageUri)).orEmpty())
         }
         db.loanDao().getAllAttachmentsForSync().filter { it.dirty && !it.deleted }.forEach { attachment ->
-            val bytes = resolver.openInputStream(Uri.parse(attachment.uri))?.use { it.readBytes() }
-                ?: throw IOException("Could not read loan proof '${attachment.name}'.")
+            val bytes = readBytes(resolver, attachment.uri, "Could not read loan proof '${attachment.name}'.")
             client.uploadStorage(FILE_BUCKET, "loan-attachments/${attachment.uuid}", bytes, attachment.mime)
         }
         db.lifeRuleDao().getAllFilesForSync().filter { it.dirty && !it.deleted }.forEach { file ->
-            val bytes = resolver.openInputStream(Uri.parse(file.uri))?.use { it.readBytes() }
-                ?: throw IOException("Could not read attachment '${file.name}'.")
+            val bytes = readBytes(resolver, file.uri, "Could not read attachment '${file.name}'.")
             client.uploadStorage(FILE_BUCKET, "life-rule-files/${file.uuid}", bytes, file.mime)
         }
     }
@@ -112,14 +107,20 @@ class FileStorageSync(
             } catch (_: AtomicMoveNotSupportedException) {
                 Files.move(temporary.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
             }
-        } catch (error: Exception) {
+        } catch (error: IOException) {
             temporary.delete()
-            if (error is IOException) throw error
             throw IOException("Could not safely restore '${destination.name}'.", error)
         } finally {
             if (temporary.exists()) temporary.delete()
         }
     }
+    private fun readBytes(
+        resolver: android.content.ContentResolver,
+        uri: String,
+        errorMessage: String
+    ): ByteArray = resolver.openInputStream(Uri.parse(uri))?.use { it.readBytes() }
+        ?: throw IOException(errorMessage)
+
     private fun canRead(resolver: android.content.ContentResolver, uri: String): Boolean =
         try {
             resolver.openInputStream(Uri.parse(uri))?.use { true } ?: false
