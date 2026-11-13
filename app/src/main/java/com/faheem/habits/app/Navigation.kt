@@ -62,7 +62,7 @@ fun MomentumNavigationHost(
     NavHost(navController, startDestination = "home", modifier = modifier) {
         composable("home") { HomeScreen(onOpen = onOpenModule) }
         composable(
-            route = "module/{module}?itemId={itemId}",
+            route = "module/{module}?itemId={itemId}&requestToken={requestToken}",
             arguments = listOf(
                 navArgument("module") { type = NavType.StringType },
                 navArgument("itemId") {
@@ -142,36 +142,37 @@ private fun ModuleScreen(module: AppModule, itemId: Int?, requestToken: Long?, o
                         }
                     }
 
-                    private fun MomentumDestination.route(): String = when (this) {
-                        MomentumDestination.Home -> "home"
-                        is MomentumDestination.Module -> buildString {
-                            append("module/${module.name.lowercase()}")
-                            itemId?.let { append("?itemId=$it") }
-                            requestToken?.let {
-                                append(if (itemId == null) "?" else "&")
-                                append("requestToken=$it")
-                            }
-                        }
-                    }
-
-                    private fun matchesDestination(
-                        destination: MomentumDestination,
-                        currentEntry: NavBackStackEntry?
-                    ): Boolean = when (destination) {
-                        MomentumDestination.Home -> currentEntry?.destination?.route == "home"
-                        is MomentumDestination.Module -> {
-                            val args = currentEntry?.arguments
-                            val currentItemId = args?.getInt("itemId", Int.MIN_VALUE)?.takeUnless { it == Int.MIN_VALUE }
-                            val currentRequestToken = args?.getLong("requestToken", Long.MIN_VALUE)
-                                ?.takeUnless { it == Long.MIN_VALUE }
-                            currentEntry?.destination?.route?.startsWith("module/") == true &&
-                                args?.getString("module").equals(destination.module.name, ignoreCase = true) &&
-                                currentItemId == destination.itemId &&
-                                currentRequestToken == destination.requestToken
-                        }
-                    }
                 }
             }
         }
+    }
+}
+
+private fun MomentumDestination.route(): String = when (this) {
+    MomentumDestination.Home -> "home"
+    is MomentumDestination.Module -> buildString {
+        append("module/${module.name.lowercase()}")
+        itemId?.let { append("?itemId=$it") }
+        requestToken?.let {
+            append(if (itemId == null) "?" else "&")
+            append("requestToken=$it")
+        }
+    }
+}
+
+private fun matchesDestination(
+    destination: MomentumDestination,
+    currentEntry: NavBackStackEntry?
+): Boolean = when (destination) {
+    MomentumDestination.Home -> currentEntry?.destination?.route == "home"
+    is MomentumDestination.Module -> {
+        val args = currentEntry?.arguments
+        val currentItemId = args?.getInt("itemId", Int.MIN_VALUE)?.takeUnless { it == Int.MIN_VALUE }
+        val currentRequestToken = args?.getLong("requestToken", Long.MIN_VALUE)
+            ?.takeUnless { it == Long.MIN_VALUE }
+        currentEntry?.destination?.route?.startsWith("module/") == true &&
+            args?.getString("module").equals(destination.module.name, ignoreCase = true) &&
+            currentItemId == destination.itemId &&
+            currentRequestToken == destination.requestToken
     }
 }
