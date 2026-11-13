@@ -202,7 +202,6 @@ fun LoansScreen(
     var dateRange by remember { mutableStateOf(LoanDateRange.ALL_TIME) }
     var query by remember { mutableStateOf("") }
     var showAdd by remember { mutableStateOf(false) }
-    var showPeople by remember { mutableStateOf(false) }
     var showPersonEditor by remember { mutableStateOf(false) }
     var editingPerson by remember { mutableStateOf<LoanPerson?>(null) }
     var selected by remember { mutableStateOf<Loan?>(null) }
