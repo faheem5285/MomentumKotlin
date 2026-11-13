@@ -1,10 +1,9 @@
 package com.faheem.habits.features.network
-import com.faheem.habits.core.data.*
-import com.faheem.habits.core.notifications.*
-import com.faheem.habits.core.ui.*
-import com.faheem.habits.R
+import com.faheem.habits.core.data.NetworkLimitPeriod
+import com.faheem.habits.core.notifications.UsageLimitNotifications
+import com.faheem.habits.core.notifications.ZyloNotifications
 import com.faheem.habits.features.screen_time.hasUsageAccess
-
+import com.faheem.habits.R
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -175,9 +174,6 @@ class NetworkIndicatorService : Service() {
         val speed = "↓ $downloadText · ↑ $uploadText"
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_zylo)
-        .setContentTitle("↓ $downloadText  ·  ↑ $uploadText")
-            .setContentText("Wi-Fi $wifi · Mobile $mobile · ${usagePeriod.label} usage")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("Network speed: ↓ $downloadText, ↑ $uploadText\nWi-Fi usage (${usagePeriod.label.lowercase()}): $wifi\nMobile data usage (${usagePeriod.label.lowercase()}): $mobile"))
             .setContentTitle("Network · ${usagePeriod.label.lowercase()}")
             .setContentText("$speed  ·  Wi-Fi $wifi  ·  Mobile $mobile")
             .setStyle(
