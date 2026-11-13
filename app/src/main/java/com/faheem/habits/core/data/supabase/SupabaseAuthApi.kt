@@ -12,6 +12,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -29,6 +30,7 @@ enum class SessionRestoreResult { AUTHENTICATED, NO_SESSION, TEMPORARY_FAILURE }
  * Supabase email/password auth. Refresh tokens are encrypted by Android Keystore;
  * access tokens are not persisted by this app.
  */
+@Suppress("TooManyFunctions")
 object SupabaseAuthApi {
     private val http = HttpClient(Android)
     private val json = Json { ignoreUnknownKeys = true }
@@ -42,17 +44,17 @@ object SupabaseAuthApi {
     private data class SignupCredentials(val email: String, val password: String, val data: SignupMetadata)
 
     @Serializable
-    private data class SignupMetadata(val display_name: String)
+    private data class SignupMetadata(@SerialName("display_name") val displayName: String)
 
     @Serializable
-    private data class RefreshCredentials(val refresh_token: String)
+    private data class RefreshCredentials(@SerialName("refresh_token") val refreshToken: String)
 
     @Serializable
     private data class AuthResponse(
-        val access_token: String? = null,
-        val refresh_token: String? = null,
-        val expires_in: Long? = null,
-        val token_type: String? = null,
+        @SerialName("access_token") val accessToken: String? = null,
+        @SerialName("refresh_token") val refreshToken: String? = null,
+        @SerialName("expires_in") val expiresIn: Long? = null,
+        @SerialName("token_type") val tokenType: String? = null,
         val user: AuthUser? = null
     )
 
@@ -60,7 +62,7 @@ object SupabaseAuthApi {
     private data class AuthUser(
         val id: String? = null,
         val email: String? = null,
-        val user_metadata: JsonObject? = null
+        @SerialName("user_metadata") val userMetadata: JsonObject? = null
     )
 
     @Volatile
@@ -70,13 +72,13 @@ object SupabaseAuthApi {
     private var accessTokenExpiresAt: Long = 0L
 
     private fun rememberSession(session: AuthResponse) {
-        accessToken = session.access_token
-        val lifetimeMs = (session.expires_in ?: 3600L).coerceAtLeast(60L) * 1_000L
+        accessToken = session.accessToken
+        val lifetimeMs = (session.expiresIn ?: 3600L).coerceAtLeast(60L) * 1_000L
         accessTokenExpiresAt = System.currentTimeMillis() + lifetimeMs
     }
 
     private fun cacheProfile(context: Context, session: AuthResponse) {
-        val name = session.user?.user_metadata?.get("display_name")?.jsonPrimitive?.contentOrNull
+        val name = session.user?.userMetadata?.get("display_name")?.jsonPrimitive?.contentOrNull
             ?.trim()?.take(80).orEmpty()
         val email = session.user?.email?.trim()?.take(160).orEmpty()
         val userId = session.user?.id?.trim().orEmpty()
@@ -110,7 +112,7 @@ object SupabaseAuthApi {
     suspend fun signIn(context: Context, email: String, password: String) {
         val body = request("token?grant_type=password", json.encodeToString(Credentials(email, password)))
         val session = json.decodeFromString<AuthResponse>(body)
-        val refreshToken = session.refresh_token
+        val refreshToken = session.refreshToken
         check(!refreshToken.isNullOrBlank()) {
             "Sign-in succeeded but Supabase did not return a refresh token."
         }
