@@ -4,7 +4,6 @@ import java.io.File
 import java.io.IOException
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class DatabaseFileOperationsTest {
@@ -40,7 +39,6 @@ class DatabaseFileOperationsTest {
 
             assertEquals("keep existing data", destination.readText())
             assertEquals(setOf("destination.db"), directory.listFiles()?.map { it.name }?.toSet())
-            assertFalse(File(directory, ".destination.db-copy").exists())
         } finally {
             directory.deleteRecursively()
         }
