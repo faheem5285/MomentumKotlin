@@ -274,7 +274,7 @@ class SupabaseSyncRepository(
         val statusDao = db.syncStateDao()
         val status = statusDao.get(SYNC_STATUS_TABLE) ?: SyncState(SYNC_STATUS_TABLE)
         statusDao.upsert(status.copy(lastSyncEpochMillis = System.currentTimeMillis(), lastError = null))
-        SyncRunResult(pushed, pulled, conflicts, pending = 0)
+        SyncRunResult(pushed, pulled, conflicts, pending = totalPendingCount())
     }
 
     suspend fun setPaused(paused: Boolean) {
@@ -501,6 +501,12 @@ class SupabaseSyncRepository(
             }
             if (unchangedIds.isNotEmpty()) markClean(unchangedIds)
         }
+    }
+
+    private suspend fun totalPendingCount(): Int {
+        var pending = 0
+        allCloudTables.forEach { table -> pending += dirtyCount(table) }
+        return pending
     }
 
     private suspend fun dirtyCount(cloudTable: String): Int {
