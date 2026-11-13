@@ -48,7 +48,8 @@ fun HeroCard(
 ) {
     val colors = gradient.ifEmpty { BrandGradient }
     val shape = RoundedCornerShape(MomentumTokens.radiusLarge)
-    val elevation = if (LocalReduceEffects.current) 0.dp else 24.dp
+    val reduceEffects = LocalReduceEffects.current
+    val elevation = if (reduceEffects) 0.dp else 24.dp
     Box(
         modifier
             .fillMaxWidth()
@@ -76,7 +77,7 @@ fun HeroCard(
                     )
                 )
         )
-        Box(Modifier.matchParentSize()) {
+        if (!reduceEffects) Box(Modifier.matchParentSize()) {
             // Decorative glass rings.
             Box(
                 Modifier
@@ -115,7 +116,7 @@ fun HeroCard(
             )
         }
         // Neon light drifting across the pane.
-        Box(
+        if (!reduceEffects) Box(
             Modifier
                 .matchParentSize()
                 .background(
@@ -182,7 +183,7 @@ fun EmptyState(icon: ImageVector, title: String, subtitle: String) {
             Modifier
                 .size(64.dp)
                 .shadow(
-                    14.dp,
+                    if (LocalReduceEffects.current) 0.dp else 14.dp,
                     RoundedCornerShape(20.dp),
                     clip = false,
                     ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
@@ -222,12 +223,13 @@ fun EmptyState(icon: ImageVector, title: String, subtitle: String) {
 @Composable
 fun IconBubble(icon: ImageVector, color: Color, size: Dp = 44.dp) {
     val glass = LocalGlassPalette.current
+    val reduceEffects = LocalReduceEffects.current
     val shape = RoundedCornerShape(size * 0.34f)
     Box(
         Modifier
             .size(size)
             .shadow(
-                10.dp,
+                if (reduceEffects) 0.dp else 10.dp,
                 shape,
                 clip = false,
                 ambientColor = color.copy(alpha = if (glass.dark) 0.60f else 0.38f),
@@ -254,7 +256,12 @@ fun ProgressBar(
     modifier: Modifier = Modifier,
     height: Dp = 8.dp
 ) {
-    val f by animateFloatAsState(fraction.coerceIn(0f, 1f), tween(500), label = "bar")
+    val reduceEffects = LocalReduceEffects.current
+    val f by animateFloatAsState(
+        fraction.coerceIn(0f, 1f),
+        tween(if (reduceEffects) 0 else 500),
+        label = "bar"
+    )
     Box(
         modifier
             .fillMaxWidth()
@@ -273,7 +280,7 @@ fun ProgressBar(
                 .fillMaxHeight()
                 .fillMaxWidth(f)
                 .shadow(
-                    8.dp,
+                    if (reduceEffects) 0.dp else 8.dp,
                     RoundedCornerShape(height / 2),
                     clip = false,
                     ambientColor = color.copy(alpha = 0.75f),
@@ -296,7 +303,12 @@ fun ProgressRing(
     modifier: Modifier = Modifier,
     caption: String = "today"
 ) {
-    val anim by animateFloatAsState(progress.coerceIn(0f, 1f), tween(700), label = "ring")
+    val reduceEffects = LocalReduceEffects.current
+    val anim by animateFloatAsState(
+        progress.coerceIn(0f, 1f),
+        tween(if (reduceEffects) 0 else 700),
+        label = "ring"
+    )
     Box(
         modifier
             .size(96.dp)
@@ -315,7 +327,7 @@ fun ProgressRing(
             val tl = Offset(sw / 2, sw / 2)
             // Neon bloom behind the progress arc.
             drawArc(
-                color = Color.White.copy(alpha = 0.18f),
+                color = Color.White.copy(alpha = if (reduceEffects) 0f else 0.18f),
                 startAngle = -90f, sweepAngle = 360f * anim, useCenter = false,
                 topLeft = tl, size = arcSize,
                 style = Stroke(sw * 2.4f, cap = StrokeCap.Round)
