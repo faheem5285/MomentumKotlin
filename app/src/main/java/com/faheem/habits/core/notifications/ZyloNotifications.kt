@@ -156,7 +156,7 @@ object ZyloNotifications {
                     Intent.FLAG_ACTIVITY_SINGLE_TOP
             )
         if (targetModule != null) intent.putExtra(EXTRA_TARGET_MODULE, targetModule)
-            if (targetItemId != null) intent.putExtra(EXTRA_TARGET_ITEM_ID, targetItemId)
+        if (targetItemId != null) intent.putExtra(EXTRA_TARGET_ITEM_ID, targetItemId)
         return PendingIntent.getActivity(
             context,
             requestCode,
