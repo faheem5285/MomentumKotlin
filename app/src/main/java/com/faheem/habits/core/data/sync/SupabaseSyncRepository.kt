@@ -351,95 +351,95 @@ class SupabaseSyncRepository(
 
     private suspend fun applyHabit(r: JsonObject): Int {
         val old = db.habitDao().getHabitByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, "", it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         db.habitDao().upsertHabit(r.habit(old?.id ?: 0)); return 0
     }
     private suspend fun applyCompletion(r: JsonObject): Int {
         val habit = db.habitDao().getHabitByUuid(r.string("habit_id")) ?: return 0
         val old = db.habitDao().getCompletionByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, "", it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         db.habitDao().upsertCompletion(r.completion(habit.id, old?.let { it.habitId to it.epochDay }?.second ?: r.long("epoch_day"))); return 0
     }
     private suspend fun applySkip(r: JsonObject): Int {
         val habit = db.habitDao().getHabitByUuid(r.string("habit_id")) ?: return 0
         val old = db.habitDao().getSkipByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to it.deviceId }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, it.deviceId, it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         db.habitDao().upsertSkipForSync(r.skip(habit.id)); return 0
     }
     private suspend fun applyReminder(r: JsonObject): Int {
         val habit = db.habitDao().getHabitByUuid(r.string("habit_id")) ?: return 0
         val old = db.habitDao().getReminderByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, "", it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         db.habitDao().upsertReminderForSync(r.reminder(habit.id, old?.id ?: 0)); return 0
     }
     private suspend fun applyExpense(r: JsonObject): Int {
         val old = db.expenseDao().getByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, "", it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         db.expenseDao().upsertExpense(r.expense(old?.id ?: 0)); return 0
     }
     private suspend fun applyContact(r: JsonObject): Int {
         val old = db.contactDao().getByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, "", it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         db.contactDao().upsertForSync(r.contact(old?.id ?: 0)); return 0
     }
     private suspend fun applyLoanPerson(r: JsonObject): Int {
         val old = db.loanDao().getPersonByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, "", it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         db.loanDao().upsertPersonForSync(r.loanPerson(old?.id ?: 0)); return 0
     }
     private suspend fun applyBudget(r: JsonObject): Int {
         val old = db.expenseDao().getBudgetByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to it.deviceId }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, it.deviceId, it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         db.expenseDao().upsertBudget(r.budget()); return 0
     }
     private suspend fun applyLoan(r: JsonObject): Int {
         val old = db.loanDao().getByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, "", it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         val personId = r.string("person_id").takeIf { it.isNotBlank() }?.let { db.loanDao().getPersonByUuid(it)?.id }
         db.loanDao().upsertLoan(r.loan(old?.id ?: 0, personId)); return 0
     }
     private suspend fun applyLoanAttachment(r: JsonObject): Int {
         val old = db.loanDao().getAttachmentByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, "", it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         val loan = db.loanDao().getByUuid(r.string("loan_id")) ?: return 0
         db.loanDao().upsertAttachmentForSync(r.loanAttachment(loan.id, old?.id ?: 0)); return 0
     }
     private suspend fun applyPayment(r: JsonObject): Int {
         val loan = db.loanDao().getByUuid(r.string("loan_id")) ?: return 0
         val old = db.loanDao().getPaymentByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to it.deviceId }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, it.deviceId, it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         db.loanDao().upsertPayment(r.payment(loan.id, old?.id ?: 0)); return 0
     }
     private suspend fun applyFile(r: JsonObject): Int {
         val old = db.fileDao().getByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, "", it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         db.fileDao().upsertForSync(r.file(old?.id ?: 0)); return 0
     }
     private suspend fun applyTodo(r: JsonObject): Int {
         val old = db.toDoDao().getByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, "", it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         val parent = r["parent_id"]?.jsonPrimitive?.contentOrNull?.let { db.toDoDao().getByUuid(it)?.id }
         db.toDoDao().upsertForSync(r.todo(old?.id ?: 0, parent)); return 0
     }
     private suspend fun applyLifeRule(r: JsonObject): Int {
         val old = db.lifeRuleDao().getByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, "", it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         db.lifeRuleDao().upsertForSync(r.lifeRule(old?.id ?: 0)); return 0
     }
     private suspend fun applyLifeRuleFile(r: JsonObject): Int {
         val old = db.lifeRuleDao().getFileByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, "", it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         val rule = db.lifeRuleDao().getByUuid(r.string("rule_id")) ?: return 0
         db.lifeRuleDao().upsertFileForSync(r.lifeRuleFile(rule.id, old?.id ?: 0)); return 0
     }
     private suspend fun applyCustomNotification(r: JsonObject): Int {
         val old = db.customNotificationDao().getByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, "", it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         db.customNotificationDao().upsertForSync(r.customNotification(old?.id ?: 0)); return 0
     }
     private suspend fun applyVault(r: JsonObject): Int {
         val old = db.vaultDao().getByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to it.deviceId }, r)) return if (old?.dirty == true) 1 else 0
+        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { Triple(it.updatedAt, it.deviceId, it.deleted) }, r)) return if (old?.dirty == true) 1 else 0
         db.vaultDao().upsert(r.vault(old?.id ?: 0)); return 0
     }
 
@@ -451,13 +451,13 @@ class SupabaseSyncRepository(
             false
         }
 
-    private fun accept(localTime: Long?, dirty: Boolean, local: Pair<Long, String>?, r: JsonObject): Boolean {
+    private fun accept(localTime: Long?, dirty: Boolean, local: Triple<Long, String, Boolean>?, r: JsonObject): Boolean {
         if (localTime == null) return true
         val localCandidate = local ?: return true
         val remote = SyncCandidate(r.string("id"), r.instantMillis("updated_at"), r.string("device_id"), r.deleted())
         val candidate = SyncCandidate(
             r.string("id"), localCandidate.first,
-            localCandidate.second.ifBlank { DeviceIdentity.get(context) }, false
+            localCandidate.second.ifBlank { DeviceIdentity.get(context) }, localCandidate.third
         )
         return remote.winsOver(candidate)
     }
