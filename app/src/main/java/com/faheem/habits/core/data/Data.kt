@@ -863,6 +863,7 @@ abstract class AppDatabase : RoomDatabase() {
             val accountFile = accountDatabaseFile(accountDirectory, normalizedId)
             try {
                 if (accountFile.exists()) {
+                    deleteDatabaseSidecars(baseFile)
                     copyFileAtomically(accountFile, baseFile)
                 } else {
                     deleteDatabaseFiles(baseFile)
@@ -914,10 +915,20 @@ abstract class AppDatabase : RoomDatabase() {
             File(directory, "account-${userId.replace("-", "")}.db")
 
         private fun deleteDatabaseFiles(database: File) {
-            listOf(database, File("${database.path}-wal"), File("${database.path}-shm"), File("${database.path}-journal"))
-                .forEach { file ->
-                    if (file.exists()) check(file.delete()) { "Could not switch the local account database." }
-                }
+            if (database.exists()) {
+                check(database.delete()) { "Could not switch the local account database." }
+            }
+            deleteDatabaseSidecars(database)
+        }
+
+        private fun deleteDatabaseSidecars(database: File) {
+            listOf(
+                File("${database.path}-wal"),
+                File("${database.path}-shm"),
+                File("${database.path}-journal")
+            ).forEach { file ->
+                if (file.exists()) check(file.delete()) { "Could not switch the local account database." }
+            }
         }
 
         // The last committed app schema was v3. Keep its data while adding the
