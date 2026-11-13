@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 enum class SessionRestoreResult { AUTHENTICATED, NO_SESSION, TEMPORARY_FAILURE }
 
@@ -34,6 +36,7 @@ enum class SessionRestoreResult { AUTHENTICATED, NO_SESSION, TEMPORARY_FAILURE }
 object SupabaseAuthApi {
     private val http = HttpClient(Android)
     private val json = Json { ignoreUnknownKeys = true }
+    private val refreshMutex = Mutex()
     private val mutableSignOutEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val signOutEvents = mutableSignOutEvents.asSharedFlow()
 
@@ -122,10 +125,15 @@ object SupabaseAuthApi {
         SecureTokenStore.saveRefreshToken(context.applicationContext, refreshToken)
     }
 
-    suspend fun restoreSession(context: Context): SessionRestoreResult {
-        val refreshToken = SecureTokenStore.readRefreshToken(context.applicationContext)
-            ?: return SessionRestoreResult.NO_SESSION
-        return try {
+    suspend fun restoreSession(context: Context): SessionRestoreResult = refreshMutex.withLock {
+        // A parallel caller may already have rotated the refresh token while this
+        // caller was waiting. Reuse that fresh in-memory session instead of rotating again.
+        if (hasFreshToken()) return@withLock SessionRestoreResult.AUTHENTICATED
+
+        val appContext = context.applicationContext
+        val refreshToken = SecureTokenStore.readRefreshToken(appContext)
+            ?: return@withLock SessionRestoreResult.NO_SESSION
+        try {
             val body = request(
                 "token?grant_type=refresh_token",
                 json.encodeToString(RefreshCredentials(refreshToken))
@@ -135,22 +143,22 @@ object SupabaseAuthApi {
             check(!updatedToken.isNullOrBlank()) {
                 "Supabase did not return a refreshed session token."
             }
-            activateAccountDatabase(context.applicationContext, session)
+            activateAccountDatabase(appContext, session)
+            // Persist the rotated token before exposing the new access token.
+            SecureTokenStore.saveRefreshToken(appContext, updatedToken)
+            cacheProfile(appContext, session)
             rememberSession(session)
-            cacheProfile(context.applicationContext, session)
-            SecureTokenStore.saveRefreshToken(context.applicationContext, updatedToken)
             SessionRestoreResult.AUTHENTICATED
         } catch (e: AuthHttpException) {
             if (e.status in listOf(400, 401, 403)) {
-                SecureTokenStore.clear(context.applicationContext)
-                accessToken = null
-                accessTokenExpiresAt = 0L
+                SecureTokenStore.clear(appContext)
+                clearInMemorySession()
                 SessionRestoreResult.NO_SESSION
             } else {
                 SessionRestoreResult.TEMPORARY_FAILURE
             }
         } catch (_: Exception) {
-            // Keep the encrypted token on network errors so an offline start does not destroy it.
+            // Keep the encrypted token on network/storage errors; never sign out offline.
             SessionRestoreResult.TEMPORARY_FAILURE
         }
     }

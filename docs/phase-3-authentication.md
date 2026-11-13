@@ -27,8 +27,10 @@
 - [x] Validate reset-email format before calling Supabase.
 - [x] Replace raw backend/exception details in the UI with safe, actionable messages.
 - [x] Avoid writing an unverified sign-up name into the currently active account profile.
-- [ ] Serialize concurrent refresh-token rotation and review sign-in/sign-out races.
-- [ ] Add focused automated tests for auth validation, error mapping, and session transitions.
+- [x] Serialize concurrent refresh-token rotation and reuse a fresh session when another caller has already refreshed it.
+- [x] Save a rotated refresh token before publishing the refreshed in-memory access token.
+- [x] Add JVM tests for common authentication error mapping and safe fallback messages.
+- [ ] Add configured-session integration coverage for refresh, sign-out, and account switching.
 - [ ] Verify registration, email confirmation, sign-in, reset email, session restore, offline startup, sign-out, and account switching on a configured Android device.
 - [ ] Run unit tests, Android build, and CI; record actual results below.
 
