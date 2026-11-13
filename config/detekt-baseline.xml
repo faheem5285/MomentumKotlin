@@ -24,7 +24,7 @@
     <ID>CyclomaticComplexMethod:HabitsInsightsScreen.kt$@Composable fun InsightsScreen(vm: HabitViewModel)</ID>
     <ID>CyclomaticComplexMethod:HabitsManageScreen.kt$@Composable fun ManageScreen(vm: HabitViewModel)</ID>
     <ID>CyclomaticComplexMethod:HabitsToday.kt$@Composable fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -&gt; Unit)</ID>
-    <ID>CyclomaticComplexMethod:HomeScreen.kt$@Composable fun HomeScreen(onOpen: (AppModule) -&gt; Unit, vm: HomeViewModel = viewModel())</ID>
+    <ID>CyclomaticComplexMethod:HomeScreen.kt$@Composable fun HomeScreen(onOpen: (AppModule) -&gt; Unit, vm: HomeViewModel = hiltViewModel())</ID>
     <ID>CyclomaticComplexMethod:LoansScreen.kt$@Composable fun LoansScreen(vm: LoanViewModel = viewModel())</ID>
     <ID>CyclomaticComplexMethod:MomentumBackup.kt$MomentumBackup$private suspend fun restoreRoot(context: Context, root: JSONObject, replace: Boolean, db: AppDatabase): String</ID>
     <ID>CyclomaticComplexMethod:NetworkScreen.kt$@Composable fun NetworkScreen()</ID>
@@ -84,7 +84,7 @@
     <ID>FunctionNaming:HabitsToday.kt$@Composable private fun DayChip(day: Long, selected: Boolean, complete: Boolean, modifier: Modifier, onClick: () -&gt; Unit)</ID>
     <ID>FunctionNaming:HabitsToday.kt$@Composable private fun HabitRow( ui: HabitUi, done: Boolean, onToggle: () -&gt; Unit, onOpen: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
     <ID>FunctionNaming:HabitsToday.kt$@Composable private fun MiniStat(label: String, value: String, modifier: Modifier)</ID>
-    <ID>FunctionNaming:HomeScreen.kt$@Composable fun HomeScreen(onOpen: (AppModule) -&gt; Unit, vm: HomeViewModel = viewModel())</ID>
+    <ID>FunctionNaming:HomeScreen.kt$@Composable fun HomeScreen(onOpen: (AppModule) -&gt; Unit, vm: HomeViewModel = hiltViewModel())</ID>
     <ID>FunctionNaming:HomeScreen.kt$@Composable private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -&gt; Unit)</ID>
     <ID>FunctionNaming:HomeScreen.kt$@Composable private fun TodaySummaryCard(title: String, value: String, detail: String, icon: ImageVector, tint: Color, modifier: Modifier = Modifier)</ID>
     <ID>FunctionNaming:LoansScreen.kt$@Composable fun LoansScreen(vm: LoanViewModel = viewModel())</ID>
@@ -158,7 +158,7 @@
     <ID>MatchingDeclarationName:ExpensesScreen.kt$ExpenseViewModel : ViewModel</ID>
     <ID>MatchingDeclarationName:FilesScreen.kt$FileViewModel : ViewModel</ID>
     <ID>MatchingDeclarationName:HabitTemplates.kt$HabitTemplate</ID>
-    <ID>MatchingDeclarationName:LoansScreen.kt$LoanViewModel : AndroidViewModel</ID>
+    <ID>MatchingDeclarationName:LoansScreen.kt$LoanViewModel : ViewModel</ID>
     <ID>MatchingDeclarationName:Navigation.kt$MomentumDestination</ID>
     <ID>MatchingDeclarationName:ScreenTimeScreen.kt$AppUsage</ID>
     <ID>MatchingDeclarationName:VaultScreen.kt$VaultViewModel : AndroidViewModel</ID>
@@ -287,7 +287,6 @@
     <ID>WildcardImport:HomeScreen.kt$import androidx.compose.material3.*</ID>
     <ID>WildcardImport:HomeScreen.kt$import androidx.compose.runtime.*</ID>
     <ID>WildcardImport:HomeScreen.kt$import com.faheem.habits.core.data.*</ID>
-    <ID>WildcardImport:HomeScreen.kt$import com.faheem.habits.core.notifications.*</ID>
     <ID>WildcardImport:HomeScreen.kt$import com.faheem.habits.core.ui.*</ID>
     <ID>WildcardImport:InstagramScrollCounterService.kt$import com.faheem.habits.core.data.*</ID>
     <ID>WildcardImport:InstagramScrollCounterService.kt$import com.faheem.habits.core.notifications.*</ID>

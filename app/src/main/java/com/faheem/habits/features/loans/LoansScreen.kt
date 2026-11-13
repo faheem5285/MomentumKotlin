@@ -7,7 +7,6 @@ import com.faheem.habits.core.ui.*
 import com.faheem.habits.R
 
 
-import android.app.Application
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -43,15 +42,16 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.hilt.navigation.compose.hiltViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.faheem.habits.core.settings.MomentumSettingsRepository
+import com.faheem.habits.features.loans.data.LoanRepository
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -60,77 +60,50 @@ import java.time.LocalDate
 import java.time.DayOfWeek
 
 @HiltViewModel
+@Suppress("TooManyFunctions")
 class LoanViewModel @Inject constructor(
-    app: Application,
+    private val repository: LoanRepository,
     private val settings: MomentumSettingsRepository
-) : AndroidViewModel(app) {
-    private val dao = AppDatabase.get(app).loanDao()
-    val loans: StateFlow<List<Loan>> = dao.getAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val people: StateFlow<List<LoanPerson>> = dao.getPeople().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+) : ViewModel() {
+    val loans: StateFlow<List<Loan>> = repository.loans.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val people: StateFlow<List<LoanPerson>> = repository.people.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val accountBalanceMinorUnits: StateFlow<Long?> = settings.loansAccountBalanceMinorUnits
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     fun setAccountBalance(value: Double) {
         viewModelScope.launch { settings.setLoansAccountBalanceMinorUnits(value.toMinorUnits()) }
     }
-    fun addPerson(person: LoanPerson) { viewModelScope.launch { dao.insertPerson(person.copy(name = person.name.trim())) } }
-    fun updatePerson(person: LoanPerson) { viewModelScope.launch { dao.updatePerson(person.copy(name = person.name.trim(), updatedAt = System.currentTimeMillis(), dirty = true)) } }
-    fun archivePerson(person: LoanPerson) { viewModelScope.launch { dao.archivePerson(person.id) } }
-    fun deletePerson(person: LoanPerson) { viewModelScope.launch { dao.deletePerson(person.id) } }
+    fun addPerson(person: LoanPerson) { viewModelScope.launch { repository.addPerson(person) } }
+    fun updatePerson(person: LoanPerson) { viewModelScope.launch { repository.updatePerson(person) } }
+    fun archivePerson(person: LoanPerson) { viewModelScope.launch { repository.archivePerson(person) } }
+    fun deletePerson(person: LoanPerson) { viewModelScope.launch { repository.deletePerson(person) } }
     fun add(person: String, personId: Int?, amount: Double, lent: Boolean, note: String, title: String = "", dueEpochDay: Long? = null, status: String = "pending", proofUris: List<String> = emptyList()) {
         viewModelScope.launch {
-            val normalized = person.trim()
-            val resolvedPersonId = resolvePersonId(normalized, personId)
-            val loanId = dao.insert(Loan(person = normalized, personId = resolvedPersonId, amountMinorUnits = amount.toMinorUnits(), lent = lent, note = note.trim(), title = title.trim(), dueEpochDay = dueEpochDay, status = status, epochDay = today())).toInt()
-            proofUris.forEach { insertAttachment(loanId, it) }
+            repository.add(
+                Loan(
+                    person = person,
+                    personId = personId,
+                    amountMinorUnits = amount.toMinorUnits(),
+                    lent = lent,
+                    note = note,
+                    epochDay = today(),
+                    title = title,
+                    dueEpochDay = dueEpochDay,
+                    status = status
+                ),
+                proofUris
+            )
         }
     }
     fun updateLoan(loan: Loan, person: String, personId: Int?, proofUris: List<String> = emptyList()) {
-        viewModelScope.launch {
-            val normalized = person.trim()
-            val resolvedPersonId = resolvePersonId(normalized, personId)
-            dao.update(
-                loan.copy(
-                    person = normalized,
-                    personId = resolvedPersonId,
-                    updatedAt = System.currentTimeMillis(),
-                    deleted = false,
-                    dirty = true
-                )
-            )
-            proofUris.forEach { insertAttachment(loan.id, it) }
-        }
-    }
-    private suspend fun resolvePersonId(name: String, requestedId: Int?): Int {
-        val selectedPerson = requestedId?.let { dao.getPerson(it) }
-        return selectedPerson?.id
-            ?: dao.getPeople().first().firstOrNull { it.name.equals(name, true) }?.id
-            ?: dao.insertPerson(LoanPerson(name = name)).toInt()
+        viewModelScope.launch { repository.updateLoan(loan, person, personId, proofUris) }
     }
     fun update(loan: Loan) {
-        viewModelScope.launch {
-            dao.update(loan.copy(updatedAt = System.currentTimeMillis(), deleted = false, dirty = true))
-        }
+        viewModelScope.launch { repository.update(loan) }
     }
-    fun addAttachment(loanId: Int, uri: String) { viewModelScope.launch { insertAttachment(loanId, uri) } }
-    private suspend fun insertAttachment(loanId: Int, uri: String) {
-        val parsedUri = Uri.parse(uri)
-        dao.insertAttachment(
-            LoanAttachment(
-                loanId = loanId,
-                name = parsedUri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')?.ifBlank { null } ?: "Loan proof",
-                uri = uri,
-                mime = getApplication<Application>().contentResolver.getType(parsedUri).orEmpty()
-            )
-        )
-    }
-    fun attachments(loanId: Int) = dao.getAttachments(loanId)
+    fun addAttachment(loanId: Int, uri: String) { viewModelScope.launch { repository.addAttachment(loanId, uri) } }
+    fun attachments(loanId: Int) = repository.attachments(loanId)
     fun toggleSettled(loan: Loan) { update(loan.copy(settled = !loan.settled)) }
-    fun remove(loan: Loan) { viewModelScope.launch {
-        val updatedAt = System.currentTimeMillis()
-        dao.deleteAttachmentsForLoan(loan.id, updatedAt)
-        dao.deletePaymentsForLoan(loan.id, updatedAt)
-        dao.delete(loan.id, updatedAt)
-    } }
+    fun remove(loan: Loan) { viewModelScope.launch { repository.remove(loan) } }
 }
 
 private val LentColor = Positive
@@ -218,7 +191,7 @@ private fun openProofFile(context: android.content.Context, uri: String, mime: S
 
 @Composable
 fun LoansScreen(vm: LoanViewModel = hiltViewModel()) {
-    val loans by vm.loans.collectAsState()
+    val loans by vm.loans.collectAsStateWithLifecycle()
     var tab by remember { mutableIntStateOf(0) }
     var direction by remember { mutableIntStateOf(0) }
     var dateRange by remember { mutableStateOf(LoanDateRange.ALL_TIME) }
@@ -233,7 +206,7 @@ fun LoansScreen(vm: LoanViewModel = hiltViewModel()) {
     var deletingPerson by remember { mutableStateOf<LoanPerson?>(null) }
     var editingAccountBalance by remember { mutableStateOf(false) }
 
-    val accountBalanceMinorUnits by vm.accountBalanceMinorUnits.collectAsState()
+    val accountBalanceMinorUnits by vm.accountBalanceMinorUnits.collectAsStateWithLifecycle()
     val dateFilteredLoans = remember(loans, dateRange) { loans.filter { dateRange.includes(it.epochDay) } }
     val openLoans = remember(dateFilteredLoans) { dateFilteredLoans.filter { !it.settled } }
     val settledLoans = remember(dateFilteredLoans) { dateFilteredLoans.filter { it.settled } }
@@ -247,7 +220,7 @@ fun LoansScreen(vm: LoanViewModel = hiltViewModel()) {
         }
     }
 
-    val people by vm.people.collectAsState()
+    val people by vm.people.collectAsStateWithLifecycle()
     if (editingAccountBalance) {
         AccountBalanceSheet(
             initialBalanceMinorUnits = accountBalanceMinorUnits,
@@ -272,7 +245,7 @@ fun LoansScreen(vm: LoanViewModel = hiltViewModel()) {
         selected = null
     } }
     selected?.let { loan ->
-        val attachments by vm.attachments(loan.id).collectAsState(initial = emptyList())
+        val attachments by vm.attachments(loan.id).collectAsStateWithLifecycle(initialValue = emptyList())
         LoanDetailSheet(
             loan = loan,
             personProfile = people.firstOrNull { it.id == loan.personId },

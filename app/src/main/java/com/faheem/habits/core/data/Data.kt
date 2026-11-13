@@ -1051,7 +1051,7 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_habit_skips_epochDay` ON `habit_skips` (`epochDay`)")
                 db.execSQL("CREATE TABLE IF NOT EXISTS `category_budgets` (`category` TEXT NOT NULL, `monthKey` TEXT NOT NULL, `limitMinorUnits` INTEGER NOT NULL, PRIMARY KEY(`category`, `monthKey`))")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_category_budgets_monthKey` ON `category_budgets` (`monthKey`)")
-                db.execSQL("CREATE TABLE IF NOT EXISTS `loan_payments` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `loanId` INTEGER NOT NULL, `amountMinorUnits` INTEGER NOT NULL, `epochDay` INTEGER NOT NULL, `note` TEXT NOT NULL, FOREIGN KEY(`loanId`) REFERENCES `loans`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `loan_payments` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `loanId` INTEGER NOT NULL, `amountMinorUnits` INTEGER NOT NULL, `epochDay` INTEGER NOT NULL, `note` TEXT NOT NULL)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_loan_payments_loanId` ON `loan_payments` (`loanId`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_loan_payments_epochDay` ON `loan_payments` (`epochDay`)")
             }
@@ -1060,6 +1060,12 @@ abstract class AppDatabase : RoomDatabase() {
 
         val MIGRATION_12_13 = object : Migration(12, 13) {
             override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE `loan_payments_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `loanId` INTEGER NOT NULL, `amountMinorUnits` INTEGER NOT NULL, `epochDay` INTEGER NOT NULL, `note` TEXT NOT NULL, FOREIGN KEY(`loanId`) REFERENCES `loans`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                db.execSQL("INSERT INTO `loan_payments_new` (`id`, `loanId`, `amountMinorUnits`, `epochDay`, `note`) SELECT `id`, `loanId`, `amountMinorUnits`, `epochDay`, `note` FROM `loan_payments`")
+                db.execSQL("DROP TABLE `loan_payments`")
+                db.execSQL("ALTER TABLE `loan_payments_new` RENAME TO `loan_payments`")
+                db.execSQL("CREATE INDEX `index_loan_payments_loanId` ON `loan_payments` (`loanId`)")
+                db.execSQL("CREATE INDEX `index_loan_payments_epochDay` ON `loan_payments` (`epochDay`)")
                 db.execSQL("ALTER TABLE `vault_entries` ADD COLUMN `uuid` TEXT NOT NULL DEFAULT ''")
                 db.execSQL("ALTER TABLE `vault_entries` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE `vault_entries` ADD COLUMN `dirty` INTEGER NOT NULL DEFAULT 1")

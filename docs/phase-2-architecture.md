@@ -1,5 +1,8 @@
 # Phase 2 — Architecture
 
+**Status: in progress.** Do not begin the next phase until all deferred
+architecture items below are complete and the verification checklist passes.
+
 ## What changed
 
 - Added `gradle/libs.versions.toml` and moved application/plugin dependency
@@ -14,6 +17,11 @@
 - Moved the Habits screen's persistence and reminder operations behind an
   injected `HabitRepository`; its ViewModel now uses Hilt and all Habits tabs
   collect state with lifecycle awareness.
+- Moved Loans persistence and attachment handling behind an injected
+  `LoanRepository`; loan and account-balance state is collected with lifecycle
+  awareness.
+- Moved Home's aggregate Room queries and vault-count observation behind an
+  injected `HomeRepository`; the screen now obtains its ViewModel through Hilt.
 - Added Detekt configuration and a baseline so legacy code does not block the
   build.
 
@@ -32,7 +40,7 @@ Instrumentation tests and deep-link launches still require a connected device.
 
 ## Deferred
 
-- Move the remaining feature ViewModels (loans, home, and vault) to
+- Move the remaining feature ViewModel (vault) to
   constructor-injected repositories; Settings already uses Hilt injection.
 - Replace remaining feature/service SharedPreferences with DataStore-backed
   repositories, including legacy key migration tests for each store.

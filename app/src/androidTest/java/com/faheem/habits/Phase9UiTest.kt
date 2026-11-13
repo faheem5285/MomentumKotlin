@@ -8,6 +8,10 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.faheem.habits.app.MainActivity
+import com.faheem.habits.app.MomentumDestination
+import com.faheem.habits.app.MomentumNavigationHost
+import com.faheem.habits.core.ui.AppModule
+import com.faheem.habits.core.ui.MomentumTheme
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -19,7 +23,7 @@ class Phase9UiTest {
 
     @Test
     fun createHabitFlowIsReachable() {
-        openModule("Habits")
+        openModule(AppModule.Habits)
         rule.onNodeWithText("New habit").performClick()
         rule.onNodeWithText("Habit name").performTextInput("Read")
         rule.onNodeWithTag("button:Save habit").performClick()
@@ -27,25 +31,33 @@ class Phase9UiTest {
 
     @Test
     fun completeHabitFlowExposesTodayControls() {
-        openModule("Habits")
+        openModule(AppModule.Habits)
         rule.onNodeWithText("Today").assertIsDisplayed()
     }
 
     @Test
     fun addExpenseFlowIsReachable() {
-        openModule("Money")
+        openModule(AppModule.Money)
         rule.onNodeWithText("Add expense").performClick()
         rule.onNodeWithText("Amount").assertIsDisplayed()
     }
 
     @Test
     fun unlockVaultFlowExposesPasswordControls() {
-        openModule("Vault")
+        openModule(AppModule.Vault)
         rule.onNodeWithText("Master password").assertIsDisplayed()
         rule.onNodeWithTag("button:Create vault").assertIsDisplayed()
     }
 
-    private fun openModule(label: String) {
-        rule.onNodeWithText(label, useUnmergedTree = true).performClick()
+    private fun openModule(module: AppModule) {
+        rule.setContent {
+            MomentumTheme {
+                MomentumNavigationHost(
+                    destination = MomentumDestination.Module(module),
+                    onOpenModule = {},
+                    onBack = {}
+                )
+            }
+        }
     }
 }

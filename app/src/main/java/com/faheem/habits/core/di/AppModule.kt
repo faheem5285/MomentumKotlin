@@ -8,7 +8,9 @@ import com.faheem.habits.core.data.ExpenseDao
 import com.faheem.habits.core.data.FileDao
 import com.faheem.habits.core.data.HabitDao
 import com.faheem.habits.core.data.LifeRuleDao
+import com.faheem.habits.core.data.LoanDao
 import com.faheem.habits.core.data.ToDoDao
+import com.faheem.habits.core.data.VaultDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -39,5 +41,11 @@ object AppModule {
     fun provideLifeRuleDao(database: AppDatabase): LifeRuleDao = database.lifeRuleDao()
 
     @Provides
+    fun provideLoanDao(database: AppDatabase): LoanDao = database.loanDao()
+
+    @Provides
     fun provideCustomNotificationDao(database: AppDatabase): CustomNotificationDao = database.customNotificationDao()
+
+    @Provides
+    fun provideVaultDao(database: AppDatabase): VaultDao = database.vaultDao()
 }

@@ -4,6 +4,7 @@ package com.faheem.habits.features.vault
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.data.supabase.SupabaseRestClient
 import com.faheem.habits.core.data.sync.SupabaseSyncRepository
+import com.faheem.habits.features.vault.data.VaultRepository
 import com.faheem.habits.core.notifications.*
 import com.faheem.habits.core.ui.*
 import com.faheem.habits.R
@@ -59,8 +60,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -98,8 +102,11 @@ internal fun uniqueVaultEntries(
     }
 }
 
-class VaultViewModel(app: Application) : AndroidViewModel(app) {
-    private val dao = AppDatabase.get(app).vaultDao()
+@HiltViewModel
+class VaultViewModel @Inject constructor(
+    app: Application,
+    private val vaultRepository: VaultRepository
+) : AndroidViewModel(app) {
     private val accountKeys = SupabaseRestClient(app)
     private val profilePrefs = app.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
     private val accountId = profilePrefs.getString("user_id", null).orEmpty()
@@ -141,7 +148,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
         if (isConfigured()) {
             error("This device has older encrypted Vault data, but this account has no Vault key. The existing records were left unchanged and cannot be opened by this account-only Vault.")
         }
-        check(dao.getAllForSync().isEmpty()) {
+        check(vaultRepository.getAllForSync().isEmpty()) {
             "Encrypted records exist on this device but no account key is saved. Restore a matching backup; do not create a new key."
         }
         check(accountKeys.count("momentum_vault_entries") == 0) {
@@ -177,7 +184,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                 remoteAccountKey = null
                 return@withContext accountKey
             } else {
-                val localRecords = dao.getAll()
+                val localRecords = vaultRepository.getAll()
                 val readableRecords = localRecords.count { record ->
                     runCatching { VaultCrypto.decrypt(record.nonce, record.ciphertext, localKey) }.isSuccess
                 }
@@ -186,7 +193,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                         "The signed-in account has no Vault key yet, so the app cannot safely link or replace its encrypted records."
                 }
                 SupabaseSyncRepository(getApplication()).syncVaultEntries(localKey, fullPull = true)
-                check(accountKeys.count("momentum_vault_entries") <= dao.getAllForSync().size) {
+                check(accountKeys.count("momentum_vault_entries") <= vaultRepository.getAllForSync().size) {
                     "The account has Vault records that are not present on this device. Sync them before linking the key."
                 }
                 accountKeys.saveVaultKeyIfAbsent(localKey)
@@ -211,7 +218,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun migrateReadableRecords(oldKey: ByteArray, accountKey: ByteArray): Int {
         var migrated = 0
-        dao.getAll().forEach { record ->
+        vaultRepository.getAll().forEach { record ->
             val alreadyAccountEncrypted = runCatching {
                 VaultCrypto.decrypt(record.nonce, record.ciphertext, accountKey)
             }.isSuccess
@@ -221,7 +228,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                 }.getOrNull()
                 if (secret != null) {
                     val encrypted = VaultCrypto.encrypt(secret, accountKey)
-                    dao.upsert(
+                    vaultRepository.upsert(
                         record.copy(
                             nonce = encrypted.first,
                             ciphertext = encrypted.second,
@@ -238,7 +245,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     suspend fun setup(masterPassword: String): ByteArray = withContext(Dispatchers.IO) {
-        check(dao.getAll().isEmpty()) {
+        check(vaultRepository.getAll().isEmpty()) {
             "Encrypted vault records already exist, but this device has no matching key setup. Restore a backup made with the original vault password before creating a vault."
         }
         val salt = VaultCrypto.newSalt()
@@ -344,7 +351,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun migrateLegacy(oldKey: ByteArray, salt: String): ByteArray {
         try {
-            val records = dao.getAll()
+            val records = vaultRepository.getAll()
             val backup = JSONArray()
             records.forEach { row ->
                 backup.put(
@@ -367,7 +374,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                 val encrypted = VaultCrypto.encrypt(secret, vmk)
                 row.copy(nonce = encrypted.first, ciphertext = encrypted.second, dirty = true)
             }
-            dao.upsertAll(migrated)
+            vaultRepository.upsertAll(migrated)
             val passwordWrapped = VaultCrypto.wrapVmk(vmk, oldKey)
             check(
                 prefs.edit().putString(vmkWrappedPref, encodeWrapped(passwordWrapped)).commit()
@@ -415,7 +422,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
         return try {
             withContext(Dispatchers.IO) {
                 var unreadable = 0
-                val entries = dao.getAll().mapNotNull { record ->
+                val entries = vaultRepository.getAll().mapNotNull { record ->
                     try { VaultListItem(record.id, VaultCrypto.decrypt(record.nonce, record.ciphertext, operationKey), record.updatedAt) }
                     catch (_: Exception) { unreadable++; null }
                 }
@@ -436,8 +443,8 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
         try {
             withContext(Dispatchers.IO) {
                 val encrypted = VaultCrypto.encrypt(secret, operationKey)
-                val old = id?.let { dao.getById(it) }
-                dao.upsert(
+                val old = id?.let { vaultRepository.getById(it) }
+                vaultRepository.upsert(
                     VaultRecord(
                         id = id ?: 0,
                         nonce = encrypted.first,
@@ -456,7 +463,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     suspend fun delete(id: Int) = withContext(Dispatchers.IO) {
-        dao.markDeleted(id, System.currentTimeMillis())
+        vaultRepository.markDeleted(id, System.currentTimeMillis())
     }
 
     suspend fun mergeLegacyRecords(masterPassword: String, accountKey: ByteArray): Int = withContext(Dispatchers.IO) {
@@ -464,7 +471,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
             ?: error("That password did not unlock the old Vault data.")
         try {
             var migrated = 0
-            dao.getAll().forEach { record ->
+            vaultRepository.getAll().forEach { record ->
                 val alreadyAccountEncrypted = runCatching {
                     VaultCrypto.decrypt(record.nonce, record.ciphertext, accountKey)
                 }.isSuccess
@@ -474,7 +481,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                     }.getOrNull()
                     if (secret != null) {
                         val encrypted = VaultCrypto.encrypt(secret, accountKey)
-                        dao.upsert(
+                        vaultRepository.upsert(
                             record.copy(
                                 nonce = encrypted.first,
                                 ciphertext = encrypted.second,
@@ -510,7 +517,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
         val operationKey = key.copyOf()
         try {
             val entries = JSONArray()
-            dao.getAll().forEach { row ->
+            vaultRepository.getAll().forEach { row ->
                 entries.put(JSONObject().put("id", row.id).put("nonce", VaultCrypto.encode(row.nonce))
                     .put("ciphertext", VaultCrypto.encode(row.ciphertext)).put("updatedAt", row.updatedAt)
                     .put("uuid", row.uuid))
@@ -761,7 +768,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun applyImport(records: List<VaultRecord>, action: VaultImportAction, key: ByteArray): Int {
-        val active = dao.getAll()
+        val active = vaultRepository.getAll()
         val secretsByUuid = active.mapNotNull { record ->
             runCatching { record.uuid to VaultCrypto.decrypt(record.nonce, record.ciphertext, key) }.getOrNull()
         }.toMap()
@@ -770,9 +777,9 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
         var changed = 0
         when (action) {
             VaultImportAction.Insert -> uniqueIncoming.forEach { (incoming, secret) ->
-                val duplicate = dao.getByUuid(incoming.uuid) != null || secrets.values.contains(secret)
+                val duplicate = vaultRepository.getByUuid(incoming.uuid) != null || secrets.values.contains(secret)
                 if (!duplicate) {
-                    val result = dao.insertImported(incoming.copy(id = 0, dirty = true, deleted = false))
+                    val result = vaultRepository.insertImported(incoming.copy(id = 0, dirty = true, deleted = false))
                     if (result != -1L) {
                         changed++
                         secrets[incoming.uuid] = secret
@@ -780,10 +787,10 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             VaultImportAction.Update, VaultImportAction.Upsert -> uniqueIncoming.forEach { (incoming, secret) ->
-                val existing = dao.getByUuid(incoming.uuid)
-                    ?: secrets.entries.firstOrNull { it.value == secret }?.key?.let { dao.getByUuid(it) }
+                val existing = vaultRepository.getByUuid(incoming.uuid)
+                    ?: secrets.entries.firstOrNull { it.value == secret }?.key?.let { vaultRepository.getByUuid(it) }
                 if (existing != null || action == VaultImportAction.Upsert) {
-                    dao.upsert(
+                    vaultRepository.upsert(
                         incoming.copy(
                             id = existing?.id ?: 0,
                             uuid = existing?.uuid ?: incoming.uuid,
@@ -797,9 +804,9 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             VaultImportAction.Overwrite -> {
-                dao.markAllDeleted(System.currentTimeMillis())
+                vaultRepository.markAllDeleted(System.currentTimeMillis())
                 uniqueIncoming.forEach { (incoming, secret) ->
-                    dao.upsert(incoming.copy(id = 0, updatedAt = System.currentTimeMillis(), dirty = true, deleted = false))
+                    vaultRepository.upsert(incoming.copy(id = 0, updatedAt = System.currentTimeMillis(), dirty = true, deleted = false))
                     changed++
                 }
             }
@@ -844,7 +851,7 @@ class VaultViewModel(app: Application) : AndroidViewModel(app) {
 }
 
 @Composable
-fun VaultScreen(vm: VaultViewModel = viewModel()) {
+fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
     val context = LocalContext.current
     var configured by remember { mutableStateOf(vm.isConfigured()) }
     var sessionKey by remember { mutableStateOf<ByteArray?>(null) }

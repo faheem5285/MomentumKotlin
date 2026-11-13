@@ -30,13 +30,22 @@ class AppDatabaseMigrationTest {
         AppDatabase.MIGRATION_9_10,
         AppDatabase.MIGRATION_10_11,
         AppDatabase.MIGRATION_11_12,
-        AppDatabase.MIGRATION_12_13
+        AppDatabase.MIGRATION_12_13,
+        AppDatabase.MIGRATION_13_14,
+        AppDatabase.MIGRATION_14_15,
+        AppDatabase.MIGRATION_15_16,
+        AppDatabase.MIGRATION_16_17,
+        AppDatabase.MIGRATION_17_18,
+        AppDatabase.MIGRATION_18_19,
+        AppDatabase.MIGRATION_19_20
     )
 
     @Test
     fun everyMigrationStepValidatesIndependently() {
         val steps = listOf(
-            3 to 4, 4 to 5, 5 to 6, 6 to 7, 7 to 8, 8 to 9, 9 to 10, 10 to 11, 11 to 12, 12 to 13
+            3 to 4, 4 to 5, 5 to 6, 6 to 7, 7 to 8, 8 to 9, 9 to 10, 10 to 11,
+            11 to 12, 12 to 13, 13 to 14, 14 to 15, 15 to 16, 16 to 17, 17 to 18,
+            18 to 19, 19 to 20
         )
         steps.forEach { (from, to) ->
             val dbName = "migration_step_${from}_$to"
@@ -54,7 +63,7 @@ class AppDatabaseMigrationTest {
     fun fullMigrationChainFromVersion3Validates() {
         val dbName = "migration_chain"
         helper.createDatabase(dbName, 3).close()
-        helper.runMigrationsAndValidate(dbName, 13, true, *migrations).close()
+        helper.runMigrationsAndValidate(dbName, 20, true, *migrations).close()
     }
 
     @Test
@@ -68,7 +77,7 @@ class AppDatabaseMigrationTest {
             close()
         }
 
-        val db = helper.runMigrationsAndValidate(dbName, 13, true, *migrations)
+        val db = helper.runMigrationsAndValidate(dbName, 20, true, *migrations)
         db.query("SELECT id, name FROM habits WHERE id = 7").use { cursor ->
             assertTrue(cursor.moveToFirst())
             assertEquals("Keep me", cursor.getString(1))
@@ -91,6 +100,31 @@ class AppDatabaseMigrationTest {
     }
 
     @Test
+    fun loanPaymentsSurviveForeignKeyMigration() {
+        val dbName = "loan_payment_foreign_key"
+        helper.createDatabase(dbName, 12).apply {
+            execSQL("INSERT INTO loans (id, person, amountMinorUnits, lent, note, epochDay, settled) VALUES (9, 'Friend', 550, 1, '', 20002, 0)")
+            execSQL("INSERT INTO loan_payments (id, loanId, amountMinorUnits, epochDay, note) VALUES (3, 9, 200, 20003, 'Part payment')")
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(
+            dbName,
+            13,
+            true,
+            AppDatabase.MIGRATION_12_13
+        )
+        db.query("SELECT id, loanId, amountMinorUnits, epochDay, note FROM loan_payments WHERE id = 3").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(9, cursor.getInt(1))
+            assertEquals(200L, cursor.getLong(2))
+            assertEquals(20003L, cursor.getLong(3))
+            assertEquals("Part payment", cursor.getString(4))
+        }
+        db.close()
+    }
+
+    @Test
     fun uuidBackfillCoversEverySyncReadyTable() {
         val dbName = "uuid_backfill"
         helper.createDatabase(dbName, 9).apply {
@@ -103,7 +137,7 @@ class AppDatabaseMigrationTest {
             execSQL("INSERT INTO todo_items (id,title,notes,dueEpochDay,completed,category,priority,reminderHour,reminderMinute) VALUES (6,'Task','',20000,0,'Personal',1,NULL,NULL)")
             close()
         }
-        val db = helper.runMigrationsAndValidate(dbName, 13, true, *migrations)
+        val db = helper.runMigrationsAndValidate(dbName, 20, true, *migrations)
         listOf("habits", "completions", "habit_reminders", "expenses", "loans", "library_files", "todo_items").forEach { table ->
             db.query("SELECT uuid,updatedAt FROM `$table`").use { cursor ->
                 assertTrue("Expected backfilled row in $table", cursor.moveToFirst())
