@@ -16,6 +16,7 @@ import android.text.format.DateFormat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -343,6 +344,7 @@ private fun CalendarAgenda(
     month: YearMonth, selectedDate: LocalDate, tasks: List<ToDoItem>, onPrevious: () -> Unit, onNext: () -> Unit,
     onSelect: (LocalDate) -> Unit, onEdit: (ToDoItem) -> Unit, onToggle: (ToDoItem) -> Unit, onDelete: (ToDoItem) -> Unit
 ) {
+    val reduceEffects = LocalReduceEffects.current
     Column(Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.fillMaxSize(),
@@ -384,6 +386,7 @@ private fun CalendarAgenda(
                                     val isSelected = date == selectedDate
                                     val background by animateColorAsState(
                                         if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                        animationSpec = tween(durationMillis = if (reduceEffects) 0 else 180),
                                         label = "calendar-day"
                                     )
                                     Box(
