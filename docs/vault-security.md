@@ -10,8 +10,8 @@ key behavior described below has a different threat boundary.
 
 The current record scheme remains AES-256-GCM with random per-record nonces.
 The master password is processed with PBKDF2-HMAC-SHA256 using 310,000
-iterations and a random salt. New and migrated records are encrypted with a
-random 256-bit Vault Master Key (VMK). The VMK is wrapped by the
+iterations and a random salt. New and migrated records are encrypted with
+a random 256-bit Vault Master Key (VMK). The VMK is wrapped by the
 password-derived key, so changing the master password re-wraps the VMK rather
 than re-encrypting every record.
 
@@ -30,10 +30,12 @@ Vault entries. Account sign-in can retrieve the VMK without the master
 password. This implementation is **not end-to-end encrypted against the cloud
 operator**.
 
-This is an explicit limitation of the current cross-device account-unlock
-design. Changing the cloud key to a master-password-wrapped VMK would require
-master-password entry on another device and a careful migration for existing
-accounts; do not change that format without preserving current users' Vaults.
+**Phase 2 decision (2026-11-13): retain the current account-only Vault unlock.**
+No password-wrapped cloud-key migration or new-device master-password prompt
+will be introduced in this phase. This preserves the existing cross-device
+account-only experience and avoids changing key format or risking access to
+existing Vault data. The cloud-operator limitation above remains an explicit
+security trade-off; do not describe the Vault as end-to-end encrypted.
 
 ## Migration and recovery
 
@@ -48,8 +50,8 @@ master password or decrypted entries. Restoring that export requires the
 original master password. Account-linked Vaults can also retrieve their VMK
 through the signed-in Supabase account, subject to the cloud-key limitation
 above. A vault that has neither a usable account link nor a matching backup
-cannot be recovered after losing its key. Do not clear app data or delete the
-migration backup while troubleshooting a Vault migration.
+cannot be recovered after losing its key. Do not clear app data or delete
+the migration backup while troubleshooting a Vault migration.
 
 ## What is protected
 
@@ -79,5 +81,5 @@ migration backup while troubleshooting a Vault migration.
 
 Use a unique master password of at least 12 characters. Keep Android updated,
 use a device screen lock, and enable strong biometrics only on trusted devices.
-Test encrypted export/import and the master-password fallback before relying on
-biometric unlock.
+Test encrypted export/import and the master-password fallback before relying
+on biometric unlock.
