@@ -7,7 +7,6 @@
 # Kotlin serialization and Supabase models are discovered by serializers.
 -keepclassmembers class **$$serializer { *; }
 -keepclassmembers class **$Companion { *; }
-
 # Android discovers the opt-in accessibility service from the manifest.
 -keep class com.faheem.habits.features.screen_time.InstagramScrollCounterService { *; }
 
