@@ -38,6 +38,18 @@ class Phase7LogicTest {
     }
 
     @Test
+    fun loanRemainingIgnoresOtherLoansAndClampsOverpayment() {
+        val loan = Loan(4, "A", 1000, true, "", 1)
+        val payments = listOf(
+            LoanPayment(loanId = 4, amountMinorUnits = 250, epochDay = 1),
+            LoanPayment(loanId = 9, amountMinorUnits = 900, epochDay = 1)
+        )
+
+        assertEquals(750, loanRemaining(loan, payments))
+        assertEquals(0, loanRemaining(loan, listOf(LoanPayment(loanId = 4, amountMinorUnits = 1200, epochDay = 2))))
+    }
+
+    @Test
     fun insightsFindBestDayAndTimeBuckets() {
         val monday = LocalDate.of(2026, 10, 26).toEpochDay()
         val completions = listOf(

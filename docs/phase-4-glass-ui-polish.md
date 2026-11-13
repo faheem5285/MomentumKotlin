@@ -12,11 +12,14 @@
 - Added light/dark dynamic wallpaper color support through `MomentumTheme`.
 - Added an API 31+ small-surface blur with a no-blur fallback on API 26-30 and
   a reduce-effects composition local.
+- Exposed the wallpaper-based dynamic-colour setting in Appearance, persisted
+  it with the first-frame preferences, and applied it through `MomentumTheme`.
 - Preserved existing navigation and feature behavior.
 
 ## Verification
 
-`gradlew.bat :app:compileDebugKotlin --no-daemon` passes.
+`gradlew.bat :app:compileDebugKotlin --no-daemon` passes after adding the
+dynamic-colour preference.
 
 Detekt passes after suppressing the existing composable naming false positive
 for the new shared component APIs. Unit tests and `assembleDebug` were blocked
@@ -34,9 +37,8 @@ landscape orientation, keyboard opening in forms, and battery saver behavior.
 
 ## Known limits and deferred work
 
-- The settings UI does not yet persist or expose the reduce-effects and dynamic
-  accent toggles; the theme API is ready for the existing DataStore settings
-  migration.
+- Dynamic colours are available only on Android 12+; older versions retain the
+  existing Momentum palette.
 - Most feature-local `Card` calls remain and should be migrated incrementally
   after visual review; replacing them blindly would risk spacing and behavior.
 - Predictive back, haptic check-off feedback, and per-screen loading/error

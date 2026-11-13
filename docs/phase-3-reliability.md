@@ -10,6 +10,8 @@
 
 - `:app:testDebugUnitTest` — passed.
 - `:app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.faheem.habits.core.data.AppDatabaseMigrationTest"` — passed all five Room migration/backup tests on Android 16. The v3→v20 chain, every individual migration, money conversion, and representative row preservation are covered.
+- `:app:connectedDebugAndroidTest` — all 13 tests passed on Android 16 before adding the DataStore migration test.
+- `MomentumSettingsMigrationTest` — passed individually on Android 16.
 - `VaultCryptoTest` covers encryption round-trip, wrong-key rejection, ciphertext tamper rejection, verifier checks, and key rewrapping.
 - Android alarm delivery, reboot restoration, and notification display still require device-level checks.
 
@@ -24,6 +26,5 @@
 
 ## Remaining Phase 3 work
 
-- Add focused loan aggregation/domain tests; money conversion and Vault crypto have unit coverage.
 - Exercise service and permission-denial flows on representative Android versions and OEM battery policies.
-- Re-run the complete instrumentation suite after Android permits test APK installation; the last UI run was blocked by `INSTALL_FAILED_USER_RESTRICTED`.
+- Re-run the complete instrumentation suite. After the receiver test was corrected to call the scheduler work directly, Android canceled installation of the test APK (`INSTALL_FAILED_USER_RESTRICTED`).

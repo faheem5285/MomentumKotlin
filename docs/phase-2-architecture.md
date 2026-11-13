@@ -13,6 +13,9 @@ architecture items below are complete and the verification checklist passes.
   existing `momentum_app_settings` and `momentum` SharedPreferences files.
 - Routed Home module visibility through DataStore and kept backup export/import
   reading and restoring those same DataStore preferences.
+- Audited the remaining SharedPreferences uses: retained security/account data,
+  first-frame appearance values, and flags consumed synchronously by Android
+  services/receivers; these are not moved to asynchronous DataStore reads.
 - Added Navigation Compose with module routes and `momentum://module/{module}`
   deep links. Item IDs from habit, to-do, and loan notifications/deep links are
   passed to the relevant feature and open the matching record.
@@ -41,18 +44,18 @@ queries, scheduling calls, and money conversion behavior.
 - `gradlew.bat :app:compileDebugKotlin`
 - `gradlew.bat :app:testDebugUnitTest assembleDebug`
 - `gradlew.bat :app:compileDebugAndroidTestKotlin`
+- `gradlew.bat :app:connectedDebugAndroidTest`
+- `gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.faheem.habits.core.settings.MomentumSettingsMigrationTest"`
 - `gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.faheem.habits.core.data.AppDatabaseMigrationTest"`
 
-The Room migration instrumentation class passes on the connected Android 16
-device. UI smoke tests were not re-run after the final changes because Android
-installation was rejected by the device (`INSTALL_FAILED_USER_RESTRICTED`).
+The 13-test connected run passed on Android 16, and the added DataStore
+migration test passed individually. The final full-suite rerun after these
+changes was canceled during test APK installation (`INSTALL_FAILED_USER_RESTRICTED`).
+The startup navigation argument crash was fixed and verified by launching the
+app and an item deep link on-device.
 
 ## Deferred
 
-- Audit and migrate remaining eligible feature settings to DataStore, with
-  legacy migration tests. Keep service lifecycle, OS-integrated, security,
-  account-scope, and fast boot/notification settings synchronous where their
-  call sites require it.
 - Complete per-screen immutable `UiState`/event contracts and split remaining
   files over 400 lines.
 - Revisit dependency versions against the latest stable Android toolchain

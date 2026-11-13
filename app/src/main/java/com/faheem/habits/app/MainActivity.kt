@@ -103,7 +103,12 @@ class MainActivity : FragmentActivity() {
         setContent {
             val themeMode by AppearancePreferences.themeMode.collectAsStateWithLifecycle()
             val reduceMotion by AppearancePreferences.reduceMotion.collectAsStateWithLifecycle()
-            MomentumTheme(themeMode = themeMode, reduceEffects = reduceMotion) {
+            val dynamicAccent by AppearancePreferences.dynamicAccent.collectAsStateWithLifecycle()
+            MomentumTheme(
+                themeMode = themeMode,
+                reduceEffects = reduceMotion,
+                dynamicAccent = dynamicAccent
+            ) {
                 MomentumApp(notificationTarget = notificationTarget)
             }
         }

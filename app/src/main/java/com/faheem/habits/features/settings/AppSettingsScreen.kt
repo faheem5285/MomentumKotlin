@@ -130,6 +130,7 @@ fun AppSettingsScreen() {
     var integrityMessage by remember { mutableStateOf<String?>(null) }
     val themeMode by AppearancePreferences.themeMode.collectAsStateWithLifecycle()
     val reduceMotion by AppearancePreferences.reduceMotion.collectAsStateWithLifecycle()
+    val dynamicAccent by AppearancePreferences.dynamicAccent.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
@@ -313,8 +314,10 @@ fun AppSettingsScreen() {
                 AppearanceCard(
                     themeMode = themeMode,
                     reduceMotion = reduceMotion,
+                    dynamicAccent = dynamicAccent,
                     onThemeChange = { AppearancePreferences.setThemeMode(context, it) },
-                    onReduceMotionChange = { AppearancePreferences.setReduceMotion(context, it) }
+                    onReduceMotionChange = { AppearancePreferences.setReduceMotion(context, it) },
+                    onDynamicAccentChange = { AppearancePreferences.setDynamicAccent(context, it) }
                 )
             }
             item {
@@ -505,8 +508,10 @@ private fun SettingsPill(icon: ImageVector, text: String) {
 private fun AppearanceCard(
     themeMode: ThemeMode,
     reduceMotion: Boolean,
+    dynamicAccent: Boolean,
     onThemeChange: (ThemeMode) -> Unit,
-    onReduceMotionChange: (Boolean) -> Unit
+    onReduceMotionChange: (Boolean) -> Unit,
+    onDynamicAccentChange: (Boolean) -> Unit
 ) {
     PremiumCard(accent = AppModule.Settings.accent, contentPadding = PaddingValues(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -550,6 +555,26 @@ private fun AppearanceCard(
                 )
             }
             Switch(checked = reduceMotion, onCheckedChange = onReduceMotionChange)
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Dynamic colours", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                Text(
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                        "Use colours from your wallpaper"
+                    } else {
+                        "Available on Android 12 and later"
+                    },
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = dynamicAccent,
+                onCheckedChange = onDynamicAccentChange,
+                enabled = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+            )
         }
         Spacer(Modifier.height(14.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {

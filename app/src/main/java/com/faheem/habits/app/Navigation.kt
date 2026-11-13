@@ -67,13 +67,11 @@ fun MomentumNavigationHost(
                 navArgument("module") { type = NavType.StringType },
                 navArgument("itemId") {
                     type = NavType.IntType
-                    nullable = true
-                    defaultValue = null
+                    defaultValue = -1
                 },
                 navArgument("requestToken") {
                     type = NavType.LongType
-                    nullable = true
-                    defaultValue = null
+                    defaultValue = 0L
                 }
             ),
             deepLinks = listOf(
@@ -89,9 +87,8 @@ fun MomentumNavigationHost(
             } else {
                 ModuleScreen(
                     module,
-                    entry.arguments?.getInt("itemId", Int.MIN_VALUE)?.takeUnless { it == Int.MIN_VALUE },
-                    entry.arguments?.getLong("requestToken", Long.MIN_VALUE)
-                        ?.takeUnless { it == Long.MIN_VALUE },
+                    entry.arguments?.getInt("itemId", -1)?.takeIf { it > 0 },
+                    entry.arguments?.getLong("requestToken", 0L)?.takeIf { it > 0L },
                     onBack
                 )
             }
@@ -167,9 +164,8 @@ private fun matchesDestination(
     MomentumDestination.Home -> currentEntry?.destination?.route == "home"
     is MomentumDestination.Module -> {
         val args = currentEntry?.arguments
-        val currentItemId = args?.getInt("itemId", Int.MIN_VALUE)?.takeUnless { it == Int.MIN_VALUE }
-        val currentRequestToken = args?.getLong("requestToken", Long.MIN_VALUE)
-            ?.takeUnless { it == Long.MIN_VALUE }
+        val currentItemId = args?.getInt("itemId", -1)?.takeIf { it > 0 }
+        val currentRequestToken = args?.getLong("requestToken", 0L)?.takeIf { it > 0L }
         currentEntry?.destination?.route?.startsWith("module/") == true &&
             args?.getString("module").equals(destination.module.name, ignoreCase = true) &&
             currentItemId == destination.itemId &&

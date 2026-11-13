@@ -177,6 +177,11 @@ object MomentumReminderScheduler {
         CustomNotificationScheduler.rescheduleAllNow(context)
     }
 
+    suspend fun onSystemScheduleChanged(context: Context) {
+        createChannels(context)
+        rescheduleAllNow(context)
+    }
+
     suspend fun nextTen(context: Context): List<ScheduledReminderPreview> {
         if (!MomentumNotificationSettings.masterEnabled(context)) return emptyList()
         val now = ZonedDateTime.now()
@@ -604,8 +609,7 @@ class MomentumReminderReceiver : BroadcastReceiver() {
                 val pending = goAsync()
                 CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                     try {
-                        MomentumReminderScheduler.createChannels(context)
-                        MomentumReminderScheduler.rescheduleAllNow(context)
+                        MomentumReminderScheduler.onSystemScheduleChanged(context)
                     } finally { pending.finish() }
                 }
             }

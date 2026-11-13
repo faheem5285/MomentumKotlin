@@ -19,6 +19,10 @@ Android 16 device is connected, this environment has not yet produced reliable
 Macrobenchmark numbers; the benchmark run still needs to be performed in a
 supported profiling configuration.
 
+The connected benchmark task was attempted; its release build remained in
+R8 minification without producing a benchmark result, so the run was stopped
+before collecting measurements.
+
 | Scenario | Before | After | Device/build |
 |---|---:|---:|---|
 | Cold startup | TBD | TBD | Run on a release-like benchmark build |
