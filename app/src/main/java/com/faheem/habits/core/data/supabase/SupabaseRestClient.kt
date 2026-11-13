@@ -86,24 +86,26 @@ class SupabaseRestClient(
     }
 
     /** Deletes cloud records and file objects for every user through the protected Edge Function. */
-    suspend fun isCurrentUserAdmin(): Boolean {
-        val token = SupabaseAuthApi.getAccessToken(context) ?: return false
-        val response = http.get {
-            url("${baseUrl()}/auth/v1/user")
-            header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
-            header("Authorization", "Bearer $token")
-        }
-        if (response.status != HttpStatusCode.OK) return false
-
-        val user = runCatching { json.parseToJsonElement(response.bodyAsText()).jsonObject }
-            .getOrNull() ?: return false
-        val appMetadata = user["app_metadata"]?.jsonObject ?: return false
-        val singleRole = appMetadata["role"]?.jsonPrimitive?.content
-        val roles = appMetadata["roles"]?.let { value ->
-            runCatching { value.jsonArray.map { it.jsonPrimitive.content } }.getOrDefault(emptyList())
-        }.orEmpty()
-        return singleRole == "admin" || "admin" in roles
-    }
+    suspend fun isCurrentUserAdmin(): Boolean =
+        SupabaseAuthApi.getAccessToken(context)?.let { token ->
+            val response = http.get {
+                url("${baseUrl()}/auth/v1/user")
+                header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+                header("Authorization", "Bearer $token")
+            }
+            if (response.status != HttpStatusCode.OK) {
+                false
+            } else {
+                val appMetadata = runCatching {
+                    json.parseToJsonElement(response.bodyAsText()).jsonObject["app_metadata"]?.jsonObject
+                }.getOrNull()
+                val singleRole = appMetadata?.get("role")?.jsonPrimitive?.content
+                val roles = appMetadata?.get("roles")?.let { value ->
+                    runCatching { value.jsonArray.map { it.jsonPrimitive.content } }.getOrDefault(emptyList())
+                }.orEmpty()
+                singleRole == "admin" || "admin" in roles
+            }
+        } ?: false
 
     suspend fun wipeProjectCloudData() {
         val token = requireToken()
