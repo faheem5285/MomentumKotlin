@@ -1,9 +1,4 @@
 package com.faheem.habits.features.screen_time
-import com.faheem.habits.core.data.*
-import com.faheem.habits.core.notifications.*
-import com.faheem.habits.core.ui.*
-import com.faheem.habits.R
-
 
 import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
@@ -14,6 +9,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowManager
@@ -109,7 +105,12 @@ class InstagramScrollCounterService : AccessibilityService() {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             y = (54 * density).toInt()
         }
-        runCatching { wm.addView(view, params) }.onSuccess { counterView = view }
+        try {
+            wm.addView(view, params)
+            counterView = view
+        } catch (error: RuntimeException) {
+            Log.w("InstagramScrollCounter", "Unable to display the floating counter.", error)
+        }
     }
 
     private fun updateCounter(count: Int) {
@@ -129,8 +130,13 @@ class InstagramScrollCounterService : AccessibilityService() {
 
     private fun hideCounter() {
         val view = counterView ?: return
-        runCatching { windowManager?.removeView(view) }
-        counterView = null
+        try {
+            windowManager?.removeView(view)
+        } catch (error: RuntimeException) {
+            Log.w("InstagramScrollCounter", "Unable to remove the floating counter.", error)
+        } finally {
+            counterView = null
+        }
     }
 
     private fun counterLabel(count: Int) = "Reels today: $count"
