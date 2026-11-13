@@ -885,7 +885,7 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        private fun copyFileAtomically(source: File, destination: File) {
+        internal fun copyFileAtomically(source: File, destination: File) {
             val parent = destination.parentFile
                 ?: error("Could not determine the local database directory.")
             check(parent.isDirectory || parent.mkdirs()) {
