@@ -389,7 +389,7 @@ private fun HomeHeader(
                     Icon(Icons.Rounded.ChevronRight, null, Modifier.size(19.dp), tint = MaterialTheme.colorScheme.onSurface)
                 }
                 Spacer(Modifier.weight(1f))
-                Box(Modifier.size(40.dp).clip(CircleShape)
+                Box(Modifier.size(48.dp).clip(CircleShape)
                     .background(Color.White.copy(alpha = if (glass.dark) 0.12f else 0.68f))
                     .border(1.dp, Color.White.copy(alpha = 0.64f), CircleShape)
                     .clickable(role = Role.Button, onClickLabel = "Open settings", onClick = onSettings),
@@ -423,11 +423,12 @@ private fun HomeHeader(
 @Composable
 private fun CalendarHeroIllustration(modifier: Modifier = Modifier) {
     val deepBlue = Color(0xFF064DCB)
+    val reduceEffects = LocalReduceEffects.current
     Box(modifier, contentAlignment = Alignment.Center) {
         Box(Modifier.fillMaxWidth(0.98f).height(32.dp).rotate(-18f)
             .border(5.dp, Color(0xFF63C8FF).copy(alpha = 0.82f), CircleShape))
         Box(Modifier.size(width = 98.dp, height = 114.dp).rotate(10f)
-            .shadow(12.dp, RoundedCornerShape(20.dp)).clip(RoundedCornerShape(20.dp))
+            .shadow(if (reduceEffects) 0.dp else 12.dp, RoundedCornerShape(20.dp)).clip(RoundedCornerShape(20.dp))
             .background(Brush.verticalGradient(listOf(Color.White, Color(0xFFE6F0FF))))
             .border(2.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(20.dp))) {
             Box(Modifier.fillMaxWidth().height(38.dp)
@@ -439,7 +440,7 @@ private fun CalendarHeroIllustration(modifier: Modifier = Modifier) {
                         .border(2.dp, Color(0xFFDBF6FF), RoundedCornerShape(7.dp)))
                 }
             }
-            Box(Modifier.align(Alignment.Center).offset(y = 8.dp).size(62.dp).shadow(7.dp, CircleShape)
+            Box(Modifier.align(Alignment.Center).offset(y = 8.dp).size(62.dp).shadow(if (reduceEffects) 0.dp else 7.dp, CircleShape)
                 .background(Brush.radialGradient(listOf(Color(0xFF39B8FF), deepBlue)), CircleShape),
                 contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.Check, "A completed day", Modifier.size(38.dp), tint = Color.White)
@@ -498,6 +499,7 @@ private fun ModuleIconBadge(
 @Composable
 private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -> Unit) {
     val glass = LocalGlassPalette.current
+    val reduceEffects = LocalReduceEffects.current
     val shape = RoundedCornerShape(MomentumTokens.radiusMedium)
     val accent = spec.tint
     Box(
@@ -525,7 +527,7 @@ private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -> Unit) 
                 contentDescription = "${spec.title}. ${spec.subtitle}. Open module."
             }
     ) {
-        Box(
+        if (!reduceEffects) Box(
             Modifier
                 .align(Alignment.TopEnd)
                 .offset(x = 18.dp, y = (-24).dp)
