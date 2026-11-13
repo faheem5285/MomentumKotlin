@@ -832,7 +832,10 @@ abstract class AppDatabase : RoomDatabase() {
             val activeUser = scopePrefs.getString(ACTIVE_USER_KEY, null)
             if (activeUser == normalizedId) return@synchronized
 
-            val db = instance
+            val baseFile = appContext.getDatabasePath(DATABASE_NAME)
+            // Open an existing database even when the singleton is empty so any WAL
+            // left by a previous process is checkpointed before the file is copied.
+            val db = instance ?: if (baseFile.exists()) get(appContext) else null
             if (db != null) {
                 val checkpointBusy = db.openHelper.writableDatabase
                     .query("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -847,7 +850,6 @@ abstract class AppDatabase : RoomDatabase() {
                 instance = null
             }
 
-            val baseFile = appContext.getDatabasePath(DATABASE_NAME)
             val accountDirectory = File(appContext.filesDir, "account-databases").apply {
                 check(isDirectory || mkdirs()) { "Could not prepare account-local data storage." }
             }
