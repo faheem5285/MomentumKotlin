@@ -18,6 +18,7 @@ This is the UI/UX and workflow companion checklist for the current modernization
 - [x] Money expense deletion already uses a confirmation dialog.
 - [x] Loans and person-profile deletion already use confirmation dialogs.
 - [x] File-library removal already uses a confirmation dialog.
+- [x] Life Rules deletion now asks for confirmation before removing an entry.
 - [x] Vault deletion already uses a confirmation dialog.
 - [x] Quiet-hours reminder deferral is shared by habit and to-do delivery; reminders are deferred to the next quiet-hours end instead of being silently skipped.
 - [x] Contacts and Supabase screen flows use lifecycle-aware collection.

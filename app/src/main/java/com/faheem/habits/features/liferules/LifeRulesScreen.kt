@@ -14,6 +14,7 @@ import com.faheem.habits.core.ui.FormSheet
 import com.faheem.habits.core.ui.HeroCard
 import com.faheem.habits.core.ui.IconBubble
 import com.faheem.habits.core.ui.MomentumChip
+import com.faheem.habits.core.ui.MomentumDialog
 import com.faheem.habits.core.ui.MomentumFab
 import com.faheem.habits.core.ui.MomentumTextField
 import com.faheem.habits.core.ui.MomentumTokens
@@ -149,6 +150,7 @@ fun LifeRulesScreen(vm: LifeRulesViewModel = hiltViewModel()) {
     var editing by remember { mutableStateOf<LifeRule?>(null) }
     var filter by remember { mutableStateOf("All") }
     var query by remember { mutableStateOf("") }
+    var deleting by remember { mutableStateOf<LifeRule?>(null) }
 
     val pinnedCount = rules.count { it.pinned }
     val filtered = rules.filter { rule ->
@@ -160,6 +162,20 @@ fun LifeRulesScreen(vm: LifeRulesViewModel = hiltViewModel()) {
             else -> true
         }
         matchesFilter && (rule.title.contains(query, true) || rule.body.contains(query, true))
+    }
+
+    deleting?.let { rule ->
+        MomentumDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Delete entry?") },
+            text = { Text("\"${rule.title}\" will be permanently removed from your life rules.") },
+            confirmButton = {
+                TextButton(onClick = { vm.delete(rule); deleting = null }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } }
+        )
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -220,7 +236,7 @@ fun LifeRulesScreen(vm: LifeRulesViewModel = hiltViewModel()) {
                     rule = rule,
                     onClick = { editing = rule },
                     onTogglePin = { vm.togglePin(rule) },
-                    onDelete = { vm.delete(rule) }
+                    onDelete = { deleting = rule }
                 )
             }
             if (rules.isNotEmpty()) {
