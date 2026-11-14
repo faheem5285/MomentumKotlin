@@ -30,13 +30,6 @@ internal object ReminderTimeCalculator {
     }
 
 
-
-/** Delivery gate kept pure so stale alarms cannot consume saved reminder settings. */
-internal object ToDoReminderDeliveryPolicy {
-    fun shouldDeliver(completed: Boolean, masterEnabled: Boolean, notificationsAllowed: Boolean): Boolean =
-        !completed && masterEnabled && notificationsAllowed
-}
-
     /** Next occurrence of one of the built-in reminder types. */
     fun nextScheduled(
         hour: Int,
@@ -56,4 +49,11 @@ internal object ToDoReminderDeliveryPolicy {
                 candidate.isAfter(now) && (targetDay == null || candidate.dayOfWeek == targetDay)
             }
     }
+}
+
+
+/** Delivery gate kept pure so stale alarms cannot consume saved reminder settings. */
+internal object ToDoReminderDeliveryPolicy {
+    fun shouldDeliver(completed: Boolean, masterEnabled: Boolean, notificationsAllowed: Boolean): Boolean =
+        !completed && masterEnabled && notificationsAllowed
 }
