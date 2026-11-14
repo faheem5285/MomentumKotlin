@@ -117,6 +117,12 @@ object VaultCrypto {
     }
 
     fun newVmk(): ByteArray = ByteArray(VMK_BYTES).also(SecureRandom()::nextBytes)
+    fun requireVmk(key: ByteArray) {
+        require(key.size == VMK_BYTES) {
+            "The saved account Vault key is invalid. Expected a 256-bit key."
+        }
+    }
+
 
     fun clearBiometricKeyForAppReset() {
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
