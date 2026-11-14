@@ -19,7 +19,7 @@ This is a source-level audit. Device screenshots, touch testing, font-scale test
 
 ### P0 — Consistency and accessibility
 
-- The shared design system exists, but the Phase 4 implementation notes confirm that many feature-local Material cards have not yet been migrated. Migrate incrementally; do not mass-replace cards without checking their layout and interaction behavior.
+- A source scan of the current Habits, To-dos, Money, Loans, Files, Vault, Screen Time, Battery, Network, Contacts, Life Rules, Supabase, and Settings screens found no direct Material `Card(...)` calls. These screens use the shared `PremiumCard`/glass presentation layer rather than needing a bulk card migration.
 - Apply shared spacing, typography, shape, and surface hierarchy consistently across feature screens.
 - Audit icon-only actions, semantic labels, minimum touch targets, contrast, and large-font behavior.
 - Ensure reduce-effects preference suppresses non-essential motion and expensive visual effects consistently.
