@@ -281,10 +281,19 @@ fun BarChart(
     }
     val top = values.max().takeIf { it > 0f } ?: 1f
     val maxBar = (height - 30.dp).coerceAtLeast(20.dp)
-    Row(modifier.fillMaxWidth().height(height), verticalAlignment = Alignment.Bottom) {
+    val reduceEffects = LocalReduceEffects.current
+    val chartDescription = values.mapIndexed { index, value ->
+        "${labels.getOrElse(index) { "Item ${index + 1}" }}: ${valueFormatter(value)}"
+    }.joinToString(separator = ". ")
+    Row(
+        modifier.fillMaxWidth().height(height).semantics {
+            contentDescription = "Bar chart. $chartDescription"
+        },
+        verticalAlignment = Alignment.Bottom
+    ) {
         values.forEachIndexed { index, value ->
             val fraction = (value / top).coerceIn(0f, 1f)
-            val animated by animateFloatAsState(fraction, tween(650), label = "bar$index")
+            val animated by animateFloatAsState(fraction, tween(if (reduceEffects) 0 else 650), label = "bar$index")
             val color = colors[Math.floorMod(index, colors.size)]
             val selected = highlightIndex == index
             Column(
