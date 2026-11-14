@@ -95,6 +95,10 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import androidx.lifecycle.viewModelScope
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -121,12 +125,35 @@ private val SUPABASE_TABLES = listOf(
 
 private data class CloudRecord(val table: String, val label: String, val count: Int, val error: String? = null)
 
+data class SupabaseStatusUiState(
+    val syncStates: List<SyncState> = emptyList(),
+    val syncWorkState: WorkInfo.State? = null,
+    val workerError: String? = null
+)
+
 @HiltViewModel
 class SupabaseStatusViewModel @Inject constructor(
     repository: SupabaseStatusRepository
 ) : ViewModel() {
-    val syncStates = repository.syncStates
-    val syncWorkInfos = repository.syncWorkInfos
+    val uiState = combine(repository.syncStates, repository.syncWorkInfos) { states, workInfos ->
+        val workState = workInfos.firstOrNull { it.state == WorkInfo.State.RUNNING }?.state
+            ?: workInfos.firstOrNull {
+                it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED
+            }?.state
+            ?: workInfos.lastOrNull()?.state
+        val workerError = workInfos.lastOrNull { it.state == WorkInfo.State.FAILED }
+            ?.takeIf { workState == WorkInfo.State.FAILED }
+            ?.outputData?.getString("error")
+        SupabaseStatusUiState(
+            syncStates = states,
+            syncWorkState = workState,
+            workerError = workerError
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = SupabaseStatusUiState()
+    )
 }
 
 private data class SupabaseMetrics(
@@ -142,16 +169,10 @@ private data class SupabaseMetrics(
 fun SupabaseScreen(vm: SupabaseStatusViewModel = hiltViewModel()) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val syncStates by vm.syncStates.collectAsStateWithLifecycle(initialValue = emptyList())
-    val syncWorkInfos by vm.syncWorkInfos.collectAsStateWithLifecycle(initialValue = emptyList())
-    val syncWorkState = syncWorkInfos.firstOrNull { it.state == WorkInfo.State.RUNNING }?.state
-        ?: syncWorkInfos.firstOrNull {
-            it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED
-        }?.state
-        ?: syncWorkInfos.lastOrNull()?.state
-    val workerError = syncWorkInfos.lastOrNull { it.state == WorkInfo.State.FAILED }
-        ?.takeIf { syncWorkState == WorkInfo.State.FAILED }
-        ?.outputData?.getString("error")
+    val status by vm.uiState.collectAsStateWithLifecycle()
+    val syncStates = status.syncStates
+    val syncWorkState = status.syncWorkState
+    val workerError = status.workerError
     val syncBusy = syncWorkState == WorkInfo.State.RUNNING ||
         syncWorkState == WorkInfo.State.ENQUEUED || syncWorkState == WorkInfo.State.BLOCKED
     var metrics by remember { mutableStateOf<SupabaseMetrics?>(null) }
