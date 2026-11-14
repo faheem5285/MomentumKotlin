@@ -102,23 +102,24 @@ class HabitRepository @Inject constructor(
     }
 
     suspend fun useStreakFreeze(habit: Habit, day: Long) {
-        if (day >= today()) return
-        val current = dao.getHabit(habit.id) ?: return
-        if (current.streakFreezes <= 0) return
-        val existing = dao.getSkip(habit.id, day)
-        if (existing != null && !existing.deleted) return
-        val now = System.currentTimeMillis()
-        dao.upsertSkip(
-            existing?.copy(reason = "freeze", deleted = false, dirty = true, updatedAt = now)
-                ?: HabitSkip(habitId = habit.id, epochDay = day, reason = "freeze", updatedAt = now)
-        )
-        dao.updateHabit(
-            current.copy(
-                streakFreezes = current.streakFreezes - 1,
-                updatedAt = now,
-                dirty = true
-            )
-        )
+        val current = dao.getHabit(habit.id)
+        if (day < today() && current != null && current.streakFreezes > 0) {
+            val existing = dao.getSkip(habit.id, day)
+            if (existing == null || existing.deleted) {
+                val now = System.currentTimeMillis()
+                dao.upsertSkip(
+                    existing?.copy(reason = "freeze", deleted = false, dirty = true, updatedAt = now)
+                        ?: HabitSkip(habitId = habit.id, epochDay = day, reason = "freeze", updatedAt = now)
+                )
+                dao.updateHabit(
+                    current.copy(
+                        streakFreezes = current.streakFreezes - 1,
+                        updatedAt = now,
+                        dirty = true
+                    )
+                )
+            }
+        }
     }
 
     suspend fun setArchived(habit: Habit, archived: Boolean) {

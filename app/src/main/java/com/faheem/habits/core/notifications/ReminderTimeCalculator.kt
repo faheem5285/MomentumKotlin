@@ -71,24 +71,28 @@ internal object ToDoRepeatPolicy {
     }
 
     fun advance(item: ToDoItem, todayEpochDay: Long = LocalDate.now().toEpochDay()): ToDoItem {
-        var next = nextDate(item.repeatRule, LocalDate.ofEpochDay(item.dueEpochDay)) ?: return item.copy(
-            completed = true, reminderHour = null, reminderMinute = null,
-            updatedAt = System.currentTimeMillis(), dirty = true
-        )
         val today = LocalDate.ofEpochDay(todayEpochDay)
-        while (!next.isAfter(today)) {
-            next = nextDate(item.repeatRule, next) ?: return item.copy(
-                completed = true, reminderHour = null, reminderMinute = null,
-                updatedAt = System.currentTimeMillis(), dirty = true
+        var next = nextDate(item.repeatRule, LocalDate.ofEpochDay(item.dueEpochDay))
+        while (next != null && !next.isAfter(today)) {
+            next = nextDate(item.repeatRule, next)
+        }
+        return if (next == null) {
+            item.copy(
+                completed = true,
+                reminderHour = null,
+                reminderMinute = null,
+                updatedAt = System.currentTimeMillis(),
+                dirty = true
+            )
+        } else {
+            item.copy(
+                dueEpochDay = next.toEpochDay(),
+                dueEpochMillis = null,
+                completed = false,
+                updatedAt = System.currentTimeMillis(),
+                dirty = true
             )
         }
-        return item.copy(
-            dueEpochDay = next.toEpochDay(),
-            dueEpochMillis = null,
-            completed = false,
-            updatedAt = System.currentTimeMillis(),
-            dirty = true
-        )
     }
 
     fun skip(item: ToDoItem, todayEpochDay: Long = LocalDate.now().toEpochDay()): ToDoItem =

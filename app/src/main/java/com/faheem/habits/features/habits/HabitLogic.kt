@@ -106,8 +106,8 @@ fun computeStreaks(
     today: Long,
     frozenDays: Set<Long> = emptySet()
 ): StreakInfo {
-    if (days.isEmpty() || mask == 0) return StreakInfo(0, 0)
-    val first = days.minOrNull() ?: return StreakInfo(0, 0)
+    val first = days.minOrNull()
+    if (mask == 0 || first == null) return StreakInfo(0, 0)
     var best = 0
     var run = 0
     for (day in first..today) {
