@@ -40,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -102,7 +103,10 @@ class ContactsViewModel @Inject constructor(
 
 @Composable
 fun ContactsScreen(vm: ContactsViewModel = hiltViewModel()) {
-    val contacts by vm.contacts.collectAsStateWithLifecycle()
+    val contacts by vm.contacts.collectAsStateWithLifecycle(
+        initialValue = emptyList(),
+        lifecycle = LocalLifecycleOwner.current.lifecycle
+    )
     var query by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Contact?>(null) }
     var creating by remember { mutableStateOf(false) }
@@ -326,3 +330,9 @@ private fun ContactEditor(initial: Contact?, onDismiss: () -> Unit, onSave: (Con
         })
     }
 }
+
+private fun phoneNumbers(value: String): List<String> =
+    value.split(Regex("[\\r\\n]+"))
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .distinct()

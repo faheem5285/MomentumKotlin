@@ -31,7 +31,7 @@ class ContactRepository @Inject constructor(
         dao.softDelete(contact.id)
     }
 
-    suspend fun importContacts(rows: List<ImportedContact>): ContactImportSummary {
+    internal suspend fun importContacts(rows: List<ImportedContact>): ContactImportSummary {
         val existing = dao.getAll().first()
         val existingPhoneKeys = existing.flatMap { phoneNumbers(it.phone) }
             .map(::phoneKey).filter(String::isNotBlank).toMutableSet()
