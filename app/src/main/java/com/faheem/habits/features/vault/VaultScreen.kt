@@ -2,7 +2,7 @@
 
 package com.faheem.habits.features.vault
 import com.faheem.habits.core.data.*
-import com.faheem.habits.core.data.supabase.SupabaseRestClient
+import com.faheem.habits.features.vault.data.VaultAccountKeyRepository
 import com.faheem.habits.core.data.sync.SupabaseSyncRepository
 import com.faheem.habits.features.vault.data.VaultRepository
 import com.faheem.habits.core.notifications.*
@@ -106,9 +106,9 @@ internal fun uniqueVaultEntries(
 @HiltViewModel
 class VaultViewModel @Inject constructor(
     app: Application,
-    private val vaultRepository: VaultRepository
+    private val vaultRepository: VaultRepository,
+    private val accountKeys: VaultAccountKeyRepository
 ) : AndroidViewModel(app) {
-    private val accountKeys = SupabaseRestClient(app)
     private val profilePrefs = app.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
     private val accountId = profilePrefs.getString("user_id", null).orEmpty()
     private val prefs = app.getSharedPreferences(
