@@ -54,6 +54,9 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -393,9 +396,14 @@ private fun CalendarAgenda(
                                         Modifier
                                             .weight(1f)
                                             .padding(vertical = 2.dp)
-                                            .height(42.dp)
+                                            .height(48.dp)
                                             .clip(RoundedCornerShape(14.dp))
                                             .background(background)
+                                            .semantics {
+                                                contentDescription = date.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")) +
+                                                    if (hasTasks) ", tasks scheduled" else ""
+                                                selected = isSelected
+                                            }
                                             .clickable { onSelect(date) },
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -417,7 +425,7 @@ private fun CalendarAgenda(
                                             }
                                         }
                                     }
-                                } else Spacer(Modifier.weight(1f).height(42.dp))
+                                } else Spacer(Modifier.weight(1f).height(48.dp))
                             }
                         }
                     }

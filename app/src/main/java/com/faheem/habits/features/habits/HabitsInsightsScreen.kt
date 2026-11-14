@@ -41,7 +41,7 @@ private fun StatCard(icon: ImageVector, color: Color, value: String, label: Stri
 @Composable
 private fun AchievementCard(a: Achievement, modifier: Modifier) {
     val color = if (a.unlocked) Gold else MaterialTheme.colorScheme.outline
-    PremiumCard(modifier = modifier.height(176.dp), contentPadding = PaddingValues(14.dp)) {
+    PremiumCard(modifier = modifier.heightIn(min = 176.dp), contentPadding = PaddingValues(14.dp)) {
         IconBubble(a.icon, color, 44.dp)
         Spacer(Modifier.height(10.dp))
         Text(
