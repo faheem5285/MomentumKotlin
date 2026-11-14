@@ -151,6 +151,152 @@ private fun loadDeviceInsights(context: Context): DeviceInsights {
     )
 }
 
+
+private fun buildHomeTiles(state: HomeState, insights: DeviceInsights, screenText: String): List<TileSpec> =
+    listOf(
+        habitsTile(state),
+        todosTile(state),
+        moneyTile(state),
+        loansTile(state),
+        contactsTile(),
+        filesTile(state),
+        lifeRulesTile(state),
+        screenTimeTile(insights, screenText),
+        vaultTile(state),
+        supabaseTile(state)
+    )
+
+private fun habitsTile(state: HomeState) = TileSpec(
+    "Habits",
+    if (state.habitsTotal == 0) "Start your first habit"
+    else "${state.habitsDone} of ${state.habitsTotal} done today",
+    AppModule.Habits.icon,
+    AppModule.Habits.gradient,
+    AppModule.Habits,
+    chart = when {
+        state.habitWeek.any { it > 0f } -> TileChart.Trend(state.habitWeek)
+        state.habitsTotal > 0 -> TileChart.Gauge(state.habitsDone.toFloat() / state.habitsTotal)
+        else -> null
+    }
+)
+
+private fun todosTile(state: HomeState) = TileSpec(
+    "To-dos",
+    when {
+        state.overdueTasks > 0 -> "${state.overdueTasks} overdue · ${state.tasksDueToday} today"
+        state.tasksDueToday > 0 -> "${state.tasksDueToday} task${if (state.tasksDueToday == 1) "" else "s"} due today"
+        else -> "Appointments and tasks by date"
+    },
+    AppModule.ToDos.icon, AppModule.ToDos.gradient, AppModule.ToDos,
+    chart = TileChart.Trend(state.todoWeek)
+)
+
+private fun moneyTile(state: HomeState) = TileSpec(
+    "Money",
+    if (state.monthSpent <= 0L) "No spending yet" else "${money(state.monthSpent)} this month",
+    AppModule.Money.icon, AppModule.Money.gradient, AppModule.Money,
+    chart = if (state.spendWeek.any { it > 0f }) TileChart.Trend(state.spendWeek) else null
+)
+
+private fun loansTile(state: HomeState) = TileSpec(
+    "Loans",
+    when {
+        state.openLoans == 0 -> "All clear"
+        state.loanNet >= 0 -> "${money(state.loanNet)} to receive"
+        else -> "${money(-state.loanNet)} to pay"
+    },
+    AppModule.Loans.icon, AppModule.Loans.gradient, AppModule.Loans,
+    chart = if (state.loanLent + state.loanBorrowed > 0) {
+        TileChart.Composition(
+            listOf(
+                ChartSlice("Lent", state.loanLent.toFloat(), AppModule.Loans.accent),
+                ChartSlice("Borrowed", state.loanBorrowed.toFloat(), ChartPalette[2])
+            )
+        )
+    } else null
+)
+
+private fun contactsTile() = TileSpec(
+    "Contacts", "People, phone numbers and notes",
+    AppModule.Contacts.icon, AppModule.Contacts.gradient, AppModule.Contacts
+)
+
+private fun filesTile(state: HomeState) = TileSpec(
+    "Files",
+    if (state.fileCount == 0) "Your file library"
+    else "${state.fileCount} file${if (state.fileCount == 1) "" else "s"} saved",
+    AppModule.Files.icon, AppModule.Files.gradient, AppModule.Files,
+    chart = if (state.fileMix.isEmpty()) null else TileChart.Composition(
+        state.fileMix.take(3).mapIndexed { index, (label, value) ->
+            ChartSlice(label, value, chartColor(index))
+        }
+    )
+)
+
+private fun lifeRulesTile(state: HomeState) = TileSpec(
+    "Life rules",
+    when {
+        state.lifeRules == 0 -> "Rules, habits and quotes"
+        state.pinnedRules > 0 -> "${state.lifeRules} saved · ${state.pinnedRules} pinned"
+        else -> "${state.lifeRules} saved"
+    },
+    AppModule.LifeRules.icon, AppModule.LifeRules.gradient, AppModule.LifeRules
+)
+
+private fun screenTimeTile(insights: DeviceInsights, screenText: String) = TileSpec(
+    "Screen time", screenText,
+    AppModule.Screen.icon, AppModule.Screen.gradient, AppModule.Screen,
+    chart = if (insights.screenWeek.any { it > 0f }) TileChart.Trend(insights.screenWeek) else null
+)
+
+private fun vaultTile(state: HomeState) = TileSpec(
+    "Vault",
+    if (!state.vaultCountKnown) "Open Vault to load account records"
+    else if (state.vaultEntries == 0) "Private password manager"
+    else "${state.vaultEntries} secure item${if (state.vaultEntries == 1) "" else "s"}",
+    AppModule.Vault.icon, AppModule.Vault.gradient, AppModule.Vault,
+    chart = TileChart.Trend(state.vaultWeek)
+)
+
+private fun supabaseTile(state: HomeState) = TileSpec(
+    "Supabase",
+    if (state.syncTracked == 0) "Cloud records and storage"
+    else "${state.syncHealthy} of ${state.syncTracked} tables healthy",
+    AppModule.Supabase.icon, AppModule.Supabase.gradient, AppModule.Supabase,
+    chart = if (state.syncTracked == 0) null else TileChart.Composition(
+        listOfNotNull(
+            ChartSlice("Synced", state.syncHealthy.toFloat(), AppModule.Supabase.accent)
+                .takeIf { state.syncHealthy > 0 },
+            ChartSlice("Needs sync", (state.syncTracked - state.syncHealthy).toFloat(), Warning)
+                .takeIf { state.syncTracked > state.syncHealthy }
+        )
+    )
+)
+
+private fun buildDeviceTools(insights: DeviceInsights): List<TileSpec> {
+    val batteryLevel = insights.batteryLevel
+    return listOf(
+        TileSpec(
+            "Battery",
+            batteryLevel?.let { "$it% right now" } ?: "Live charging animation",
+            AppModule.Battery.icon, AppModule.Battery.gradient, AppModule.Battery,
+            chart = when {
+                insights.batteryTrend.size >= 2 -> TileChart.Trend(insights.batteryTrend)
+                batteryLevel != null -> TileChart.Gauge(batteryLevel / 100f)
+                else -> null
+            }
+        ),
+        TileSpec(
+            "Network",
+            insights.networkLabel?.let { "$it this week" } ?: "Wi-Fi and mobile data",
+            AppModule.Network.icon, AppModule.Network.gradient, AppModule.Network,
+            chart = if (insights.networkWeek.any { it > 0f }) {
+                TileChart.Trend(insights.networkWeek)
+            } else null
+        )
+    )
+}
+
 @Composable
 fun HomeScreen(
     onOpen: (AppModule) -> Unit,
@@ -177,133 +323,13 @@ fun HomeScreen(
         }
     }
 
-    val tiles = remember(s, insights, screenText) { listOf(
-        TileSpec(
-            "Habits",
-            if (s.habitsTotal == 0) "Start your first habit" else "${s.habitsDone} of ${s.habitsTotal} done today",
-            AppModule.Habits.icon, AppModule.Habits.gradient, AppModule.Habits,
-            chart = when {
-                s.habitWeek.any { it > 0f } -> TileChart.Trend(s.habitWeek)
-                s.habitsTotal > 0 -> TileChart.Gauge(s.habitsDone.toFloat() / s.habitsTotal)
-                else -> null
-            }
-        ),
-        TileSpec(
-            "To-dos",
-            when {
-                s.overdueTasks > 0 -> "${s.overdueTasks} overdue · ${s.tasksDueToday} today"
-                s.tasksDueToday > 0 -> "${s.tasksDueToday} task${if (s.tasksDueToday == 1) "" else "s"} due today"
-                else -> "Appointments and tasks by date"
-            },
-            AppModule.ToDos.icon, AppModule.ToDos.gradient, AppModule.ToDos,
-            chart = TileChart.Trend(s.todoWeek)
-        ),
-        TileSpec(
-            "Money",
-            if (s.monthSpent <= 0L) "No spending yet" else "${money(s.monthSpent)} this month",
-            AppModule.Money.icon, AppModule.Money.gradient, AppModule.Money,
-            chart = if (s.spendWeek.any { it > 0f }) TileChart.Trend(s.spendWeek) else null
-        ),
-        TileSpec(
-            "Loans",
-            when {
-                s.openLoans == 0 -> "All clear"
-                s.loanNet >= 0 -> "${money(s.loanNet)} to receive"
-                else -> "${money(-s.loanNet)} to pay"
-            },
-            AppModule.Loans.icon, AppModule.Loans.gradient, AppModule.Loans,
-            chart = if (s.loanLent + s.loanBorrowed > 0) {
-                TileChart.Composition(
-                    listOf(
-                        ChartSlice("Lent", s.loanLent.toFloat(), AppModule.Loans.accent),
-                        ChartSlice("Borrowed", s.loanBorrowed.toFloat(), ChartPalette[2])
-                    )
-                )
-            } else {
-                null
-            }
-        ),
-        TileSpec(
-            "Contacts",
-            "People, phone numbers and notes",
-            AppModule.Contacts.icon, AppModule.Contacts.gradient, AppModule.Contacts
-        ),
-        TileSpec(
-            "Files",
-            if (s.fileCount == 0) "Your file library" else "${s.fileCount} file${if (s.fileCount == 1) "" else "s"} saved",
-            AppModule.Files.icon, AppModule.Files.gradient, AppModule.Files,
-            chart = if (s.fileMix.isEmpty()) {
-                null
-            } else {
-                TileChart.Composition(
-                    s.fileMix.take(3).mapIndexed { index, (label, value) ->
-                        ChartSlice(label, value, chartColor(index))
-                    }
-                )
-            }
-        ),
-        TileSpec(
-            "Life rules",
-            when {
-                s.lifeRules == 0 -> "Rules, habits and quotes"
-                s.pinnedRules > 0 -> "${s.lifeRules} saved · ${s.pinnedRules} pinned"
-                else -> "${s.lifeRules} saved"
-            },
-            AppModule.LifeRules.icon, AppModule.LifeRules.gradient, AppModule.LifeRules
-        ),
-        TileSpec(
-            "Screen time", screenText,
-            AppModule.Screen.icon, AppModule.Screen.gradient, AppModule.Screen,
-            chart = if (insights.screenWeek.any { it > 0f }) TileChart.Trend(insights.screenWeek) else null
-        ),
-        TileSpec(
-            "Vault",
-            if (!s.vaultCountKnown) "Open Vault to load account records"
-            else if (s.vaultEntries == 0) "Private password manager"
-            else "${s.vaultEntries} secure item${if (s.vaultEntries == 1) "" else "s"}",
-            AppModule.Vault.icon, AppModule.Vault.gradient, AppModule.Vault,
-            chart = TileChart.Trend(s.vaultWeek)
-        ),
-        TileSpec(
-            "Supabase",
-            if (s.syncTracked == 0) "Cloud records and storage" else "${s.syncHealthy} of ${s.syncTracked} tables healthy",
-            AppModule.Supabase.icon, AppModule.Supabase.gradient, AppModule.Supabase,
-            chart = if (s.syncTracked == 0) {
-                null
-            } else {
-                TileChart.Composition(
-                    listOfNotNull(
-                        ChartSlice("Synced", s.syncHealthy.toFloat(), AppModule.Supabase.accent)
-                            .takeIf { s.syncHealthy > 0 },
-                        ChartSlice("Needs sync", (s.syncTracked - s.syncHealthy).toFloat(), Warning)
-                            .takeIf { s.syncTracked > s.syncHealthy }
-                    )
-                )
-            }
-        )
-    ) }
+    val tiles = remember(s, insights, screenText) {
+        buildHomeTiles(s, insights, screenText)
+    }
     val visibleTiles = remember(tiles, moduleVisibility) {
         tiles.filter { spec -> spec.module?.let { moduleVisibility[it.name] ?: true } ?: true }
     }
-    val batteryLevel = insights.batteryLevel
-    val deviceTools = remember(insights) { listOf(
-        TileSpec(
-            "Battery",
-            insights.batteryLevel?.let { "$it% right now" } ?: "Live charging animation",
-            AppModule.Battery.icon, AppModule.Battery.gradient, AppModule.Battery,
-            chart = when {
-                insights.batteryTrend.size >= 2 -> TileChart.Trend(insights.batteryTrend)
-                batteryLevel != null -> TileChart.Gauge(batteryLevel / 100f)
-                else -> null
-            }
-        ),
-        TileSpec(
-            "Network",
-            insights.networkLabel?.let { "$it this week" } ?: "Wi-Fi and mobile data",
-            AppModule.Network.icon, AppModule.Network.gradient, AppModule.Network,
-            chart = if (insights.networkWeek.any { it > 0f }) TileChart.Trend(insights.networkWeek) else null
-        )
-    ) }
+    val deviceTools = remember(insights) { buildDeviceTools(insights) }
     val visibleDeviceTools = remember(deviceTools, moduleVisibility) {
         deviceTools.filter { spec -> spec.module?.let { moduleVisibility[it.name] ?: true } ?: true }
     }
