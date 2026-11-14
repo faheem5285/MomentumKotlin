@@ -35,6 +35,7 @@ import java.io.FileNotFoundException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun FilePreviewSheet(file: FileItem, onDismiss: () -> Unit, onSaveCopy: (String) -> Unit) {
     val glass = LocalGlassPalette.current
