@@ -70,9 +70,9 @@ class FileViewModel @Inject constructor(
 }
 
 private val badgeColors = listOf(Color(0xFFEF4444), Color(0xFF3B82F6), Color(0xFF10B981), Color(0xFFF59E0B), Color(0xFF8B5CF6), Color(0xFFEC4899))
-private enum class FileKind(val label: String) { All("All"), Image("Images"), Pdf("PDFs"), Text("Text"), Other("Other") }
+internal enum class FileKind(val label: String) { All("All"), Image("Images"), Pdf("PDFs"), Text("Text"), Other("Other") }
 
-private fun fileKind(file: FileItem): FileKind {
+internal fun fileKind(file: FileItem): FileKind {
     val ext = file.name.substringAfterLast('.', "").lowercase()
     return when {
         file.mime.startsWith("image/") || ext in setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "heic") -> FileKind.Image
