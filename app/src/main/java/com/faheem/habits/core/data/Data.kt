@@ -477,6 +477,45 @@ interface HabitDao {
     @Query("SELECT * FROM habit_skips WHERE habitId = :habitId AND epochDay = :epochDay LIMIT 1")
     suspend fun getSkip(habitId: Int, epochDay: Long): HabitSkip?
 
+    /** Applies a streak freeze and spends its credit as one database transaction. */
+    @Transaction
+    suspend fun consumeStreakFreeze(
+        habitId: Int,
+        epochDay: Long,
+        todayEpochDay: Long,
+        updatedAt: Long
+    ): Boolean {
+        if (epochDay >= todayEpochDay) return false
+        val habit = getHabit(habitId) ?: return false
+        if (habit.deleted || habit.streakFreezes <= 0) return false
+
+        val existing = getSkip(habitId, epochDay)
+        if (existing != null && !existing.deleted) return false
+
+        upsertSkip(
+            existing?.copy(
+                reason = "freeze",
+                deleted = false,
+                dirty = true,
+                updatedAt = updatedAt
+            ) ?: HabitSkip(
+                habitId = habitId,
+                epochDay = epochDay,
+                reason = "freeze",
+                updatedAt = updatedAt
+            )
+        )
+        updateHabit(
+            habit.copy(
+                streakFreezes = habit.streakFreezes - 1,
+                updatedAt = updatedAt,
+                deleted = false,
+                dirty = true
+            )
+        )
+        return true
+    }
+
     @Query("UPDATE habit_skips SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE habitId = :habitId AND epochDay = :epochDay AND deleted = 0")
     suspend fun deleteSkip(habitId: Int, epochDay: Long, updatedAt: Long = System.currentTimeMillis())
 }
