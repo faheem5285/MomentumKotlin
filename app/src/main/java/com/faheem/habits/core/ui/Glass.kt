@@ -3,6 +3,7 @@
 package com.faheem.habits.core.ui
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,8 +27,11 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -68,6 +72,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
@@ -973,13 +979,17 @@ fun MomentumChip(
 ) {
     val glass = LocalGlassPalette.current
     val colors = MaterialTheme.colorScheme
+    val reduceEffects = LocalReduceEffects.current
+    val motion = tween<Color>(if (reduceEffects) 0 else MomentumTokens.motionShort)
     val shape = RoundedCornerShape(MomentumTokens.radiusSmall)
     val background by animateColorAsState(
         if (selected) colors.primary else glass.chip,
+        animationSpec = motion,
         label = "chip-bg"
     )
     val contentColor by animateColorAsState(
         if (selected) colors.onPrimary else colors.onSurfaceVariant,
+        animationSpec = motion,
         label = "chip-content"
     )
     Row(
@@ -1001,7 +1011,8 @@ fun MomentumChip(
             .clip(shape)
             .background(background)
             .border(1.dp, if (selected) Color.Transparent else glass.panelBorder, shape)
-            .clickable(enabled = enabled, onClick = onClick)
+            .heightIn(min = 48.dp)
+            .selectable(selected = selected, enabled = enabled, role = Role.Checkbox, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
@@ -1088,9 +1099,10 @@ fun StatusPill(
     modifier: Modifier = Modifier,
     icon: ImageVector? = null
 ) {
+    val reduceEffects = LocalReduceEffects.current
     Row(
         modifier
-            .shadow(8.dp, CircleShape, clip = false, ambientColor = color.copy(alpha = 0.55f), spotColor = color.copy(alpha = 0.35f))
+            .shadow(if (reduceEffects) 0.dp else 8.dp, CircleShape, clip = false, ambientColor = color.copy(alpha = 0.55f), spotColor = color.copy(alpha = 0.35f))
             .clip(CircleShape)
             .background(Brush.verticalGradient(listOf(color.copy(alpha = 0.30f), color.copy(alpha = 0.08f))))
             .border(1.dp, color.copy(alpha = 0.45f), CircleShape)
@@ -1114,24 +1126,42 @@ fun CompletionToggle(
     modifier: Modifier = Modifier,
     size: Dp = 36.dp
 ) {
-    val background by animateColorAsState(if (checked) color else Color.Transparent, label = "toggle-bg")
+    val reduceEffects = LocalReduceEffects.current
+    val background by animateColorAsState(
+        if (checked) color else Color.Transparent,
+        animationSpec = tween(if (reduceEffects) 0 else MomentumTokens.motionShort),
+        label = "toggle-bg"
+    )
     Box(
         modifier
-            .size(size)
-            .then(
-                if (checked) {
-                    Modifier.shadow(size * 0.32f, CircleShape, clip = false, ambientColor = color.copy(alpha = 0.70f), spotColor = color.copy(alpha = 0.55f))
-                } else {
-                    Modifier
-                }
+            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            .toggleable(
+                value = checked,
+                role = Role.Checkbox,
+                onValueChange = { onClick() }
             )
-            .clip(CircleShape)
-            .background(background)
-            .border(2.dp, if (checked) Color.White.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline, CircleShape)
-            .clickable(onClick = onClick),
+            .semantics {
+                contentDescription = if (checked) "Completed" else "Mark as complete"
+            },
         contentAlignment = Alignment.Center
     ) {
-        if (checked) Icon(Icons.Rounded.Check, null, Modifier.size(size * 0.52f), tint = Color.White)
+        Box(
+            Modifier
+                .size(size)
+                .then(
+                    if (checked && !reduceEffects) {
+                        Modifier.shadow(size * 0.32f, CircleShape, clip = false, ambientColor = color.copy(alpha = 0.70f), spotColor = color.copy(alpha = 0.55f))
+                    } else {
+                        Modifier
+                    }
+                )
+                .clip(CircleShape)
+                .background(background)
+                .border(2.dp, if (checked) Color.White.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            if (checked) Icon(Icons.Rounded.Check, null, Modifier.size(size * 0.52f), tint = Color.White)
+        }
     }
 }
 

@@ -83,3 +83,12 @@ These are incremental improvements, not evidence that every feature screen has c
 - [ ] Complete per-screen visual consistency and accessibility pass.
 - [ ] Large-font and responsive-layout review on device.
 - [ ] Full device/reference-image review and interaction testing.
+
+
+## Additional implementation update — 2026-11-14
+
+- Shared filter chips now expose their selected state and checkbox role to accessibility services, retain a minimum 48dp interaction height, and respect Reduce effects for color transitions.
+- Shared habit/to-do completion controls now expose a clear accessible label and checked state, provide a minimum 48dp touch target while preserving the compact visual mark, and suppress decorative glow/animation when Reduce effects is enabled.
+- Shared status pills no longer draw decorative elevation when Reduce effects is enabled.
+
+These shared changes improve interaction consistency across modules; they do not replace screen-reader, font-scale, contrast, or device interaction testing.
