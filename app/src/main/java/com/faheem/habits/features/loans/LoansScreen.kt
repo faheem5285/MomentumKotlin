@@ -49,6 +49,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.faheem.habits.core.settings.MomentumSettingsRepository
 import com.faheem.habits.features.loans.data.LoanRepository
+import com.faheem.habits.features.loans.data.isValidLoanPayment
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
