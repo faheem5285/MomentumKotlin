@@ -80,7 +80,8 @@ These are incremental improvements, not evidence that every feature screen has c
 - [x] Existing Phase 4 deferred-work review.
 - [x] Reduced-effects behavior improved in shared surfaces, Home, and To-do calendar.
 - [x] Selected touch targets, settings navigation rows, weekday labels, and empty-state messaging improved.
-- [ ] Complete per-screen visual consistency and accessibility pass.
+- [x] Complete an initial source-level scan of all feature screens and shared chart primitives.
+- [ ] Complete per-screen visual consistency and accessibility verification on device.
 - [ ] Large-font and responsive-layout review on device.
 - [ ] Full device/reference-image review and interaction testing.
 
@@ -100,3 +101,14 @@ These shared changes improve interaction consistency across modules; they do not
 - Habit tab transitions now honor Reduce effects, matching the shared control behavior.
 
 The automated checks cover compilation and tests; TalkBack, dynamic font scaling, predictive back, haptics, and physical-device layout checks remain open.
+
+
+## Additional implementation update — 2026-11-14 (continued)
+
+- The shared bar chart now exposes its labels and formatted values in one screen-reader description instead of presenting only a visual chart.
+- Bar chart entry animation now follows Reduce effects.
+- Home module tiles can grow beyond their minimum height so larger text is less likely to be clipped.
+- Battery orb animation now stops when Reduce effects is enabled, and its accessibility description reports battery level and charging state.
+- Screen Time now catches usage-stat query failures and presents a retry action instead of silently leaving stale or empty values.
+
+The code-level pass has improved shared accessibility, reduced-motion behavior, and error recovery. Real TalkBack, font-scale, narrow-screen, and device checks are still required.
