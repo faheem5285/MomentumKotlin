@@ -2,7 +2,6 @@
 
 package com.faheem.habits.features.contacts
 
-import android.app.Application
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -59,10 +58,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.faheem.habits.core.data.AppDatabase
+import androidx.hilt.navigation.compose.hiltViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+import com.faheem.habits.features.contacts.data.ContactRepository
 import com.faheem.habits.core.data.Contact
 import com.faheem.habits.core.ui.EmptyState
 import com.faheem.habits.core.ui.FormSheet
@@ -75,70 +76,32 @@ import com.faheem.habits.core.ui.PremiumCard
 import com.faheem.habits.core.ui.PrimaryButton
 import com.faheem.habits.core.ui.SecondaryButton
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.first
 
-private fun phoneNumbers(value: String): List<String> =
-    value.split(Regex("[\\r\\n]+")).map(String::trim).filter(String::isNotBlank).distinct()
-
-private fun phoneKey(value: String): String = value.filter(Char::isDigit)
-
-class ContactsViewModel(app: Application) : AndroidViewModel(app) {
-    private val dao = AppDatabase.get(app).contactDao()
-    val contacts = dao.getAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+@HiltViewModel
+class ContactsViewModel @Inject constructor(
+    private val repository: ContactRepository
+) : ViewModel() {
+    val contacts = repository.contacts
 
     fun save(contact: Contact) = viewModelScope.launch {
-        val normalized = contact.copy(name = contact.name.trim(), updatedAt = System.currentTimeMillis(), dirty = true)
-        if (normalized.id == 0) dao.insert(normalized) else dao.update(normalized)
+        repository.save(contact)
     }
 
     fun delete(contact: Contact) = viewModelScope.launch {
-        dao.softDelete(contact.id)
+        repository.delete(contact)
     }
 
-    internal fun importContacts(rows: List<ImportedContact>, onComplete: (Int, Int, Int) -> Unit) = viewModelScope.launch {
-        val existing = dao.getAll().first()
-        val existingPhoneKeys = existing.flatMap { phoneNumbers(it.phone) }
-            .map(::phoneKey).filter(String::isNotBlank).toMutableSet()
-        val emailKeys = existing.map { it.email.trim().lowercase() }
-            .filter(String::isNotBlank).toMutableSet()
-        var imported = 0
-        var skippedContacts = 0
-        var duplicateNumbers = 0
-        rows.forEach { row ->
-            val uniqueNumbers = row.phoneNumbers.filter { number ->
-                val key = phoneKey(number)
-                if (key.isBlank()) return@filter false
-                if (existingPhoneKeys.add(key)) true else {
-                    duplicateNumbers++
-                    false
-                }
-            }
-            val emailKey = row.email.trim().lowercase()
-            val duplicateEmail = uniqueNumbers.isEmpty() && emailKey.isNotBlank() && !emailKeys.add(emailKey)
-            if ((row.phoneNumbers.isNotEmpty() && uniqueNumbers.isEmpty()) || duplicateEmail) {
-                skippedContacts++
-            } else {
-                if (emailKey.isNotBlank()) emailKeys.add(emailKey)
-                dao.insert(Contact(
-                    name = row.name,
-                    phone = uniqueNumbers.joinToString("\n"),
-                    email = row.email,
-                    address = row.address,
-                    notes = row.notes
-                ))
-                imported++
-            }
+    internal fun importContacts(rows: List<ImportedContact>, onComplete: (Int, Int, Int) -> Unit) =
+        viewModelScope.launch {
+            val result = repository.importContacts(rows)
+            onComplete(result.imported, result.skippedContacts, result.duplicateNumbers)
         }
-        onComplete(imported, skippedContacts, duplicateNumbers)
-    }
 }
 
 @Composable
-fun ContactsScreen(vm: ContactsViewModel = viewModel()) {
+fun ContactsScreen(vm: ContactsViewModel = hiltViewModel()) {
     val contacts by vm.contacts.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Contact?>(null) }

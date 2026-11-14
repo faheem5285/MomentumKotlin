@@ -3,6 +3,7 @@ package com.faheem.habits.core.di
 import android.content.Context
 import androidx.room.Room
 import com.faheem.habits.core.data.AppDatabase
+import com.faheem.habits.core.data.ContactDao
 import com.faheem.habits.core.data.CustomNotificationDao
 import com.faheem.habits.core.data.ExpenseDao
 import com.faheem.habits.core.data.FileDao
@@ -42,6 +43,9 @@ object AppModule {
 
     @Provides
     fun provideLoanDao(database: AppDatabase): LoanDao = database.loanDao()
+
+    @Provides
+    fun provideContactDao(database: AppDatabase): ContactDao = database.contactDao()
 
     @Provides
     fun provideCustomNotificationDao(database: AppDatabase): CustomNotificationDao = database.customNotificationDao()
