@@ -345,4 +345,3 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
