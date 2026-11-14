@@ -34,6 +34,26 @@ import java.util.UUID
 @RunWith(AndroidJUnit4::class)
 class MomentumBackupRoundTripTest {
     @Test
+    fun backupRecordLimitIsEnforcedBeforeRestore() {
+        val rows = JSONArray()
+        repeat(10_001) { rows.put(JSONObject().put("uuid", UUID.randomUUID().toString())) }
+        val root = JSONObject().put("habits", rows)
+        listOf(
+            "completions", "habitSkips", "reminders", "expenses", "categoryBudgets",
+            "contacts", "loanPeople", "loans", "loanAttachments", "loanPayments", "files",
+            "todos", "lifeRules", "lifeRuleFiles", "customNotifications"
+        ).forEach { root.put(it, JSONArray()) }
+
+        var rejected = false
+        try {
+            MomentumBackup.validateRecordLimits(root)
+        } catch (_: IllegalArgumentException) {
+            rejected = true
+        }
+        assertTrue(rejected)
+    }
+
+    @Test
     fun previousBackupSchemaRestoresWithSafeDefaults() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
