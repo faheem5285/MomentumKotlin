@@ -60,3 +60,15 @@ internal object CustomNotificationDeliveryPolicy {
     fun shouldDeliver(masterEnabled: Boolean, notificationsAllowed: Boolean): Boolean =
         masterEnabled && notificationsAllowed
 }
+
+
+/** Allows a snoozed one-time notification to finish after its original delivery. */
+internal object CustomNotificationSnoozePolicy {
+    fun shouldDeliver(
+        enabled: Boolean,
+        deleted: Boolean,
+        isSnooze: Boolean,
+        isOneTime: Boolean,
+        hasBeenDelivered: Boolean
+    ): Boolean = !deleted && (enabled || (isSnooze && isOneTime && hasBeenDelivered))
+}

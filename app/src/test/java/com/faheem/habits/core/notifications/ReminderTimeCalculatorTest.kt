@@ -6,6 +6,7 @@ import com.faheem.habits.core.notifications.QuietHoursPolicy
 import com.faheem.habits.core.notifications.ToDoReminderDeliveryPolicy
 import com.faheem.habits.core.notifications.HabitReminderDeliveryPolicy
 import com.faheem.habits.core.notifications.CustomNotificationDeliveryPolicy
+import com.faheem.habits.core.notifications.CustomNotificationSnoozePolicy
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -137,6 +138,30 @@ class ReminderTimeCalculatorTest {
         assertTrue(CustomNotificationDeliveryPolicy.shouldDeliver(
             masterEnabled = true,
             notificationsAllowed = true
+        ))
+    }
+
+    @Test
+    fun oneTimeCustomNotificationCanBeDeliveredAfterSnooze() {
+        assertFalse(CustomNotificationSnoozePolicy.shouldDeliver(
+            enabled = false, deleted = false, isSnooze = false,
+            isOneTime = true, hasBeenDelivered = true
+        ))
+        assertTrue(CustomNotificationSnoozePolicy.shouldDeliver(
+            enabled = false, deleted = false, isSnooze = true,
+            isOneTime = true, hasBeenDelivered = true
+        ))
+        assertFalse(CustomNotificationSnoozePolicy.shouldDeliver(
+            enabled = false, deleted = true, isSnooze = true,
+            isOneTime = true, hasBeenDelivered = true
+        ))
+        assertFalse(CustomNotificationSnoozePolicy.shouldDeliver(
+            enabled = false, deleted = false, isSnooze = true,
+            isOneTime = true, hasBeenDelivered = false
+        ))
+        assertFalse(CustomNotificationSnoozePolicy.shouldDeliver(
+            enabled = false, deleted = false, isSnooze = true,
+            isOneTime = false, hasBeenDelivered = true
         ))
     }
 

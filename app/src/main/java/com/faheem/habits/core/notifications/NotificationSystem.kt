@@ -679,7 +679,13 @@ class MomentumReminderReceiver : BroadcastReceiver() {
                 if (customId >= 0) {
                     val pending = goAsync()
                     CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                        try { CustomNotificationScheduler.deliver(context, customId) }
+                        try {
+                            CustomNotificationScheduler.deliver(
+                                context,
+                                customId,
+                                isSnooze = intent.action == "com.faheem.habits.CUSTOM_SNOOZE"
+                            )
+                        }
                         finally { pending.finish() }
                     }
                 }

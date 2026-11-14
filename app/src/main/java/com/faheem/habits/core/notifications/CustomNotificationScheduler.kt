@@ -77,10 +77,18 @@ object CustomNotificationScheduler {
         )
     }
 
-    suspend fun deliver(context: Context, id: Int) {
+    suspend fun deliver(context: Context, id: Int, isSnooze: Boolean = false) {
         val dao = AppDatabase.get(context).customNotificationDao()
         val notification = dao.getById(id) ?: return
-        if (notification.deleted || !notification.enabled) {
+        val isOneTime = notification.repeatMode == CustomNotificationTimeCalculator.ONCE
+        if (!CustomNotificationSnoozePolicy.shouldDeliver(
+                enabled = notification.enabled,
+                deleted = notification.deleted,
+                isSnooze = isSnooze,
+                isOneTime = isOneTime,
+                hasBeenDelivered = notification.lastDeliveredEpochMillis > 0
+            )
+        ) {
             cancel(context, id)
             return
         }
@@ -135,7 +143,7 @@ object CustomNotificationScheduler {
         )
 
         val now = System.currentTimeMillis()
-        if (notification.repeatMode == CustomNotificationTimeCalculator.ONCE) {
+        if (isOneTime) {
             dao.update(notification.copy(enabled = false, lastDeliveredEpochMillis = now, updatedAt = now, dirty = true))
             cancel(context, id)
         } else {
