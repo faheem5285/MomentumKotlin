@@ -824,11 +824,12 @@ private fun SettingLinkRow(
     Row(
         Modifier
             .fillMaxWidth()
+            .heightIn(min = 64.dp)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconBubble(icon, tint, 40.dp)
+        IconBubble(icon, tint, 44.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
@@ -836,8 +837,7 @@ private fun SettingLinkRow(
                 subtitle,
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                style = MaterialTheme.typography.bodySmall
             )
         }
         Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.outline)

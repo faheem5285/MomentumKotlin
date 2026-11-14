@@ -47,7 +47,7 @@ This is a source-level audit. Device screenshots, touch testing, font-scale test
 3. Modernize Home as the reference screen.
 4. Migrate feature screens in small, reviewable groups.
 5. Add consistent state handling and accessibility refinements.
-6. Run CI after each meaningful slice and perform device review before declaring visual verification complete.
+6. Batch related source changes, run automated checks after a substantial implementation change, and perform device review before declaring visual verification complete.
 
 ## Guardrails
 
@@ -67,6 +67,8 @@ The current branch includes the following Phase 4 implementation slices:
 - The Vault lock action uses a 48dp touch target.
 - Contacts now distinguishes a genuinely empty address book from a search with no matches, with clearer next-step guidance.
 - Life Rules pin and delete actions use explicit 48dp touch targets.
+- Settings navigation rows now have a larger minimum hit area, a larger icon surface, and subtitles that wrap instead of truncating at one line.
+- Habit insights achievement cards support expanded text, and To-do calendar dates expose larger targets and date/task/selection semantics.
 
 These are incremental improvements, not evidence that every feature screen has completed its full visual/accessibility review.
 
@@ -77,7 +79,7 @@ These are incremental improvements, not evidence that every feature screen has c
 - [x] Home screen structure review.
 - [x] Existing Phase 4 deferred-work review.
 - [x] Reduced-effects behavior improved in shared surfaces, Home, and To-do calendar.
-- [x] Selected touch targets and empty-state messaging improved.
+- [x] Selected touch targets, settings navigation rows, weekday labels, and empty-state messaging improved.
 - [ ] Complete per-screen visual consistency and accessibility pass.
 - [ ] Large-font and responsive-layout review on device.
 - [ ] Full device/reference-image review and interaction testing.

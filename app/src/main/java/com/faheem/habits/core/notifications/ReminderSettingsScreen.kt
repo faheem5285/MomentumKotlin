@@ -115,6 +115,11 @@ fun ReminderSettingsScreen(onBack: () -> Unit) {
                                     "${quietHours.first}:00 – ${quietHours.second}:00",
                                     fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                Text(
+                                    "Habit and task reminders are held until quiet hours end.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                             StatusPill("No alerts", MaterialTheme.colorScheme.secondary)
                         }
@@ -273,8 +278,9 @@ private fun ReminderCard(kind: ReminderKind, context: Context, enabled: Boolean,
     val minute = MomentumNotificationSettings.minute(context, kind.id)
     val weekday = MomentumNotificationSettings.weekday(context, kind.id)
     val days = listOf(
-        Calendar.MONDAY to "M", Calendar.TUESDAY to "T", Calendar.WEDNESDAY to "W",
-        Calendar.THURSDAY to "T", Calendar.FRIDAY to "F", Calendar.SATURDAY to "S", Calendar.SUNDAY to "S"
+        Calendar.MONDAY to "Mon", Calendar.TUESDAY to "Tue", Calendar.WEDNESDAY to "Wed",
+        Calendar.THURSDAY to "Thu", Calendar.FRIDAY to "Fri", Calendar.SATURDAY to "Sat",
+        Calendar.SUNDAY to "Sun"
     )
     PremiumCard(contentPadding = PaddingValues(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {

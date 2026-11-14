@@ -42,9 +42,7 @@
   verification of automatic sync and encrypted Vault sync.
 - Remaining Phase 2 architecture migration listed in
   [phase-2-architecture.md](./phase-2-architecture.md).
-- Phase 4 feature-card migration, predictive back, haptic feedback, and
-  device/reference-image comparison remain deferred; see
-  [phase-4-glass-ui-polish.md](./phase-4-glass-ui-polish.md).
+- Phase 4 still needs full per-screen device review, predictive-back validation, haptic-feedback review, and reference-image comparison; source-level accessibility refinements are recorded in [phase-4-ui-audit.md](./phase-4-ui-audit.md).
 - Phase 5 per-reminder sound/vibration, evening nudges, vendor-specific
   settings deep links, and physical-device delivery verification remain
   deferred; see [phase-5-reminders.md](./phase-5-reminders.md).

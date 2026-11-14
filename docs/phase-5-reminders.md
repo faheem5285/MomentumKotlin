@@ -37,6 +37,7 @@
   the health screen provides generic Xiaomi/Oppo/Vivo/Samsung/Huawei guidance.
 - Exact delivery, reboot behavior, Doze behavior, and OEM battery policies
   still require physical-device testing.
+- Android owns channel sound and vibration controls. Users can open each reminder type's channel settings from its reminder card; existing channel settings cannot be silently overridden by the app after Android has created the channel.
 
 ## Device verification
 
