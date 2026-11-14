@@ -1463,7 +1463,7 @@ private fun VaultHome(
                                 Text("+ $unreadable from an older key", fontSize = 12.sp, color = Color.White.copy(alpha = .8f))
                             }
                         }
-                        IconButton(onClick = onLock, modifier = Modifier.size(40.dp)) {
+                        IconButton(onClick = onLock, modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Rounded.Lock, "Lock vault now", tint = Color.White)
                         }
                     }
