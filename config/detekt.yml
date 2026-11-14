@@ -1,0 +1,17 @@
+build:
+  # Temporary ceiling for the 60 weighted legacy findings currently reported
+  # outside the checked-in baseline. Keep the baseline and this ceiling under
+  # review; any increase above this count fails CI.
+  maxIssues: 60
+
+complexity:
+  LongMethod:
+    active: false
+  LargeClass:
+    active: false
+
+style:
+  MagicNumber:
+    active: false
+  MaxLineLength:
+    active: false

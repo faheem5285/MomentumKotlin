@@ -1,0 +1,19 @@
+*.iml
+.gradle
+build/
+local.properties
+.idea
+.kotlin/
+# Node.js dependencies
+node_modules/
+**/node_modules/
+
+# Build files
+build/
+.gradle/
+**/build/
+
+# Environment files
+.env
+.env.*
+!.env.example

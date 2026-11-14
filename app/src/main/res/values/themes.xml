@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="instagram_scroll_counter_description">Checks app changes to show or hide the optional counter and counts Instagram scroll events. Does not read screen content.</string>
+    <style name="Theme.Zylo" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Zylo.Transparent" parent="android:Theme.Translucent.NoTitleBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>
