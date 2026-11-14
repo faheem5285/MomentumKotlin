@@ -17,13 +17,14 @@ class ExpenseRepository @Inject constructor(
     suspend fun setBudget(value: Double) = settings.setBudgetMinorUnits(value.toMinorUnits())
     suspend fun setCategoryBudget(category: String, value: Double) =
         settings.setCategoryBudgetMinorUnits(category, value.toMinorUnits())
-    suspend fun add(title: String, amount: Double, category: String, epochDay: Long) =
+    suspend fun add(title: String, amount: Double, category: String, epochDay: Long, account: String = "Cash") =
         dao.insert(
             Expense(
                 title = title.trim(),
                 amountMinorUnits = amount.toMinorUnits(),
                 category = category,
-                epochDay = epochDay
+                epochDay = epochDay,
+                account = account
             )
         )
     suspend fun delete(expense: Expense) = dao.delete(expense.id)

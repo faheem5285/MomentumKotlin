@@ -6,6 +6,7 @@ import com.faheem.habits.core.data.Habit
 import com.faheem.habits.core.data.Loan
 import com.faheem.habits.core.data.LoanPayment
 import com.faheem.habits.features.habits.computeStreaks
+import com.faheem.habits.features.loans.data.isValidLoanPayment
 import java.time.DayOfWeek
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
@@ -56,6 +57,14 @@ class Phase7LogicTest {
         assertTrue(status.warning)
         val loan = Loan(4, "A", 1000, true, "", 1)
         assertEquals(400, loanRemaining(loan, listOf(LoanPayment(loanId = 4, amountMinorUnits = 600, epochDay = 1))))
+    }
+
+    @Test
+    fun loanPaymentsCannotBeZeroNegativeOrExceedTheRemainingBalance() {
+        assertTrue(isValidLoanPayment(totalMinorUnits = 1000, paidMinorUnits = 400, paymentMinorUnits = 600))
+        assertTrue(!isValidLoanPayment(totalMinorUnits = 1000, paidMinorUnits = 400, paymentMinorUnits = 601))
+        assertTrue(!isValidLoanPayment(totalMinorUnits = 1000, paidMinorUnits = 400, paymentMinorUnits = 0))
+        assertTrue(!isValidLoanPayment(totalMinorUnits = 1000, paidMinorUnits = 400, paymentMinorUnits = -1))
     }
 
     @Test

@@ -584,6 +584,7 @@ interface LoanDao {
     @Insert suspend fun insert(loan: Loan): Long
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertImported(loan: Loan): Long
     @Query("SELECT * FROM loans WHERE uuid = :uuid LIMIT 1") suspend fun getByUuid(uuid: String): Loan?
+    @Query("SELECT * FROM loans WHERE id = :id AND deleted = 0 LIMIT 1") suspend fun getLoanById(id: Int): Loan?
     @Query("DELETE FROM loans") suspend fun deleteAll()
     @Update suspend fun update(loan: Loan)
     @Query("UPDATE loans SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")

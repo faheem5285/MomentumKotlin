@@ -68,8 +68,8 @@ class ExpenseViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
     fun setCategoryBudget(category: String, value: Double) { viewModelScope.launch { repository.setCategoryBudget(category, value) } }
     fun setBudget(value: Double) { viewModelScope.launch { repository.setBudget(value) } }
-    fun add(title: String, amount: Double, category: String, epochDay: Long) {
-        viewModelScope.launch { repository.add(title, amount, category, epochDay) }
+    fun add(title: String, amount: Double, category: String, epochDay: Long, account: String) {
+        viewModelScope.launch { repository.add(title, amount, category, epochDay, account) }
     }
     fun remove(expense: Expense) { viewModelScope.launch { repository.delete(expense) } }
 }
@@ -140,8 +140,8 @@ fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel()) {
         AddExpenseSheet(
             initialDate = defaultDate,
             onDismiss = { showAdd = false }
-        ) { title, amount, cat, date ->
-            vm.add(title, amount, cat, date)
+        ) { title, amount, cat, date, account ->
+            vm.add(title, amount, cat, date, account)
             showAdd = false
         }
     }
@@ -616,11 +616,12 @@ private fun BudgetSheet(value: Double, onDismiss: () -> Unit, onSave: (Double) -
 private fun AddExpenseSheet(
     initialDate: LocalDate,
     onDismiss: () -> Unit,
-    onSave: (String, Double, String, Long) -> Unit
+    onSave: (String, Double, String, Long, String) -> Unit
 ) {
     var amount by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
     var category by remember { mutableStateOf(categories[0].name) }
+    var account by remember { mutableStateOf("Cash") }
     var expenseDate by remember { mutableStateOf(initialDate) }
     var showDatePicker by remember { mutableStateOf(false) }
     if (showDatePicker) {
@@ -669,6 +670,12 @@ private fun AddExpenseSheet(
             Spacer(Modifier.width(8.dp))
             Text("Date · ${expenseDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))}")
         }
+        SectionHeader("Account")
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("Cash", "Bank", "Card", "Wallet").forEach { value ->
+                MomentumChip(selected = account == value, onClick = { account = value }, label = value)
+            }
+        }
         SectionHeader("Category")
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             categories.forEach { c ->
@@ -677,18 +684,18 @@ private fun AddExpenseSheet(
         }
         PrimaryButton("Save expense", onClick = {
             amount.toDoubleOrNull()?.takeIf { it > 0 }?.let {
-                onSave(title.ifBlank { category }, it, category, expenseDate.toEpochDay())
+                onSave(title.ifBlank { category }, it, category, expenseDate.toEpochDay(), account)
             }
         })
     }
 }
 
 private fun writeExpenseCsv(context: Context, uri: Uri, expenses: List<Expense>): Int {
-    val header = "Date,Title,Category,Amount\n"
+    val header = "Date,Title,Category,Account,Amount\n"
     val rows = expenses.sortedBy { it.epochDay }.joinToString("\n") { expense ->
         val date = LocalDate.ofEpochDay(expense.epochDay).toString()
         val amount = String.format(Locale.US, "%.2f", expense.amountMinorUnits / 100.0)
-        listOf(date, expense.title.csvCell(), expense.category.csvCell(), amount).joinToString(",")
+        listOf(date, expense.title.csvCell(), expense.category.csvCell(), expense.account.csvCell(), amount).joinToString(",")
     }
     val body = header + rows + if (rows.isEmpty()) "" else "\n"
     val stream = context.contentResolver.openOutputStream(uri)

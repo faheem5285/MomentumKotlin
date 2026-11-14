@@ -102,6 +102,10 @@ class LoanViewModel @Inject constructor(
     }
     fun addAttachment(loanId: Int, uri: String) { viewModelScope.launch { repository.addAttachment(loanId, uri) } }
     fun attachments(loanId: Int) = repository.attachments(loanId)
+    fun payments(loanId: Int) = repository.payments(loanId)
+    fun addPayment(loanId: Int, amount: Double, note: String) {
+        viewModelScope.launch { repository.addPayment(loanId, amount, note) }
+    }
     fun toggleSettled(loan: Loan) { update(loan.copy(settled = !loan.settled)) }
     fun remove(loan: Loan) { viewModelScope.launch { repository.remove(loan) } }
 }
@@ -254,17 +258,21 @@ fun LoansScreen(
         editing = null
         selected = null
     } }
-    selected?.let { loan ->
+    selected?.let { selectedLoan ->
+        val loan = loans.firstOrNull { it.id == selectedLoan.id } ?: selectedLoan
         val attachments by vm.attachments(loan.id).collectAsStateWithLifecycle(initialValue = emptyList())
+        val payments by vm.payments(loan.id).collectAsStateWithLifecycle(initialValue = emptyList())
         LoanDetailSheet(
             loan = loan,
             personProfile = people.firstOrNull { it.id == loan.personId },
             attachments = attachments,
+            payments = payments,
             onDismiss = { selected = null },
             onSettle = { vm.toggleSettled(loan); selected = null },
             onEdit = { editing = loan; selected = null },
             onDelete = { deleting = loan; selected = null },
-            onAttach = vm::addAttachment
+            onAttach = vm::addAttachment,
+            onAddPayment = { amount, note -> vm.addPayment(loan.id, amount, note) }
         )
     }
     deleting?.let { loan ->
@@ -730,14 +738,17 @@ private fun LoanDetailSheet(
     loan: Loan,
     personProfile: LoanPerson?,
     attachments: List<LoanAttachment>,
+    payments: List<LoanPayment>,
     onDismiss: () -> Unit,
     onSettle: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onAttach: (Int, String) -> Unit
+    onAttach: (Int, String) -> Unit,
+    onAddPayment: (Double, String) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var previewAvatar by remember(loan.id) { mutableStateOf(false) }
+    var showPaymentSheet by remember(loan.id) { mutableStateOf(false) }
     val color = if (loan.lent) LentColor else BorrowedColor
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -766,6 +777,34 @@ private fun LoanDetailSheet(
         if (loan.title.isNotBlank()) LoanDetailLine("Purpose", loan.title)
         loan.dueEpochDay?.let { LoanDetailLine("Deadline", dayText(it)) }
         if (loan.note.isNotBlank()) LoanDetailLine("Note", loan.note)
+        val paidMinorUnits = payments.sumOf { it.amountMinorUnits }
+        val remainingMinorUnits = (loan.amountMinorUnits - paidMinorUnits).coerceAtLeast(0L)
+        SectionHeader("Payment history", subtitle = "${money(paidMinorUnits)} paid · ${money(remainingMinorUnits)} remaining")
+        if (payments.isEmpty()) {
+            Text("No payments recorded yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+        } else {
+            payments.forEach { payment ->
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    LoanDetailLine(dayText(payment.epochDay), money(payment.amountMinorUnits))
+                    if (payment.note.isNotBlank()) {
+                        Text(payment.note, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        if (!loan.settled && remainingMinorUnits > 0L) {
+            SecondaryButton("Record payment", onClick = { showPaymentSheet = true }, icon = Icons.Rounded.Payments)
+        }
+        if (showPaymentSheet) {
+            LoanPaymentSheet(
+                remainingMinorUnits = remainingMinorUnits,
+                onDismiss = { showPaymentSheet = false },
+                onSave = { amount, note ->
+                    onAddPayment(amount, note)
+                    showPaymentSheet = false
+                }
+            )
+        }
         SectionHeader("Loan proof", subtitle = if (attachments.isEmpty()) "No proof files attached" else "${attachments.size} file${if (attachments.size == 1) "" else "s"}")
         attachments.forEach { attachment ->
             SecondaryButton("Preview · ${attachment.name}", onClick = { openProofFile(context, attachment.uri, attachment.mime) }, icon = Icons.Rounded.Visibility)
@@ -778,6 +817,43 @@ private fun LoanDetailSheet(
             Spacer(Modifier.width(8.dp))
             Text("Delete record", color = MaterialTheme.colorScheme.error)
         }
+    }
+}
+
+@Composable
+private fun LoanPaymentSheet(
+    remainingMinorUnits: Long,
+    onDismiss: () -> Unit,
+    onSave: (Double, String) -> Unit
+) {
+    var amount by remember { mutableStateOf("") }
+    var note by remember { mutableStateOf("") }
+    val parsedAmount = amount.toDoubleOrNull()
+    val amountMinorUnits = parsedAmount?.toMinorUnits()
+    val valid = amountMinorUnits != null && isValidLoanPayment(
+        remainingMinorUnits, 0L, amountMinorUnits
+    )
+    FormSheet("Record payment", onDismiss) {
+        Text("Remaining balance · ${money(remainingMinorUnits)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        MomentumTextField(
+            value = amount,
+            onValueChange = { amount = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) },
+            label = { Text("Payment amount") },
+            prefix = { Text(CURRENCY) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+        )
+        MomentumTextField(
+            value = note,
+            onValueChange = { note = it },
+            label = { Text("Note (optional)") },
+            singleLine = true
+        )
+        PrimaryButton(
+            "Save payment",
+            onClick = { if (valid && parsedAmount != null) onSave(parsedAmount, note) },
+            enabled = valid
+        )
     }
 }
 

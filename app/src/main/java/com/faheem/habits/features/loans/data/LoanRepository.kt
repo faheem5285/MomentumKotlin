@@ -6,10 +6,17 @@ import com.faheem.habits.core.data.Loan
 import com.faheem.habits.core.data.LoanAttachment
 import com.faheem.habits.core.data.LoanDao
 import com.faheem.habits.core.data.LoanPerson
+import com.faheem.habits.core.data.LoanPayment
+import com.faheem.habits.core.data.toMinorUnits
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
+
+internal fun isValidLoanPayment(totalMinorUnits: Long, paidMinorUnits: Long, paymentMinorUnits: Long): Boolean {
+    val remaining = (totalMinorUnits - paidMinorUnits).coerceAtLeast(0L)
+    return paymentMinorUnits > 0L && paymentMinorUnits <= remaining
+}
 
 @Suppress("TooManyFunctions")
 class LoanRepository @Inject constructor(
@@ -18,6 +25,36 @@ class LoanRepository @Inject constructor(
 ) {
     val loans: Flow<List<Loan>> = dao.getAll()
     val people: Flow<List<LoanPerson>> = dao.getPeople()
+
+    fun payments(loanId: Int): Flow<List<LoanPayment>> = dao.getPayments(loanId)
+
+    suspend fun addPayment(loanId: Int, amount: Double, note: String) {
+        val loan = dao.getLoanById(loanId) ?: return
+        if (loan.settled) return
+        val amountMinorUnits = amount.toMinorUnits()
+        val paidBefore = dao.getPaidAmount(loanId)
+        require(isValidLoanPayment(loan.amountMinorUnits, paidBefore, amountMinorUnits)) {
+            "Payment must be greater than zero and cannot exceed the remaining balance."
+        }
+        dao.insertPayment(
+            LoanPayment(
+                loanId = loanId,
+                amountMinorUnits = amountMinorUnits,
+                epochDay = com.faheem.habits.core.data.today(),
+                note = note.trim()
+            )
+        )
+        if (paidBefore + amountMinorUnits >= loan.amountMinorUnits) {
+            dao.update(
+                loan.copy(
+                    settled = true,
+                    status = "settled",
+                    updatedAt = System.currentTimeMillis(),
+                    dirty = true
+                )
+            )
+        }
+    }
 
     suspend fun addPerson(person: LoanPerson) {
         dao.insertPerson(person.copy(name = person.name.trim()))

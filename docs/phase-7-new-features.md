@@ -31,9 +31,15 @@ applied to a missed scheduled day, synced through the existing skip record,
 and counted as neutral days in current/best streak calculations.
 
 Remaining UI work: Glance widget, quantity/timer editors, completion notes,
-to-do subtasks and drag controls, money account selectors, loan reminder
-actions, file tags/thumbnails/missing state, screen-time limit notifications,
-global search, optional app lock, localization, and About.
+to-do subtasks and drag controls, loan reminder actions, file tags/thumbnails/
+missing state, screen-time limit notifications, global search, optional app
+lock, localization, and About.
+
+- Expenses now let users assign Cash, Bank, Card, or Wallet to each new record;
+  the selected account is retained in Room and included in CSV exports.
+- Loan details now show payment history and remaining balance, allow partial
+  payments, reject zero/negative/over-balance payments, and mark a loan settled
+  when its full amount has been paid.
 
 ### To-do recurrence implementation
 
