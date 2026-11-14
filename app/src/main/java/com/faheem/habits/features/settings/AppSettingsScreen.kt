@@ -85,7 +85,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.faheem.habits.BuildConfig
 import com.faheem.habits.R
-import com.faheem.habits.core.data.AppDatabase
 import com.faheem.habits.core.data.backup.MomentumBackup
 import com.faheem.habits.core.data.backup.WeeklyBackupSettings
 import com.faheem.habits.core.notifications.ReminderSettingsScreen
@@ -127,7 +126,7 @@ fun AppSettingsScreen() {
     var weeklyEnabled by remember { mutableStateOf(WeeklyBackupSettings.enabled(context)) }
     var weeklyFolder by remember { mutableStateOf(WeeklyBackupSettings.folder(context)) }
     var lastBackupAt by remember { mutableLongStateOf(WeeklyBackupSettings.lastBackupAt(context)) }
-    var databaseVersion by remember { mutableIntStateOf(0) }
+    val databaseVersion by settingsViewModel.databaseVersion.collectAsStateWithLifecycle()
     var integrityMessage by remember { mutableStateOf<String?>(null) }
     val themeMode by AppearancePreferences.themeMode.collectAsStateWithLifecycle()
     val reduceMotion by AppearancePreferences.reduceMotion.collectAsStateWithLifecycle()
@@ -175,11 +174,6 @@ fun AppSettingsScreen() {
                 .onFailure {
                     backupMessage = "Could not save folder access: ${it.message ?: "permission unavailable"}"
                 }
-        }
-    }
-    LaunchedEffect(context) {
-        databaseVersion = withContext(Dispatchers.IO) {
-            AppDatabase.get(context).openHelper.readableDatabase.version
         }
     }
     pendingImport?.let { (uri, preview) ->
@@ -366,12 +360,7 @@ fun AppSettingsScreen() {
                         scope.launch {
                             backupBusy = true
                             integrityMessage = try {
-                                withContext(Dispatchers.IO) {
-                                    AppDatabase.get(context).openHelper.readableDatabase
-                                        .query("PRAGMA integrity_check").use { cursor ->
-                                            if (cursor.moveToFirst()) cursor.getString(0) else "No result"
-                                        }
-                                }
+                                settingsViewModel.checkDatabaseIntegrity()
                             } catch (e: Exception) {
                                 "Integrity check failed: ${e.message ?: "unknown error"}"
                             } finally {
