@@ -22,6 +22,11 @@ object MomentumBackup {
     private val LEGACY_SCHEMA_VERSIONS = setOf(11, 13)
     private const val MAX_BYTES = 10 * 1024 * 1024
     private const val MAX_ROWS = 10_000
+    private val BACKUP_ARRAY_KEYS = listOf(
+        "habits", "completions", "habitSkips", "reminders", "expenses", "categoryBudgets",
+        "contacts", "loanPeople", "loans", "loanAttachments", "loanPayments", "files",
+        "todos", "lifeRules", "lifeRuleFiles", "customNotifications"
+    )
 
     data class Preview(
         val habits: Int,
@@ -177,6 +182,7 @@ object MomentumBackup {
                 .put("settings", settingsBackup)
             result
         }
+        validateRecordLimits(root)
         val bytes = root.toString(2).toByteArray(Charsets.UTF_8)
         require(bytes.size <= MAX_BYTES) { "Backup is larger than the 10 MB safety limit." }
         bytes
@@ -441,6 +447,13 @@ object MomentumBackup {
         return "${if(replace) "Replaced with" else "Added"} $added records. Vault entries are kept separately and were not imported."
     }
 
+    internal fun validateRecordLimits(root: JSONObject) {
+        BACKUP_ARRAY_KEYS.forEach { key ->
+            val rows = root.optJSONArray(key) ?: error("Backup is missing '$key' data.")
+            require(rows.length() <= MAX_ROWS) { "Too many records in '$key'." }
+        }
+    }
+
     private suspend fun lifeRulesJson(db: AppDatabase): JSONArray {
         val rules = JSONArray()
         db.lifeRuleDao().getAllForBackup().forEach { r ->
@@ -480,14 +493,7 @@ object MomentumBackup {
             else -> error("This backup version is not supported.")
         }
         require(root.optLong("exportedAt",0)>0) { "Backup timestamp is missing." }
-        listOf(
-            "habits","completions","habitSkips","reminders","expenses","categoryBudgets",
-            "contacts","loanPeople","loans","loanAttachments","loanPayments","files",
-            "todos","lifeRules","lifeRuleFiles","customNotifications"
-        ).forEach { key ->
-            val rows=root.optJSONArray(key) ?: error("Backup is missing '$key' data.")
-            require(rows.length()<=MAX_ROWS) { "Too many records in '$key'." }
-        }
+        validateRecordLimits(root)
         return root
     }
 
