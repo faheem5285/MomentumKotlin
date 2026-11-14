@@ -92,7 +92,11 @@ class ToDoViewModel @Inject constructor(
     }
 
     fun toggle(item: ToDoItem) = viewModelScope.launch {
-        val changed = item.copy(completed = !item.completed)
+        val changed = if (!item.completed && item.repeatRule.isNotBlank()) {
+            ToDoRepeatPolicy.advance(item)
+        } else {
+            item.copy(completed = !item.completed)
+        }
         repository.save(changed)
         if (changed.completed) {
             ToDoReminderScheduler.cancel(context, changed.id)
@@ -564,6 +568,7 @@ private fun ToDoEditorSheet(initial: ToDoItem?, onDismiss: () -> Unit, onSave: (
     var date by remember(initial?.id) { mutableStateOf(LocalDate.ofEpochDay(initial?.dueEpochDay ?: today())) }
     var category by remember(initial?.id) { mutableStateOf(initial?.category ?: "Personal") }
     var priority by remember(initial?.id) { mutableIntStateOf(initial?.priority ?: 1) }
+    var repeatRule by remember(initial?.id) { mutableStateOf(initial?.repeatRule.orEmpty()) }
     var reminderHour by remember(initial?.id) { mutableStateOf(initial?.reminderHour) }
     var reminderMinute by remember(initial?.id) { mutableStateOf(initial?.reminderMinute) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
@@ -590,6 +595,19 @@ private fun ToDoEditorSheet(initial: ToDoItem?, onDismiss: () -> Unit, onSave: (
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             priorityLabels.forEachIndexed { index, value -> MomentumChip(selected = priority == index, onClick = { priority = index }, label = value) }
         }
+        SectionHeader("Repeat")
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("" to "Never", "daily" to "Daily", "weekly" to "Weekly", "monthly" to "Monthly", "yearly" to "Yearly").forEach { (rule, label) ->
+                MomentumChip(selected = repeatRule == rule, onClick = { repeatRule = rule }, label = label)
+            }
+        }
+        if (repeatRule.isNotBlank()) {
+            Text(
+                "When you complete or skip this task, it moves to its next scheduled date.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         SectionHeader("Reminder")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             MomentumOutlinedButton(
@@ -615,7 +633,8 @@ private fun ToDoEditorSheet(initial: ToDoItem?, onDismiss: () -> Unit, onSave: (
             if (title.isNotBlank()) {
                 onSave((initial ?: ToDoItem(title = "", dueEpochDay = date.toEpochDay())).copy(
                     title = title.trim(), notes = notes.trim(), dueEpochDay = date.toEpochDay(),
-                    category = category, priority = priority, reminderHour = reminderHour, reminderMinute = reminderMinute
+                    category = category, priority = priority, repeatRule = repeatRule,
+                    reminderHour = reminderHour, reminderMinute = reminderMinute
                 ))
             }
         })

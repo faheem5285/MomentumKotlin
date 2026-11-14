@@ -7,6 +7,7 @@ import com.faheem.habits.core.notifications.ToDoReminderDeliveryPolicy
 import com.faheem.habits.core.notifications.HabitReminderDeliveryPolicy
 import com.faheem.habits.core.notifications.CustomNotificationDeliveryPolicy
 import com.faheem.habits.core.notifications.CustomNotificationSnoozePolicy
+import com.faheem.habits.core.notifications.ToDoRepeatPolicy
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -75,6 +76,50 @@ class ReminderTimeCalculatorTest {
 
         assertNull(ReminderTimeCalculator.nextTodo(completed, now))
         assertNull(ReminderTimeCalculator.nextTodo(missed, now))
+    }
+
+    @Test
+    fun repeatingTodoMovesToNextOccurrenceWhenCompletedOrSkipped() {
+        val due = LocalDate.of(2025, 10, 30)
+        val item = ToDoItem(
+            id = 7, title = "Weekly review", dueEpochDay = due.toEpochDay(),
+            repeatRule = "weekly", reminderHour = 9, reminderMinute = 0
+        )
+        val completed = ToDoRepeatPolicy.advance(item, due.toEpochDay())
+        assertEquals(due.plusWeeks(1).toEpochDay(), completed.dueEpochDay)
+        assertFalse(completed.completed)
+        assertEquals(9, completed.reminderHour)
+
+        val skipped = ToDoRepeatPolicy.skip(item, due.toEpochDay())
+        assertEquals(due.plusWeeks(1).toEpochDay(), skipped.dueEpochDay)
+        assertEquals(9, skipped.reminderHour)
+    }
+
+    @Test
+    fun repeatRulesAdvanceAcrossCalendarBoundariesAndPastOccurrences() {
+        val january31 = LocalDate.of(2025, 1, 31)
+        assertEquals(LocalDate.of(2025, 2, 28), ToDoRepeatPolicy.nextDate("monthly", january31))
+        assertEquals(LocalDate.of(2026, 1, 31), ToDoRepeatPolicy.nextDate("yearly", january31))
+
+        val oldDaily = ToDoItem(
+            id = 8, title = "Daily check", dueEpochDay = january31.toEpochDay(),
+            repeatRule = "daily", reminderHour = 8, reminderMinute = 0
+        )
+        val advanced = ToDoRepeatPolicy.advance(oldDaily, LocalDate.of(2025, 2, 3).toEpochDay())
+        assertEquals(LocalDate.of(2025, 2, 4).toEpochDay(), advanced.dueEpochDay)
+    }
+
+    @Test
+    fun repeatingTodoReminderSchedulesNextDateAfterTodaysTimeHasPassed() {
+        val now = ZonedDateTime.of(2025, 10, 30, 10, 0, 0, 0, zone)
+        val repeating = ToDoItem(
+            id = 9, title = "Daily check", dueEpochDay = LocalDate.of(2025, 10, 30).toEpochDay(),
+            repeatRule = "daily", reminderHour = 9, reminderMinute = 30
+        )
+        assertEquals(
+            ZonedDateTime.of(2025, 10, 31, 9, 30, 0, 0, zone),
+            ReminderTimeCalculator.nextTodo(repeating, now)
+        )
     }
 
     @Test

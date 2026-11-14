@@ -521,15 +521,19 @@ object ToDoReminderScheduler {
                 "To-do reminders"
             )
         }
-        dao.update(
-            item.copy(
-                reminderHour = null,
-                reminderMinute = null,
-                updatedAt = System.currentTimeMillis(),
-                dirty = true
+        if (item.repeatRule.isBlank()) {
+            dao.update(
+                item.copy(
+                    reminderHour = null,
+                    reminderMinute = null,
+                    updatedAt = System.currentTimeMillis(),
+                    dirty = true
+                )
             )
-        )
-        cancel(context, id)
+            cancel(context, id)
+        } else {
+            schedule(context, item)
+        }
     }
 
     fun snooze(context: Context, id: Int, minutes: Int) {
@@ -544,15 +548,13 @@ object ToDoReminderScheduler {
     suspend fun skip(context: Context, id: Int) {
         val dao = AppDatabase.get(context).toDoDao()
         val item = dao.getById(id) ?: return
-        dao.update(
-            item.copy(
-                reminderHour = null,
-                reminderMinute = null,
-                updatedAt = System.currentTimeMillis(),
-                dirty = true
-            )
-        )
-        cancel(context, id)
+        val changed = ToDoRepeatPolicy.skip(item)
+        dao.update(changed)
+        if (changed.completed || changed.reminderHour == null || changed.reminderMinute == null) {
+            cancel(context, id)
+        } else {
+            schedule(context, changed)
+        }
     }
 }
 
@@ -615,18 +617,25 @@ class MomentumReminderReceiver : BroadcastReceiver() {
                                 when (intent.action) {
                                     ACTION_DONE -> {
                                         val dao = AppDatabase.get(context).toDoDao()
-                                        dao.getById(todoId)?.let {
-                                            dao.update(
-                                                it.copy(
+                                        dao.getById(todoId)?.let { item ->
+                                            val changed = if (item.repeatRule.isBlank()) {
+                                                item.copy(
                                                     completed = true,
                                                     reminderHour = null,
                                                     reminderMinute = null,
                                                     updatedAt = System.currentTimeMillis(),
                                                     dirty = true
                                                 )
-                                            )
+                                            } else {
+                                                ToDoRepeatPolicy.advance(item)
+                                            }
+                                            dao.update(changed)
+                                            if (changed.completed || changed.reminderHour == null || changed.reminderMinute == null) {
+                                                ToDoReminderScheduler.cancel(context, todoId)
+                                            } else {
+                                                ToDoReminderScheduler.schedule(context, changed)
+                                            }
                                         }
-                                        ToDoReminderScheduler.cancel(context, todoId)
                                     }
                                     ACTION_SNOOZE -> ToDoReminderScheduler.snooze(context, todoId, minutes)
                                     ACTION_SKIP -> ToDoReminderScheduler.skip(context, todoId)

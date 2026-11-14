@@ -28,6 +28,16 @@
 
 The existing screens still need to expose the new data: streak-freeze controls,
 Glance widget, quantity/timer editors, completion notes, to-do subtasks and
-drag/repeat controls, money charts/export/account selectors, loan payment and
+drag controls, money charts/export/account selectors, loan payment and
 reminder actions, file tags/thumbnails/missing state, screen-time limit
 notifications, global search, optional app lock, localization, and About.
+
+### To-do recurrence implementation
+
+- Added Never, Daily, Weekly, Monthly, and Yearly choices to the task editor.
+- Repeating tasks advance to the next future occurrence when completed or
+  skipped, including notification actions; the saved reminder time is retained.
+- A reminder that fires for a repeating task schedules the next occurrence
+  rather than clearing the reminder fields.
+- Added unit coverage for month-end dates, overdue recurrence catch-up, skip,
+  completion, and reminder rescheduling.

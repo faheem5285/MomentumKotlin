@@ -25,8 +25,16 @@ internal object ReminderTimeCalculator {
         if (item.completed) return null
         val hour = item.reminderHour ?: return null
         val minute = item.reminderMinute ?: return null
-        return LocalDate.ofEpochDay(item.dueEpochDay).atTime(hour, minute).atZone(now.zone)
-            .takeIf { it.isAfter(now) }
+        var dueDate = LocalDate.ofEpochDay(item.dueEpochDay)
+        var candidate = dueDate.atTime(hour, minute).atZone(now.zone)
+        if (item.repeatRule.isNotBlank()) {
+            while (!candidate.isAfter(now)) {
+                dueDate = ToDoRepeatPolicy.nextDate(item.repeatRule, dueDate) ?: return null
+                candidate = dueDate.atTime(hour, minute).atZone(now.zone)
+            }
+            return candidate
+        }
+        return candidate.takeIf { it.isAfter(now) }
     }
 
 
@@ -51,6 +59,50 @@ internal object ReminderTimeCalculator {
     }
 }
 
+
+/** Recurrence rules shared by task completion, Skip, and reminder rescheduling. */
+internal object ToDoRepeatPolicy {
+    fun nextDate(rule: String, from: LocalDate): LocalDate? = when (rule.lowercase()) {
+        "daily" -> from.plusDays(1)
+        "weekly" -> from.plusWeeks(1)
+        "monthly" -> from.plusMonths(1)
+        "yearly" -> from.plusYears(1)
+        else -> null
+    }
+
+    fun advance(item: ToDoItem, todayEpochDay: Long = LocalDate.now().toEpochDay()): ToDoItem {
+        var next = nextDate(item.repeatRule, LocalDate.ofEpochDay(item.dueEpochDay)) ?: return item.copy(
+            completed = true,
+            reminderHour = null,
+            reminderMinute = null,
+            updatedAt = System.currentTimeMillis(),
+            dirty = true
+        )
+        val today = LocalDate.ofEpochDay(todayEpochDay)
+        while (!next.isAfter(today)) {
+            next = nextDate(item.repeatRule, next) ?: return item.copy(
+                completed = true,
+                reminderHour = null,
+                reminderMinute = null,
+                updatedAt = System.currentTimeMillis(),
+                dirty = true
+            )
+        }
+        return item.copy(
+            dueEpochDay = next.toEpochDay(),
+            dueEpochMillis = null,
+            completed = false,
+            updatedAt = System.currentTimeMillis(),
+            dirty = true
+        )
+    }
+
+    fun skip(item: ToDoItem, todayEpochDay: Long = LocalDate.now().toEpochDay()): ToDoItem =
+        if (item.repeatRule.isBlank()) item.copy(
+            reminderHour = null, reminderMinute = null,
+            updatedAt = System.currentTimeMillis(), dirty = true
+        ) else advance(item, todayEpochDay).copy(updatedAt = System.currentTimeMillis(), dirty = true)
+}
 
 /** Delivery gate kept pure so stale alarms cannot consume saved reminder settings. */
 internal object ToDoReminderDeliveryPolicy {
