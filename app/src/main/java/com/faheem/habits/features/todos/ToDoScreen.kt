@@ -119,11 +119,25 @@ fun ToDoScreen(
     var query by remember { mutableStateOf("") }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
     var month by remember { mutableStateOf(YearMonth.now()) }
+    var pendingDelete by remember { mutableStateOf<ToDoItem?>(null) }
     LaunchedEffect(initialTaskId, openRequestToken, tasks) {
         initialTaskId?.let { id ->
             tasks.firstOrNull { it.id == id }?.let { editing = it }
         }
     }
+    pendingDelete?.let { task ->
+        ConfirmDialog(
+            title = "Delete task?",
+            message = "\"${task.title}\" will be permanently removed from your task list.",
+            confirmLabel = "Delete",
+            onConfirm = {
+                vm.delete(task)
+                pendingDelete = null
+            },
+            onDismiss = { pendingDelete = null }
+        )
+    }
+
     val openTasks = tasks.filterNot { it.completed }
     val today = LocalDate.now()
     val overdueCount = openTasks.count { LocalDate.ofEpochDay(it.dueEpochDay).isBefore(today) }
@@ -264,7 +278,7 @@ fun ToDoScreen(
                         }
                     }
                     items(filtered, key = { it.id }) { task ->
-                        ToDoCard(task, onClick = { editing = task }, onToggle = { vm.toggle(task) }, onDelete = { vm.delete(task) })
+                        ToDoCard(task, onClick = { editing = task }, onToggle = { vm.toggle(task) }, onDelete = { pendingDelete = task })
                     }
                 }
                 1 -> CalendarAgenda(
@@ -282,13 +296,13 @@ fun ToDoScreen(
                     onSelect = { selectedDate = it },
                     onEdit = { editing = it },
                     onToggle = vm::toggle,
-                    onDelete = vm::delete
+                    onDelete = { pendingDelete = it }
                 )
                 else -> CompletedList(
                     tasks = tasks.filter { it.completed }.sortedByDescending { it.dueEpochDay },
                     onEdit = { editing = it },
                     onToggle = vm::toggle,
-                    onDelete = vm::delete
+                    onDelete = { pendingDelete = it }
                 )
             }
             MomentumFab(
