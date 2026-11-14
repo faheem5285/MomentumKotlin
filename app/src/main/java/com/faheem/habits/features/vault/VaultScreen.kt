@@ -123,11 +123,17 @@ class VaultViewModel @Inject constructor(
         linkExistingVault(masterPassword)
 
     suspend fun unlockWithAccount(): ByteArray = withContext(Dispatchers.IO) {
-        val accountKey = accountKeys.fetchVaultKey()
-        if (accountKey != null) {
-            vaultSync.syncVaultEntries(accountKey, fullPull = true)
-            prefs.edit().putBoolean(accountLinkedPref, true).apply()
-            return@withContext accountKey
+        val existingKey = accountKeys.fetchVaultKey()
+        if (existingKey != null) {
+            try {
+                VaultCrypto.requireVmk(existingKey)
+                vaultSync.syncVaultEntries(existingKey, fullPull = true)
+                prefs.edit().putBoolean(accountLinkedPref, true).apply()
+                return@withContext existingKey
+            } catch (failure: Exception) {
+                existingKey.fill(0)
+                throw failure
+            }
         }
         if (isConfigured()) {
             error("This device has older encrypted Vault data, but this account has no Vault key. The existing records were left unchanged and cannot be opened by this account-only Vault.")
@@ -139,15 +145,20 @@ class VaultViewModel @Inject constructor(
             "Encrypted account records exist without an account key. A new key cannot decrypt them; restore a matching backup."
         }
         val generatedKey = VaultCrypto.newVmk()
+        var savedKey: ByteArray? = null
         try {
             accountKeys.saveVaultKeyIfAbsent(generatedKey)
-            val savedKey = accountKeys.fetchVaultKey()
+            savedKey = accountKeys.fetchVaultKey()
                 ?: error("The account key was not available after saving.")
+            VaultCrypto.requireVmk(savedKey)
             vaultSync.syncVaultEntries(savedKey, fullPull = true)
             prefs.edit().putBoolean(accountLinkedPref, true).apply()
-            savedKey
+            val unlockedKey = savedKey
+            savedKey = null
+            unlockedKey
         } finally {
             generatedKey.fill(0)
+            savedKey?.fill(0)
         }
     }
 
