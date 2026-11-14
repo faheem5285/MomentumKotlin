@@ -27,7 +27,15 @@ VMK as Base64 text in the separate `momentum_vault_keys.key_material` row. RLS
 limits ordinary API access to the signed-in account. A Supabase project
 administrator or service-role holder can read that key and decrypt the synced
 Vault entries. Account sign-in can retrieve the VMK without the master
-password. This implementation is **not end-to-end encrypted against the cloud
+password. On a new device, the app fetches the existing account VMK, validates
+that it is exactly 256 bits, and performs a full Vault pull before exposing the
+Vault. If the key fetch or sync fails, the in-memory key copy is cleared and
+the Vault remains locked. A new account key is created only when there are no
+local encrypted records and no remote Vault records; this prevents silently
+replacing a key that may protect existing data. The app does not overwrite an
+existing cloud key during account recovery.
+
+This implementation is **not end-to-end encrypted against the cloud
 operator**.
 
 **Phase 2 decision (2026-11-13): retain the current account-only Vault unlock.**
