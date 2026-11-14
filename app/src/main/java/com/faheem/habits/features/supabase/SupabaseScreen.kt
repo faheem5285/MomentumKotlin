@@ -62,7 +62,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.work.WorkInfo
-import androidx.work.WorkManager
 import com.faheem.habits.core.data.SyncState
 import com.faheem.habits.features.supabase.data.SupabaseStatusRepository
 import com.faheem.habits.core.data.supabase.StorageUsage
@@ -127,6 +126,7 @@ class SupabaseStatusViewModel @Inject constructor(
     repository: SupabaseStatusRepository
 ) : ViewModel() {
     val syncStates = repository.syncStates
+    val syncWorkInfos = repository.syncWorkInfos
 }
 
 private data class SupabaseMetrics(
@@ -143,10 +143,7 @@ fun SupabaseScreen(vm: SupabaseStatusViewModel = hiltViewModel()) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val syncStates by vm.syncStates.collectAsStateWithLifecycle(initialValue = emptyList())
-    val syncWorkInfos by remember(context) {
-        WorkManager.getInstance(context.applicationContext)
-            .getWorkInfosForUniqueWorkFlow("momentum-sync")
-    }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val syncWorkInfos by vm.syncWorkInfos.collectAsStateWithLifecycle(initialValue = emptyList())
     val syncWorkState = syncWorkInfos.firstOrNull { it.state == WorkInfo.State.RUNNING }?.state
         ?: syncWorkInfos.firstOrNull {
             it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED
