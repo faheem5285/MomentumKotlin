@@ -56,11 +56,28 @@ This is a source-level audit. Device screenshots, touch testing, font-scale test
 - Keep changes small and reversible; update screenshots/reference notes when device review is available.
 - Record only checks that actually ran. CI success is not a substitute for physical-device visual/accessibility verification.
 
+## Implementation update — 2026-11-14
+
+The current branch includes the following Phase 4 implementation slices:
+
+- Shared glass surfaces suppress decorative aurora layers and reduce elevation when Reduce effects is enabled.
+- Shared UI components apply the Reduce effects preference to decorative effects and animation timing.
+- Home improves the Settings touch target and suppresses decorative bloom/shadow effects when Reduce effects is enabled.
+- The To-do calendar removes its date-selection color transition when Reduce effects is enabled.
+- The Vault lock action uses a 48dp touch target.
+- Contacts now distinguishes a genuinely empty address book from a search with no matches, with clearer next-step guidance.
+- Life Rules pin and delete actions use explicit 48dp touch targets.
+
+These are incremental improvements, not evidence that every feature screen has completed its full visual/accessibility review.
+
 ## Audit status
 
 - [x] Source-level navigation and app-entry review.
 - [x] Shared theme/glass/component review.
 - [x] Home screen structure review.
 - [x] Existing Phase 4 deferred-work review.
-- [ ] Full device/reference-image review.
-- [ ] Complete per-screen accessibility and interaction pass.
+- [x] Reduced-effects behavior improved in shared surfaces, Home, and To-do calendar.
+- [x] Selected touch targets and empty-state messaging improved.
+- [ ] Complete per-screen visual consistency and accessibility pass.
+- [ ] Large-font and responsive-layout review on device.
+- [ ] Full device/reference-image review and interaction testing.

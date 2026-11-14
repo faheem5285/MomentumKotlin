@@ -374,7 +374,7 @@ private fun LifeRuleCard(
                     }
                 }
             }
-            IconButton(onClick = onTogglePin) {
+            IconButton(onClick = onTogglePin, modifier = Modifier.size(48.dp)) {
                 Icon(
                     Icons.Rounded.PushPin,
                     contentDescription = if (rule.pinned) "Unpin entry" else "Pin entry",
@@ -382,7 +382,7 @@ private fun LifeRuleCard(
                     modifier = Modifier.size(19.dp)
                 )
             }
-            IconButton(onClick = onDelete) {
+            IconButton(onClick = onDelete, modifier = Modifier.size(48.dp)) {
                 Icon(
                     Icons.Rounded.DeleteOutline,
                     contentDescription = "Delete entry",

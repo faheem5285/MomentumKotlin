@@ -229,7 +229,15 @@ fun ContactsScreen(vm: ContactsViewModel = viewModel()) {
             }
             if (filtered.isEmpty()) {
                 item {
-                    EmptyState(Icons.Rounded.PersonAdd, "No contacts found", "Add a contact to start your address book.")
+                    EmptyState(
+                        Icons.Rounded.PersonAdd,
+                        if (contacts.isEmpty()) "Your address book is empty" else "No matching contacts",
+                        if (contacts.isEmpty()) {
+                            "Add a contact to keep important names, phone numbers and email addresses together."
+                        } else {
+                            "Try another name, phone number or email address."
+                        }
+                    )
                     PrimaryButton("Add contact", onClick = { creating = true }, icon = Icons.Rounded.PersonAdd)
                 }
             }
