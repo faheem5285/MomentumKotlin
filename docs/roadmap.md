@@ -43,6 +43,7 @@
 - Remaining Phase 2 architecture migration listed in
   [phase-2-architecture.md](./phase-2-architecture.md).
 - Phase 4 still needs full per-screen device review, predictive-back validation, haptic-feedback review, and reference-image comparison; source-level accessibility refinements are recorded in [phase-4-ui-audit.md](./phase-4-ui-audit.md).
+- Broader Phase 5 module-by-module usability work is tracked in [phase-5-module-usability.md](./phase-5-module-usability.md); it remains in progress until each module and its device checks are reviewed.
 - Phase 5 per-reminder sound/vibration, evening nudges, vendor-specific
   settings deep links, and physical-device delivery verification remain
   deferred; see [phase-5-reminders.md](./phase-5-reminders.md).
