@@ -2,6 +2,7 @@
 
 package com.faheem.habits.core.ui
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -77,6 +78,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -1129,6 +1131,7 @@ fun CompletionToggle(
     size: Dp = 36.dp
 ) {
     val reduceEffects = LocalReduceEffects.current
+    val view = LocalView.current
     val background by animateColorAsState(
         if (checked) color else Color.Transparent,
         animationSpec = tween(if (reduceEffects) 0 else MomentumTokens.motionShort),
@@ -1140,7 +1143,10 @@ fun CompletionToggle(
             .toggleable(
                 value = checked,
                 role = Role.Checkbox,
-                onValueChange = { onClick() }
+                onValueChange = {
+                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    onClick()
+                }
             )
             .semantics {
                 contentDescription = if (checked) "Completed" else "Mark as complete"
