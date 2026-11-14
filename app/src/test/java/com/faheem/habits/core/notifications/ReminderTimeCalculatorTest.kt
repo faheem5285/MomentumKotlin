@@ -3,9 +3,12 @@ package com.faheem.habits
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.notifications.ReminderTimeCalculator
 import com.faheem.habits.core.notifications.QuietHoursPolicy
+import com.faheem.habits.core.notifications.ToDoReminderDeliveryPolicy
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneId
@@ -69,6 +72,30 @@ class ReminderTimeCalculatorTest {
 
         assertNull(ReminderTimeCalculator.nextTodo(completed, now))
         assertNull(ReminderTimeCalculator.nextTodo(missed, now))
+    }
+
+    @Test
+    fun staleTodoAlarmDoesNotDeliverWhenTaskOrNotificationsAreInactive() {
+        assertFalse(ToDoReminderDeliveryPolicy.shouldDeliver(
+            completed = true,
+            masterEnabled = true,
+            notificationsAllowed = true
+        ))
+        assertFalse(ToDoReminderDeliveryPolicy.shouldDeliver(
+            completed = false,
+            masterEnabled = false,
+            notificationsAllowed = true
+        ))
+        assertFalse(ToDoReminderDeliveryPolicy.shouldDeliver(
+            completed = false,
+            masterEnabled = true,
+            notificationsAllowed = false
+        ))
+        assertTrue(ToDoReminderDeliveryPolicy.shouldDeliver(
+            completed = false,
+            masterEnabled = true,
+            notificationsAllowed = true
+        ))
     }
 
     @Test

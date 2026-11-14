@@ -458,9 +458,19 @@ object ToDoReminderScheduler {
     suspend fun deliver(context: Context, id: Int) {
         val dao = AppDatabase.get(context).toDoDao()
         val item = dao.getById(id) ?: return
+        val canDeliver = ToDoReminderDeliveryPolicy.shouldDeliver(
+            completed = item.completed,
+            masterEnabled = MomentumNotificationSettings.masterEnabled(context),
+            notificationsAllowed = MomentumNotificationSettings.notificationsAllowed(context)
+        )
+        if (!canDeliver) {
+            // A stale alarm must never erase the user's saved reminder settings.
+            cancel(context, id)
+            return
+        }
         // A task reminder that lands during quiet hours must be deferred, not
         // silently cleared. Keep its Room reminder fields intact until delivery.
-        if (!item.completed && MomentumNotificationSettings.isQuietHours(context)) {
+        if (MomentumNotificationSettings.isQuietHours(context)) {
             val (quietStart, quietEnd) = MomentumNotificationSettings.quietHours(context)
             val quietEndMillis = QuietHoursPolicy.nextEndMillis(Calendar.getInstance(), quietStart, quietEnd)
             if (quietEndMillis != null) {

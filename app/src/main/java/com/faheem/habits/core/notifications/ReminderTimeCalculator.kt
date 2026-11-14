@@ -29,6 +29,14 @@ internal object ReminderTimeCalculator {
             .takeIf { it.isAfter(now) }
     }
 
+
+
+/** Delivery gate kept pure so stale alarms cannot consume saved reminder settings. */
+internal object ToDoReminderDeliveryPolicy {
+    fun shouldDeliver(completed: Boolean, masterEnabled: Boolean, notificationsAllowed: Boolean): Boolean =
+        !completed && masterEnabled && notificationsAllowed
+}
+
     /** Next occurrence of one of the built-in reminder types. */
     fun nextScheduled(
         hour: Int,
