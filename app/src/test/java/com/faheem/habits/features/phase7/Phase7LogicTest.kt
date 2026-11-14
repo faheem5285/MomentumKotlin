@@ -5,6 +5,7 @@ import com.faheem.habits.core.data.Completion
 import com.faheem.habits.core.data.Habit
 import com.faheem.habits.core.data.Loan
 import com.faheem.habits.core.data.LoanPayment
+import com.faheem.habits.features.habits.computeStreaks
 import java.time.DayOfWeek
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
@@ -19,6 +20,26 @@ class Phase7LogicTest {
         assertTrue(isHabitDue(weekly, day))
         val interval = weekly.copy(scheduleType = "every_n_days", everyNDays = 2)
         assertTrue(isHabitDue(interval, day + 2))
+    }
+
+    @Test
+    fun streakFreezePreservesCurrentAndBestStreakWithoutAddingCheckIn() {
+        val monday = LocalDate.of(2026, 10, 26).toEpochDay()
+        val completed = setOf(monday, monday + 2)
+        val result = computeStreaks(completed, 127, monday + 2, setOf(monday + 1))
+
+        assertEquals(2, result.current)
+        assertEquals(2, result.best)
+    }
+
+    @Test
+    fun anUnfrozenMissedDayStillBreaksTheStreak() {
+        val monday = LocalDate.of(2026, 10, 26).toEpochDay()
+        val completed = setOf(monday, monday + 2)
+        val result = computeStreaks(completed, 127, monday + 2)
+
+        assertEquals(1, result.current)
+        assertEquals(1, result.best)
     }
 
     @Test

@@ -26,11 +26,14 @@
 
 ## Deferred UI work
 
-The existing screens still need to expose the new data: streak-freeze controls,
-Glance widget, quantity/timer editors, completion notes, to-do subtasks and
-drag controls, money charts/export/account selectors, loan payment and
-reminder actions, file tags/thumbnails/missing state, screen-time limit
-notifications, global search, optional app lock, localization, and About.
+Implemented in this follow-up: habit streak-freeze credits can be configured,
+applied to a missed scheduled day, synced through the existing skip record,
+and counted as neutral days in current/best streak calculations.
+
+Remaining UI work: Glance widget, quantity/timer editors, completion notes,
+to-do subtasks and drag controls, money account selectors, loan reminder
+actions, file tags/thumbnails/missing state, screen-time limit notifications,
+global search, optional app lock, localization, and About.
 
 ### To-do recurrence implementation
 

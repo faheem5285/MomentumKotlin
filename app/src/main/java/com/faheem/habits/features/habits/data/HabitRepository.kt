@@ -22,6 +22,7 @@ class HabitRepository @Inject constructor(
     val habits: Flow<List<Habit>> = dao.getHabits()
     val completions: Flow<List<Completion>> = dao.getCompletions()
     val reminders: Flow<List<HabitReminder>> = dao.getReminders()
+    val skips: Flow<List<HabitSkip>> = dao.getSkips()
 
     suspend fun add(habit: Habit) {
         if (habit.name.isBlank()) return
@@ -98,6 +99,26 @@ class HabitRepository @Inject constructor(
 
     suspend fun unskipDay(habit: Habit, day: Long) {
         dao.deleteSkip(habit.id, day)
+    }
+
+    suspend fun useStreakFreeze(habit: Habit, day: Long) {
+        if (day >= today()) return
+        val current = dao.getHabit(habit.id) ?: return
+        if (current.streakFreezes <= 0) return
+        val existing = dao.getSkip(habit.id, day)
+        if (existing != null && !existing.deleted) return
+        val now = System.currentTimeMillis()
+        dao.upsertSkip(
+            existing?.copy(reason = "freeze", deleted = false, dirty = true, updatedAt = now)
+                ?: HabitSkip(habitId = habit.id, epochDay = day, reason = "freeze", updatedAt = now)
+        )
+        dao.updateHabit(
+            current.copy(
+                streakFreezes = current.streakFreezes - 1,
+                updatedAt = now,
+                dirty = true
+            )
+        )
     }
 
     suspend fun setArchived(habit: Habit, archived: Boolean) {

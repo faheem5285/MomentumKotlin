@@ -37,7 +37,8 @@ data class HabitUi(
     val days: Set<Long>,   // all days this habit was completed
     val current: Int,
     val best: Int,
-    val reminders: List<HabitReminder> = emptyList()
+    val reminders: List<HabitReminder> = emptyList(),
+    val frozenDays: Set<Long> = emptySet()
 )
 
 @Suppress("TooManyFunctions")
@@ -47,15 +48,18 @@ class HabitViewModel @Inject constructor(
 ) : ViewModel() {
 
     val all: StateFlow<List<HabitUi>> =
-        combine(repository.habits, repository.completions, repository.reminders) { habits, completions, reminders ->
+        combine(repository.habits, repository.completions, repository.reminders, repository.skips) { habits, completions, reminders, skips ->
             withContext(Dispatchers.Default) {
                 val t = today()
                 val byHabit = completions.groupBy({ it.habitId }, { it.epochDay }).mapValues { it.value.toSet() }
                 val remindersByHabit = reminders.groupBy { it.habitId }
+                val skipsByHabit = skips.filter { it.reason == "freeze" }
+                    .groupBy({ it.habitId }, { it.epochDay }).mapValues { it.value.toSet() }
                 habits.map { h ->
                     val d = byHabit[h.id] ?: emptySet()
-                    val s = computeStreaks(d, h.daysMask, t)
-                    HabitUi(h, d, s.current, s.best, remindersByHabit[h.id].orEmpty())
+                    val frozen = skipsByHabit[h.id] ?: emptySet()
+                    val s = computeStreaks(d, h.daysMask, t, frozen)
+                    HabitUi(h, d, s.current, s.best, remindersByHabit[h.id].orEmpty(), frozen)
                 }
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -82,6 +86,10 @@ class HabitViewModel @Inject constructor(
 
     fun unskipDay(habit: Habit, day: Long) {
         viewModelScope.launch { repository.unskipDay(habit, day) }
+    }
+
+    fun useStreakFreeze(habit: Habit, day: Long) {
+        viewModelScope.launch { repository.useStreakFreeze(habit, day) }
     }
 
     fun setArchived(habit: Habit, archived: Boolean) {

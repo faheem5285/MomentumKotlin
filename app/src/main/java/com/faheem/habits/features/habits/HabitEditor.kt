@@ -85,6 +85,7 @@ fun HabitEditorSheet(
     var color by remember { mutableIntStateOf(initial?.colorIndex ?: 0) }
     var time by remember { mutableIntStateOf(initial?.timeOfDay ?: 0) }
     var mask by remember { mutableIntStateOf(initial?.daysMask ?: ALL_DAYS) }
+    var freezeCredits by remember(initial?.id) { mutableIntStateOf(initial?.streakFreezes ?: 0) }
     var reminders by remember(initial?.id) {
         mutableStateOf(initialReminders.map { HabitReminderDraft(it.hour, it.minute, it.daysMask, it.dateEpochDay) })
     }
@@ -128,6 +129,19 @@ fun HabitEditorSheet(
             TextButton(onClick = { mask = ALL_DAYS }) { Text("Every day") }
             TextButton(onClick = { mask = WEEKDAYS }) { Text("Weekdays") }
             TextButton(onClick = { mask = WEEKENDS }) { Text("Weekends") }
+        }
+
+        EditorLabel("Streak freezes")
+        Text("Freeze credits protect a missed scheduled day without breaking your streak.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Available credits", modifier = Modifier.weight(1f), fontWeight = FontWeight.Medium)
+            OutlinedButton(onClick = { freezeCredits = (freezeCredits - 1).coerceAtLeast(0) }, enabled = freezeCredits > 0) {
+                Text("−")
+            }
+            Text(freezeCredits.toString(), fontWeight = FontWeight.Bold)
+            OutlinedButton(onClick = { freezeCredits = (freezeCredits + 1).coerceAtMost(10) }, enabled = freezeCredits < 10) {
+                Text("+")
+            }
         }
 
         EditorLabel("Reminders")
@@ -251,7 +265,8 @@ fun HabitEditorSheet(
                         icon = icon,
                         colorIndex = color,
                         timeOfDay = time,
-                        daysMask = if (mask == 0) ALL_DAYS else mask
+                        daysMask = if (mask == 0) ALL_DAYS else mask,
+                        streakFreezes = freezeCredits
                     ),
                     reminders
                 )

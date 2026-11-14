@@ -195,7 +195,15 @@ private fun MiniStat(label: String, value: String, modifier: Modifier) {
 }
 
 @Composable
-fun HabitDetailSheet(ui: HabitUi, onDismiss: () -> Unit, onEdit: () -> Unit, onArchive: () -> Unit, onManageReminders: () -> Unit) {
+fun HabitDetailSheet(
+    ui: HabitUi,
+    selectedDay: Long,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onArchive: () -> Unit,
+    onManageReminders: () -> Unit,
+    onUseFreeze: () -> Unit
+) {
     val h = ui.habit
     val color = habitColor(h.colorIndex)
     val t = today()
@@ -218,6 +226,37 @@ fun HabitDetailSheet(ui: HabitUi, onDismiss: () -> Unit, onEdit: () -> Unit, onA
                 )
             }
             StatusPill(if (ui.current > 0) "${ui.current} day streak" else "New habit", color)
+        }
+        if (
+            selectedDay < t &&
+            isScheduled(h.daysMask, selectedDay) &&
+            selectedDay !in ui.days &&
+            selectedDay !in ui.frozenDays
+        ) {
+            PremiumCard(contentPadding = PaddingValues(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.AcUnit, null, tint = color)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Streak freeze", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "${h.streakFreezes} credit(s) available",
+                            fontSize = 12.sp,
+                            color = colors.onSurfaceVariant
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                MomentumOutlinedButton(
+                    text = if (h.streakFreezes > 0) "Use a freeze for this day" else "No freeze credits available",
+                    icon = Icons.Rounded.AcUnit,
+                    onClick = onUseFreeze,
+                    enabled = h.streakFreezes > 0,
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                )
+            }
+        } else if (selectedDay in ui.frozenDays) {
+            StatusPill("Streak freeze used", color, icon = Icons.Rounded.AcUnit)
         }
         SectionHeader("Your plan")
         Text(
@@ -319,11 +358,13 @@ fun TodayScreen(
     detailId?.let { id ->
         all.firstOrNull { it.habit.id == id }?.let { ui ->
             HabitDetailSheet(
-                ui,
+                ui = ui,
+                selectedDay = selected,
                 onDismiss = { detailId = null },
                 onEdit = { editing = ui; detailId = null },
                 onArchive = { vm.setArchived(ui.habit, true); detailId = null },
-                onManageReminders = { reminderHabitId = ui.habit.id; detailId = null }
+                onManageReminders = { reminderHabitId = ui.habit.id; detailId = null },
+                onUseFreeze = { vm.useStreakFreeze(ui.habit, selected) }
             )
         }
     }

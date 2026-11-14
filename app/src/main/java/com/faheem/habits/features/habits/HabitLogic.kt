@@ -100,7 +100,12 @@ data class StreakInfo(val current: Int, val best: Int)
  * Days the habit is not scheduled never break a streak, and today
  * does not break the streak until the day is over.
  */
-fun computeStreaks(days: Set<Long>, mask: Int, today: Long): StreakInfo {
+fun computeStreaks(
+    days: Set<Long>,
+    mask: Int,
+    today: Long,
+    frozenDays: Set<Long> = emptySet()
+): StreakInfo {
     if (days.isEmpty() || mask == 0) return StreakInfo(0, 0)
     val first = days.minOrNull() ?: return StreakInfo(0, 0)
     var best = 0
@@ -110,7 +115,7 @@ fun computeStreaks(days: Set<Long>, mask: Int, today: Long): StreakInfo {
         if (day in days) {
             run++
             best = maxOf(best, run)
-        } else if (day != today) {
+        } else if (day !in frozenDays && day != today) {
             run = 0
         }
     }
@@ -122,8 +127,11 @@ fun computeStreaks(days: Set<Long>, mask: Int, today: Long): StreakInfo {
     if (isScheduled(mask, cursor) && cursor !in days) cursor--
     while (cursor >= first) {
         if (isScheduled(mask, cursor)) {
-            if (cursor !in days) break
-            current++
+            if (cursor in days) {
+                current++
+            } else if (cursor !in frozenDays) {
+                break
+            }
         }
         cursor--
     }
