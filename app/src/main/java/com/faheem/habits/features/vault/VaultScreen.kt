@@ -3,6 +3,7 @@
 package com.faheem.habits.features.vault
 import com.faheem.habits.core.data.*
 import com.faheem.habits.features.vault.data.VaultAccountKeyRepository
+import com.faheem.habits.features.vault.data.VaultSyncCoordinator
 import com.faheem.habits.features.vault.data.VaultRepository
 import com.faheem.habits.core.notifications.*
 import com.faheem.habits.core.ui.*
