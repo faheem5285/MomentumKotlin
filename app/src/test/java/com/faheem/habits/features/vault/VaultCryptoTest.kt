@@ -118,4 +118,20 @@ class VaultCryptoTest {
             VaultCrypto.decrypt(migrated.first, migrated.second, legacyKey)
         }
     }
+    @Test
+    fun repeatedRecordIdsAreDeduplicatedEvenWhenSecretsDiffer() {
+        val key = VaultCrypto.newVmk()
+        val firstSecret = secret
+        val secondSecret = secret.copy(title = "Different title")
+        val first = VaultCrypto.encrypt(firstSecret, key)
+        val second = VaultCrypto.encrypt(secondSecret, key)
+        val duplicateId = "same-record-id"
+        val records = listOf(
+            VaultRecord(nonce = first.first, ciphertext = first.second, updatedAt = 1, uuid = duplicateId),
+            VaultRecord(nonce = second.first, ciphertext = second.second, updatedAt = 2, uuid = duplicateId)
+        )
+
+        assertEquals(1, uniqueVaultEntries(records, key).size)
+    }
+
 }

@@ -85,24 +85,6 @@ enum class VaultImportAction(val label: String, val description: String) {
 
 data class VaultRestoreResult(val key: ByteArray, val importedCount: Int)
 
-internal fun uniqueVaultEntries(
-    records: List<VaultRecord>,
-    key: ByteArray
-): List<Pair<VaultRecord, VaultSecret>> {
-    val seen = mutableSetOf<VaultSecret>()
-    val seenUuids = mutableSetOf<String>()
-    return records.mapNotNull { record ->
-        val secret = VaultCrypto.decrypt(record.nonce, record.ciphertext, key)
-        if (secret !in seen && record.uuid !in seenUuids) {
-            seen += secret
-            seenUuids += record.uuid
-            record to secret
-        } else {
-            null
-        }
-    }
-}
-
 @HiltViewModel
 class VaultViewModel @Inject constructor(
     app: Application,
