@@ -134,9 +134,7 @@ object MomentumNotificationSettings {
 
     fun isQuietHours(context: Context, now: Calendar = Calendar.getInstance()): Boolean {
         val (start, end) = quietHours(context)
-        if (start == end) return false
-        val hour = now.get(Calendar.HOUR_OF_DAY)
-        return if (start < end) hour >= start && hour < end else hour >= start || hour < end
+        return QuietHoursPolicy.isQuietHours(now.get(Calendar.HOUR_OF_DAY), start, end)
     }
 
     fun isIgnoringBatteryOptimizations(context: Context): Boolean {
@@ -338,10 +336,19 @@ object HabitReminderScheduler {
         val reminder = dao.getReminder(reminderId) ?: return
         val habit = dao.getHabit(reminder.habitId) ?: return
         val completedToday = dao.getCompletion(reminder.habitId, java.time.LocalDate.now().toEpochDay()) != null
-        if (!habit.archived && !completedToday && reminder.enabled && !MomentumNotificationSettings.isQuietHours(context) &&
+        val reminderActive = !habit.archived && !completedToday && reminder.enabled &&
             MomentumNotificationSettings.masterEnabled(context) &&
-            MomentumNotificationSettings.isEnabled(context, "habits") && MomentumNotificationSettings.notificationsAllowed(context)
-        ) {
+            MomentumNotificationSettings.isEnabled(context, "habits")
+        if (reminderActive && MomentumNotificationSettings.isQuietHours(context)) {
+            val (quietStart, quietEnd) = MomentumNotificationSettings.quietHours(context)
+            val quietEndMillis = QuietHoursPolicy.nextEndMillis(Calendar.getInstance(), quietStart, quietEnd)
+            if (quietEndMillis != null) {
+                val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                MomentumReminderScheduler.setAlarm(alarms, quietEndMillis, pendingIntent(context, reminderId))
+                return
+            }
+        }
+        if (reminderActive && MomentumNotificationSettings.notificationsAllowed(context)) {
             MomentumReminderScheduler.createChannels(context)
             val notification = ZyloNotifications.base(context, channelId("habits"))
                 .setContentTitle(habit.name)
@@ -454,18 +461,13 @@ object ToDoReminderScheduler {
         // A task reminder that lands during quiet hours must be deferred, not
         // silently cleared. Keep its Room reminder fields intact until delivery.
         if (!item.completed && MomentumNotificationSettings.isQuietHours(context)) {
-            val quietEndHour = MomentumNotificationSettings.quietHours(context).second
-            val now = Calendar.getInstance()
-            val quietEnd = (now.clone() as Calendar).apply {
-                set(Calendar.HOUR_OF_DAY, quietEndHour)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-                if (!after(now)) add(Calendar.DAY_OF_YEAR, 1)
+            val (quietStart, quietEnd) = MomentumNotificationSettings.quietHours(context)
+            val quietEndMillis = QuietHoursPolicy.nextEndMillis(Calendar.getInstance(), quietStart, quietEnd)
+            if (quietEndMillis != null) {
+                val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                MomentumReminderScheduler.setAlarm(alarm, quietEndMillis, pendingIntent(context, id))
+                return
             }
-            val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            MomentumReminderScheduler.setAlarm(alarm, quietEnd.timeInMillis, pendingIntent(context, id))
-            return
         }
         if (!item.completed && MomentumNotificationSettings.masterEnabled(context) &&
             MomentumNotificationSettings.notificationsAllowed(context)) {

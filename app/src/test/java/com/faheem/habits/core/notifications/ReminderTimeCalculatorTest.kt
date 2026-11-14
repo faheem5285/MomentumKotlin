@@ -2,6 +2,7 @@ package com.faheem.habits
 
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.notifications.ReminderTimeCalculator
+import com.faheem.habits.core.notifications.QuietHoursPolicy
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -9,6 +10,7 @@ import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import java.util.Calendar
 
 class ReminderTimeCalculatorTest {
     private val zone = ZoneId.of("Asia/Karachi")
@@ -104,4 +106,51 @@ class ReminderTimeCalculatorTest {
             ReminderTimeCalculator.nextHabit(reminder, now)
         )
     }
+    @Test
+    fun quietHoursSupportsOvernightWindowsAndEndsOnTheCorrectDay() {
+        val beforeMidnight = Calendar.getInstance(java.util.TimeZone.getTimeZone(zone)).apply {
+            set(2025, Calendar.OCTOBER, 29, 23, 30, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val afterMidnight = Calendar.getInstance(java.util.TimeZone.getTimeZone(zone)).apply {
+            set(2025, Calendar.OCTOBER, 30, 1, 15, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+
+        assertEquals(
+            Calendar.getInstance(java.util.TimeZone.getTimeZone(zone)).apply {
+                set(2025, Calendar.OCTOBER, 30, 7, 0, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis,
+            QuietHoursPolicy.nextEndMillis(beforeMidnight, 22, 7)
+        )
+        assertEquals(
+            Calendar.getInstance(java.util.TimeZone.getTimeZone(zone)).apply {
+                set(2025, Calendar.OCTOBER, 30, 7, 0, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis,
+            QuietHoursPolicy.nextEndMillis(afterMidnight, 22, 7)
+        )
+    }
+
+    @Test
+    fun quietHoursSupportsSameDayWindowsAndDisabledEqualEndpoints() {
+        val duringDay = Calendar.getInstance(java.util.TimeZone.getTimeZone(zone)).apply {
+            set(2025, Calendar.OCTOBER, 29, 13, 20, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+
+        assertEquals(true, QuietHoursPolicy.isQuietHours(13, 12, 15))
+        assertEquals(false, QuietHoursPolicy.isQuietHours(15, 12, 15))
+        assertEquals(false, QuietHoursPolicy.isQuietHours(23, 22, 22))
+        assertEquals(
+            Calendar.getInstance(java.util.TimeZone.getTimeZone(zone)).apply {
+                set(2025, Calendar.OCTOBER, 29, 15, 0, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis,
+            QuietHoursPolicy.nextEndMillis(duringDay, 12, 15)
+        )
+        assertNull(QuietHoursPolicy.nextEndMillis(duringDay, 22, 22))
+    }
+
 }
