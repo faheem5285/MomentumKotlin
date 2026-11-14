@@ -26,6 +26,7 @@ This is the UI/UX and workflow companion checklist for the current modernization
 - [x] Battery animations respect Reduce effects and expose the battery state to screen readers.
 - [x] Home module tiles can expand for larger text.
 - [x] Shared bar charts expose their data labels and values to accessibility services and respect Reduce effects.
+- [x] Habit and task completion controls provide subtle system haptic feedback.
 - [x] Vault password buffers are cleared in a finally block during setup, derived key material is cleared even when setup fails, and lockout waiting is coroutine-cancellable.
 
 ## Module review checklist

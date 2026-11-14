@@ -28,7 +28,7 @@ This is a source-level audit. Device screenshots, touch testing, font-scale test
 
 - Keep the existing typed route contract and notification deep links intact.
 - Review back navigation and predictive-back behavior before changing navigation dependencies or route ownership.
-- Add subtle, preference-aware haptic feedback only to meaningful completion/confirmation actions.
+- Shared habit/task completion controls now trigger a subtle Android system haptic; the OS still controls whether haptics are enabled.
 - Standardize loading, empty, error, offline, and permission-required states using shared components.
 
 ### P2 — Screen-by-screen refinement
@@ -80,6 +80,7 @@ These are incremental improvements, not evidence that every feature screen has c
 - [x] Existing Phase 4 deferred-work review.
 - [x] Reduced-effects behavior improved in shared surfaces, Home, and To-do calendar.
 - [x] Selected touch targets, settings navigation rows, weekday labels, and empty-state messaging improved.
+- [x] Subtle system haptic feedback added to habit/task completion controls.
 - [x] Complete an initial source-level scan of all feature screens and shared chart primitives.
 - [ ] Complete per-screen visual consistency and accessibility verification on device.
 - [ ] Large-font and responsive-layout review on device.
@@ -112,3 +113,10 @@ The automated checks cover compilation and tests; TalkBack, dynamic font scaling
 - Screen Time now catches usage-stat query failures and presents a retry action instead of silently leaving stale or empty values.
 
 The code-level pass has improved shared accessibility, reduced-motion behavior, and error recovery. Real TalkBack, font-scale, narrow-screen, and device checks are still required.
+
+
+## Additional implementation update — 2026-11-14 (haptics)
+
+- Habit and To-do completion now provide a subtle system clock-tick haptic through the Android view, so the device's system haptic setting remains respected.
+
+The haptic is implemented in the shared completion control. Its intensity and behavior still need validation on supported physical devices.
