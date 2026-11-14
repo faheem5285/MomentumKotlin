@@ -282,7 +282,7 @@ class SupabaseRestClient(
         val encoded = row.jsonObject["key_material"]?.jsonPrimitive?.content
             ?: error("The account vault key record is invalid.")
         val key = VaultCrypto.decode(encoded)
-        try {
+        return try {
             VaultCrypto.requireVmk(key)
             key
         } catch (failure: Exception) {
