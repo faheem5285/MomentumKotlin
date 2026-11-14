@@ -504,7 +504,7 @@ private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -> Unit) 
     val accent = spec.tint
     Box(
         modifier
-            .height(142.dp)
+            .heightIn(min = 142.dp)
             .shadow(
                 if (LocalReduceEffects.current) 0.dp else MomentumTokens.elevationMedium,
                 shape,
@@ -558,15 +558,11 @@ private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -> Unit) 
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
             )
             Text(
                 spec.subtitle,
                 fontSize = 11.5.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
             )
             if (spec.chart != null) {
                 Spacer(Modifier.height(3.dp))

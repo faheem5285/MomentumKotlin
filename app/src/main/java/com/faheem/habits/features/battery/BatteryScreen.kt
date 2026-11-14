@@ -763,7 +763,12 @@ fun BatteryOrb(percent: Float, charging: Boolean, style: String, modifier: Modif
         remember { androidx.compose.runtime.mutableFloatStateOf(.86f) }
     }
     val color = if (charging) Color(0xFFBBF7D0) else Color.White
-    Box(modifier.size(154.dp), contentAlignment = Alignment.Center) {
+    Box(
+        modifier.size(154.dp).semantics {
+            contentDescription = "Battery level ${percent.toInt().coerceIn(0, 100)} percent, ${if (charging) "charging" else "not charging"}"
+        },
+        contentAlignment = Alignment.Center
+    ) {
         Canvas(Modifier.fillMaxSize()) {
             // Read animation state in the draw phase so charging frames redraw
             // the orb without recomposing its surrounding Compose hierarchy.
