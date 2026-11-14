@@ -94,7 +94,11 @@ class ToDoViewModel @Inject constructor(
     fun toggle(item: ToDoItem) = viewModelScope.launch {
         val changed = item.copy(completed = !item.completed)
         repository.save(changed)
-        if (changed.completed) ToDoReminderScheduler.cancel(context, changed.id)
+        if (changed.completed) {
+            ToDoReminderScheduler.cancel(context, changed.id)
+        } else {
+            ToDoReminderScheduler.schedule(context, changed)
+        }
     }
 
     fun delete(item: ToDoItem) = viewModelScope.launch {

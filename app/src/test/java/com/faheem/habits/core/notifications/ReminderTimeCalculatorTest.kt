@@ -72,6 +72,24 @@ class ReminderTimeCalculatorTest {
     }
 
     @Test
+    fun reopenedTodoWithFutureReminderCanBeScheduledAgain() {
+        val now = ZonedDateTime.of(2025, 10, 30, 10, 0, 0, 0, zone)
+        val reopened = ToDoItem(
+            id = 2,
+            title = "Submit report",
+            dueEpochDay = LocalDate.of(2025, 10, 31).toEpochDay(),
+            completed = false,
+            reminderHour = 9,
+            reminderMinute = 15
+        )
+
+        assertEquals(
+            ZonedDateTime.of(2025, 10, 31, 9, 15, 0, 0, zone),
+            ReminderTimeCalculator.nextTodo(reopened, now)
+        )
+    }
+
+    @Test
     fun weeklyReminderUsesTheCurrentZoneAfterTimezoneChange() {
         val reminder = HabitReminder(
             id = 4, habitId = 2, hour = 18, minute = 30, daysMask = 1 shl 2
