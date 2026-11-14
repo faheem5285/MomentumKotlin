@@ -163,11 +163,11 @@
     <ID>MatchingDeclarationName:ScreenTimeScreen.kt$AppUsage</ID>
     <ID>MatchingDeclarationName:VaultScreen.kt$VaultViewModel : AndroidViewModel</ID>
     <ID>NestedBlockDepth:Data.kt$AppDatabase.Companion.&lt;no name provided&gt;$override fun migrate(db: SupportSQLiteDatabase)</ID>
-    <ID>NestedBlockDepth:FilesScreen.kt$private fun renderPdfPage(context: android.content.Context, uri: Uri, index: Int): PdfPage?</ID>
+    <ID>NestedBlockDepth:FilePreview.kt$private fun renderPdfPage(context: android.content.Context, uri: Uri, index: Int): PdfPage?</ID>
     <ID>PackageNaming:InstagramScrollCounterService.kt$package com.faheem.habits.features.screen_time</ID>
     <ID>PackageNaming:ScreenTimeScreen.kt$package com.faheem.habits.features.screen_time</ID>
     <ID>ReturnCount:BatteryChargeOverlay.kt$private fun postChargingNotification(context: Context)</ID>
-    <ID>ReturnCount:FilesScreen.kt$private fun renderPdfPage(context: android.content.Context, uri: Uri, index: Int): PdfPage?</ID>
+    <ID>ReturnCount:FilePreview.kt$private fun renderPdfPage(context: android.content.Context, uri: Uri, index: Int): PdfPage?</ID>
     <ID>ReturnCount:HabitLogic.kt$fun computeStreaks(days: Set&lt;Long&gt;, mask: Int, today: Long): StreakInfo</ID>
     <ID>ReturnCount:InstagramScrollCounterService.kt$InstagramScrollCounterService$override fun onAccessibilityEvent(event: AccessibilityEvent?)</ID>
     <ID>ReturnCount:NetworkScreen.kt$private fun networkCountry(context: Context): Pair&lt;String, String&gt;</ID>
@@ -189,7 +189,7 @@
     <ID>UnusedParameter:LoansScreen.kt$color: Color</ID>
     <ID>UnusedParameter:NetworkIndicatorService.kt$NetworkIndicatorService.Companion$context: Context</ID>
     <ID>UseCheckOrError:FilesScreen.kt$throw IllegalStateException("No output stream")</ID>
-    <ID>UseCheckOrError:FilesScreen.kt$throw IllegalStateException("This editor supports files up to 1 MB.")</ID>
+    <ID>UseCheckOrError:FilePreview.kt$throw IllegalStateException("This editor supports files up to 1 MB.")</ID>
     <ID>WildcardImport:AppSettingsScreen.kt$import androidx.compose.foundation.layout.*</ID>
     <ID>WildcardImport:AppSettingsScreen.kt$import androidx.compose.material.icons.rounded.*</ID>
     <ID>WildcardImport:AppSettingsScreen.kt$import androidx.compose.material3.*</ID>
@@ -344,5 +344,10 @@
     <ID>WildcardImport:VaultScreen.kt$import com.faheem.habits.core.data.*</ID>
     <ID>WildcardImport:VaultScreen.kt$import com.faheem.habits.core.notifications.*</ID>
     <ID>WildcardImport:VaultScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>TooGenericExceptionCaught:FilePreview.kt$e: Exception</ID>
+    <ID>WildcardImport:FilePreview.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:FilePreview.kt$import androidx.compose.material.icons.rounded.*</ID>
+    <ID>WildcardImport:FilePreview.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:FilePreview.kt$import androidx.compose.runtime.*</ID>
   </CurrentIssues>
 </SmellBaseline>
