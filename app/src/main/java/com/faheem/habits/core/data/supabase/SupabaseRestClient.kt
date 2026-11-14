@@ -281,10 +281,18 @@ class SupabaseRestClient(
             ?: return null
         val encoded = row.jsonObject["key_material"]?.jsonPrimitive?.content
             ?: error("The account vault key record is invalid.")
-        return VaultCrypto.decode(encoded)
+        val key = VaultCrypto.decode(encoded)
+        try {
+            VaultCrypto.requireVmk(key)
+            key
+        } catch (failure: Exception) {
+            key.fill(0)
+            throw IllegalStateException("The saved account Vault key is invalid. Do not replace it; contact support.", failure)
+        }
     }
 
     suspend fun saveVaultKeyIfAbsent(key: ByteArray) {
+        VaultCrypto.requireVmk(key)
         val token = requireToken()
         val response = http.postRest("momentum_vault_keys", token) {
             url { parameters.append("on_conflict", "user_id") }
