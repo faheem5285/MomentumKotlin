@@ -66,6 +66,7 @@ import androidx.lifecycle.AndroidViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -250,28 +251,35 @@ class VaultViewModel @Inject constructor(
         }
         val salt = VaultCrypto.newSalt()
         val passwordChars = masterPassword.toCharArray()
-        val key = VaultCrypto.deriveKey(passwordChars, salt)
-        passwordChars.fill('\u0000')
-        val vmk = VaultCrypto.newVmk()
-        val wrapped = VaultCrypto.wrapVmk(vmk, key)
-        val saved = prefs.edit()
-            .putString(VaultCrypto.SALT_PREF, VaultCrypto.encode(salt))
-            .putString(VaultCrypto.CHECK_PREF, VaultCrypto.encode(VaultCrypto.verifier(key)))
-            .putString(vmkWrappedPref, encodeWrapped(wrapped))
-            .commit()
-        if (!saved) {
-            key.fill(0)
-            vmk.fill(0)
-            error("Could not save the vault setup. Please try again.")
+        val key = try {
+            VaultCrypto.deriveKey(passwordChars, salt)
+        } finally {
+            passwordChars.fill('\u0000')
         }
-        key.fill(0)
-        vmk
+        try {
+            val vmk = VaultCrypto.newVmk()
+            try {
+                val wrapped = VaultCrypto.wrapVmk(vmk, key)
+                val saved = prefs.edit()
+                    .putString(VaultCrypto.SALT_PREF, VaultCrypto.encode(salt))
+                    .putString(VaultCrypto.CHECK_PREF, VaultCrypto.encode(VaultCrypto.verifier(key)))
+                    .putString(vmkWrappedPref, encodeWrapped(wrapped))
+                    .commit()
+                check(saved) { "Could not save the vault setup. Please try again." }
+                vmk
+            } catch (error: Throwable) {
+                vmk.fill(0)
+                throw error
+            }
+        } finally {
+            key.fill(0)
+        }
     }
 
     suspend fun unlock(masterPassword: String): ByteArray? = withContext(Dispatchers.IO) {
         val failedAttempts = prefs.getInt(failedAttemptsPref, 0)
         if (failedAttempts > 0) {
-            Thread.sleep((500L * (1L shl failedAttempts.coerceAtMost(6))).coerceAtMost(30_000L))
+            delay((500L * (1L shl failedAttempts.coerceAtMost(6))).coerceAtMost(30_000L))
         }
         val salt = prefs.getString(VaultCrypto.SALT_PREF, null) ?: return@withContext null
         val check = prefs.getString(VaultCrypto.CHECK_PREF, null) ?: return@withContext null

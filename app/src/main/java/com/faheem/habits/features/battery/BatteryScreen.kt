@@ -753,7 +753,8 @@ private fun batteryStyleDescription(style: String): String = when (style) {
 @Composable
 fun BatteryOrb(percent: Float, charging: Boolean, style: String, modifier: Modifier = Modifier, animate: Boolean = charging) {
     val progress = percent.coerceIn(0f, 100f) / 100f
-    val pulse = if (animate) {
+    val shouldAnimate = animate && !LocalReduceEffects.current
+    val pulse = if (shouldAnimate) {
         rememberInfiniteTransition(label = "battery-pulse").animateFloat(
             initialValue = .72f, targetValue = 1f,
             animationSpec = infiniteRepeatable(tween(if (style == "Flow") 850 else 1400), RepeatMode.Reverse), label = "pulse"

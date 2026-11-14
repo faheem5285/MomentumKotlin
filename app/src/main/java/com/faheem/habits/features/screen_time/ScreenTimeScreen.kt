@@ -123,10 +123,16 @@ fun ScreenTimeScreen() {
         floatingCounter = prefs.getBoolean(InstagramScrollCounterService.PREF_FLOATING_COUNTER, false) && overlayAllowed
         screenLimit = prefs.getInt(PREF_SCREEN_LIMIT, 0)
         screenLimitPeriod = ScreenTimePeriod.fromKey(prefs.getString(PREF_SCREEN_LIMIT_PERIOD, null))
-        usage = if (granted) withContext(Dispatchers.IO) { loadUsage(context, range.days) } else emptyList()
-        weekMinutes = if (granted) withContext(Dispatchers.IO) { loadDailyMinutes(context, 7) } else emptyList()
+        usage = if (granted) withContext(Dispatchers.IO) {
+            runCatching { loadUsage(context, range.days) }.getOrDefault(emptyList())
+        } else emptyList()
+        weekMinutes = if (granted) withContext(Dispatchers.IO) {
+            runCatching { loadDailyMinutes(context, 7) }.getOrDefault(emptyList())
+        } else emptyList()
         screenLimitUsed = if (granted) withContext(Dispatchers.IO) {
-            screenTimeMinutes(context, screenLimitPeriod)?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0
+            runCatching {
+                screenTimeMinutes(context, screenLimitPeriod)?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0
+            }.getOrDefault(0)
         } else 0
         withContext(Dispatchers.IO) { checkScreenTimeAlarm(context) }
     }
