@@ -11,6 +11,7 @@ import com.faheem.habits.core.data.HabitDao
 import com.faheem.habits.core.data.LifeRuleDao
 import com.faheem.habits.core.data.LoanDao
 import com.faheem.habits.core.data.ToDoDao
+import com.faheem.habits.core.data.SyncStateDao
 import com.faheem.habits.core.data.VaultDao
 import dagger.Module
 import dagger.Provides
@@ -52,4 +53,7 @@ object AppModule {
 
     @Provides
     fun provideVaultDao(database: AppDatabase): VaultDao = database.vaultDao()
+
+    @Provides
+    fun provideSyncStateDao(database: AppDatabase): SyncStateDao = database.syncStateDao()
 }

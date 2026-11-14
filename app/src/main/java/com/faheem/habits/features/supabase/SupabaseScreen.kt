@@ -41,7 +41,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.hilt.navigation.compose.hiltViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,7 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import com.faheem.habits.core.data.AppDatabase
+import com.faheem.habits.core.data.SyncState
 import com.faheem.habits.core.data.SyncState
 import com.faheem.habits.core.data.supabase.StorageUsage
 import com.faheem.habits.core.data.supabase.SupabaseAuthApi
@@ -118,6 +122,13 @@ private val SUPABASE_TABLES = listOf(
 
 private data class CloudRecord(val table: String, val label: String, val count: Int, val error: String? = null)
 
+@HiltViewModel
+class SupabaseStatusViewModel @Inject constructor(
+    repository: SupabaseStatusRepository
+) : ViewModel() {
+    val syncStates = repository.syncStates
+}
+
 private data class SupabaseMetrics(
     val reachable: Boolean,
     val reachError: String?,
@@ -128,11 +139,10 @@ private data class SupabaseMetrics(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SupabaseScreen() {
+fun SupabaseScreen(vm: SupabaseStatusViewModel = hiltViewModel()) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val database = remember { AppDatabase.get(context.applicationContext) }
-    val syncStates by database.syncStateDao().observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
+    val syncStates by vm.syncStates.collectAsStateWithLifecycle(initialValue = emptyList())
     val syncWorkInfos by remember(context) {
         WorkManager.getInstance(context.applicationContext)
             .getWorkInfosForUniqueWorkFlow("momentum-sync")
