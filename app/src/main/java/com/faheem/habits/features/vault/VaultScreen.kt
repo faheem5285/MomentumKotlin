@@ -3,7 +3,6 @@
 package com.faheem.habits.features.vault
 import com.faheem.habits.core.data.*
 import com.faheem.habits.features.vault.data.VaultAccountKeyRepository
-import com.faheem.habits.core.data.sync.SupabaseSyncRepository
 import com.faheem.habits.features.vault.data.VaultRepository
 import com.faheem.habits.core.notifications.*
 import com.faheem.habits.core.ui.*
@@ -107,7 +106,8 @@ internal fun uniqueVaultEntries(
 class VaultViewModel @Inject constructor(
     app: Application,
     private val vaultRepository: VaultRepository,
-    private val accountKeys: VaultAccountKeyRepository
+    private val accountKeys: VaultAccountKeyRepository,
+    private val vaultSync: VaultSyncCoordinator
 ) : AndroidViewModel(app) {
     private val profilePrefs = app.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
     private val accountId = profilePrefs.getString("user_id", null).orEmpty()
@@ -142,7 +142,7 @@ class VaultViewModel @Inject constructor(
     suspend fun unlockWithAccount(): ByteArray = withContext(Dispatchers.IO) {
         val accountKey = accountKeys.fetchVaultKey()
         if (accountKey != null) {
-            SupabaseSyncRepository(getApplication()).syncVaultEntries(accountKey, fullPull = true)
+            vaultSync.syncVaultEntries(accountKey, fullPull = true)
             prefs.edit().putBoolean(accountLinkedPref, true).apply()
             return@withContext accountKey
         }
@@ -160,7 +160,7 @@ class VaultViewModel @Inject constructor(
             accountKeys.saveVaultKeyIfAbsent(generatedKey)
             val savedKey = accountKeys.fetchVaultKey()
                 ?: error("The account key was not available after saving.")
-            SupabaseSyncRepository(getApplication()).syncVaultEntries(savedKey, fullPull = true)
+            vaultSync.syncVaultEntries(savedKey, fullPull = true)
             prefs.edit().putBoolean(accountLinkedPref, true).apply()
             savedKey
         } finally {
@@ -178,7 +178,7 @@ class VaultViewModel @Inject constructor(
                 if (!java.security.MessageDigest.isEqual(localKey, accountKey)) {
                     migrateReadableRecords(localKey, accountKey)
                 }
-                SupabaseSyncRepository(getApplication()).syncVaultEntries(accountKey, fullPull = true)
+                vaultSync.syncVaultEntries(accountKey, fullPull = true)
                 storePasswordWrappedKey(masterPassword, accountKey)
                 prefs.edit().putBoolean(accountLinkedPref, true).apply()
                 localKey.fill(0)
@@ -193,7 +193,7 @@ class VaultViewModel @Inject constructor(
                     "The old password unlocked Vault settings, but none of the local records match its key. " +
                         "The signed-in account has no Vault key yet, so the app cannot safely link or replace its encrypted records."
                 }
-                SupabaseSyncRepository(getApplication()).syncVaultEntries(localKey, fullPull = true)
+                vaultSync.syncVaultEntries(localKey, fullPull = true)
                 check(accountKeys.count("momentum_vault_entries") <= vaultRepository.getAllForSync().size) {
                     "The account has Vault records that are not present on this device. Sync them before linking the key."
                 }
@@ -206,7 +206,7 @@ class VaultViewModel @Inject constructor(
                 }
                 storePasswordWrappedKey(masterPassword, savedKey)
                 savedKey.fill(0)
-                SupabaseSyncRepository(getApplication()).syncVaultEntries(localKey, fullPull = true)
+                vaultSync.syncVaultEntries(localKey, fullPull = true)
                 prefs.edit().putBoolean(accountLinkedPref, true).apply()
                 localKey
             }
@@ -502,7 +502,7 @@ class VaultViewModel @Inject constructor(
                     }
                 }
             }
-            if (migrated > 0) SupabaseSyncRepository(getApplication()).syncVaultEntries(accountKey)
+            if (migrated > 0) vaultSync.syncVaultEntries(accountKey)
             migrated
         } finally {
             legacyKey.fill(0)
@@ -510,7 +510,7 @@ class VaultViewModel @Inject constructor(
     }
 
     suspend fun resetForQa() = withContext(Dispatchers.IO) {
-        SupabaseSyncRepository(getApplication()).resetModule(AppModule.Vault)
+        vaultSync.resetVault()
         check(
             prefs.edit()
                 .clear()
@@ -660,7 +660,7 @@ class VaultViewModel @Inject constructor(
                     .commit()
             ) { "Could not save the restored vault setup." }
             val importedCount = applyImport(records, VaultImportAction.Upsert, vmk)
-            SupabaseSyncRepository(getApplication()).syncVaultEntries(vmk)
+            vaultSync.syncVaultEntries(vmk)
             VaultRestoreResult(vmk, importedCount)
         } catch (failure: Exception) {
             vmk.fill(0)
@@ -714,7 +714,7 @@ class VaultViewModel @Inject constructor(
             savedKey.fill(0)
             check(matches) { "A different Vault key is already linked to this account." }
             val importedCount = applyImport(records, VaultImportAction.Upsert, key)
-            SupabaseSyncRepository(getApplication()).syncVaultEntries(key)
+            vaultSync.syncVaultEntries(key)
             check(prefs.edit().putBoolean(accountLinkedPref, true).commit()) {
                 "Vault data was restored, but account-link status could not be saved."
             }
