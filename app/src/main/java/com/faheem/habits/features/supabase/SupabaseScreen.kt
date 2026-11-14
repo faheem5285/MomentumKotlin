@@ -64,7 +64,7 @@ import androidx.compose.ui.unit.sp
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.faheem.habits.core.data.SyncState
-import com.faheem.habits.core.data.SyncState
+import com.faheem.habits.features.supabase.data.SupabaseStatusRepository
 import com.faheem.habits.core.data.supabase.StorageUsage
 import com.faheem.habits.core.data.supabase.SupabaseAuthApi
 import com.faheem.habits.core.data.supabase.SupabaseProvider
