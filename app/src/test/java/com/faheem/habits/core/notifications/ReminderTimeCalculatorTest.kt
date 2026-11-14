@@ -4,6 +4,7 @@ import com.faheem.habits.core.data.*
 import com.faheem.habits.core.notifications.ReminderTimeCalculator
 import com.faheem.habits.core.notifications.QuietHoursPolicy
 import com.faheem.habits.core.notifications.ToDoReminderDeliveryPolicy
+import com.faheem.habits.core.notifications.HabitReminderDeliveryPolicy
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -94,6 +95,30 @@ class ReminderTimeCalculatorTest {
         assertTrue(ToDoReminderDeliveryPolicy.shouldDeliver(
             completed = false,
             masterEnabled = true,
+            notificationsAllowed = true
+        ))
+    }
+
+    @Test
+    fun habitOneTimeReminderIsPreservedWhenDeliveryIsDisabled() {
+        assertFalse(HabitReminderDeliveryPolicy.shouldProcess(
+            masterEnabled = false,
+            habitRemindersEnabled = true,
+            notificationsAllowed = true
+        ))
+        assertFalse(HabitReminderDeliveryPolicy.shouldProcess(
+            masterEnabled = true,
+            habitRemindersEnabled = false,
+            notificationsAllowed = true
+        ))
+        assertFalse(HabitReminderDeliveryPolicy.shouldProcess(
+            masterEnabled = true,
+            habitRemindersEnabled = true,
+            notificationsAllowed = false
+        ))
+        assertTrue(HabitReminderDeliveryPolicy.shouldProcess(
+            masterEnabled = true,
+            habitRemindersEnabled = true,
             notificationsAllowed = true
         ))
     }

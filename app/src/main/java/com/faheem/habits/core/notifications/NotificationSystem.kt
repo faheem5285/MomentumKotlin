@@ -336,9 +336,20 @@ object HabitReminderScheduler {
         val reminder = dao.getReminder(reminderId) ?: return
         val habit = dao.getHabit(reminder.habitId) ?: return
         val completedToday = dao.getCompletion(reminder.habitId, java.time.LocalDate.now().toEpochDay()) != null
-        val reminderActive = !habit.archived && !completedToday && reminder.enabled &&
-            MomentumNotificationSettings.masterEnabled(context) &&
-            MomentumNotificationSettings.isEnabled(context, "habits")
+        val masterEnabled = MomentumNotificationSettings.masterEnabled(context)
+        val habitRemindersEnabled = MomentumNotificationSettings.isEnabled(context, "habits")
+        val notificationsAllowed = MomentumNotificationSettings.notificationsAllowed(context)
+        if (!HabitReminderDeliveryPolicy.shouldProcess(
+                masterEnabled = masterEnabled,
+                habitRemindersEnabled = habitRemindersEnabled,
+                notificationsAllowed = notificationsAllowed
+            )
+        ) {
+            // Keep one-time reminders intact when delivery is disabled by settings or permissions.
+            cancel(context, reminderId)
+            return
+        }
+        val reminderActive = !habit.archived && !completedToday && reminder.enabled
         if (reminderActive && MomentumNotificationSettings.isQuietHours(context)) {
             val (quietStart, quietEnd) = MomentumNotificationSettings.quietHours(context)
             val quietEndMillis = QuietHoursPolicy.nextEndMillis(Calendar.getInstance(), quietStart, quietEnd)
@@ -348,7 +359,7 @@ object HabitReminderScheduler {
                 return
             }
         }
-        if (reminderActive && MomentumNotificationSettings.notificationsAllowed(context)) {
+        if (reminderActive && notificationsAllowed) {
             MomentumReminderScheduler.createChannels(context)
             val notification = ZyloNotifications.base(context, channelId("habits"))
                 .setContentTitle(habit.name)

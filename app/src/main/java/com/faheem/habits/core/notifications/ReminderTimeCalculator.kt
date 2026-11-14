@@ -57,3 +57,13 @@ internal object ToDoReminderDeliveryPolicy {
     fun shouldDeliver(completed: Boolean, masterEnabled: Boolean, notificationsAllowed: Boolean): Boolean =
         !completed && masterEnabled && notificationsAllowed
 }
+
+
+/** Prevents stale alarms from consuming one-time reminders while delivery is disabled. */
+internal object HabitReminderDeliveryPolicy {
+    fun shouldProcess(
+        masterEnabled: Boolean,
+        habitRemindersEnabled: Boolean,
+        notificationsAllowed: Boolean
+    ): Boolean = masterEnabled && habitRemindersEnabled && notificationsAllowed
+}
