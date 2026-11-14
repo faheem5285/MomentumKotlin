@@ -65,6 +65,17 @@ class VaultCryptoTest {
     }
 
     @Test
+    fun accountRecoveryKeyMustBeA256BitVmk() {
+        VaultCrypto.requireVmk(VaultCrypto.newVmk())
+        assertThrows(IllegalArgumentException::class.java) {
+            VaultCrypto.requireVmk(ByteArray(31))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            VaultCrypto.requireVmk(ByteArray(33))
+        }
+    }
+
+    @Test
     fun vmkCanBeRewrappedWithoutChangingIt() {
         val vmk = VaultCrypto.newVmk()
         val oldPasswordKey = VaultCrypto.deriveKey("old password", VaultCrypto.newSalt())
