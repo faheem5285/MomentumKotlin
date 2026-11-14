@@ -53,3 +53,10 @@ internal object CustomNotificationTimeCalculator {
         }
     }
 }
+
+
+/** Prevents custom reminders from being consumed when Android cannot display them. */
+internal object CustomNotificationDeliveryPolicy {
+    fun shouldDeliver(masterEnabled: Boolean, notificationsAllowed: Boolean): Boolean =
+        masterEnabled && notificationsAllowed
+}

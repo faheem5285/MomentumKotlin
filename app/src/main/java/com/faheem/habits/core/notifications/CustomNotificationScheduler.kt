@@ -84,7 +84,16 @@ object CustomNotificationScheduler {
             cancel(context, id)
             return
         }
-        if (!MomentumNotificationSettings.masterEnabled(context)) return
+        val canDeliver = CustomNotificationDeliveryPolicy.shouldDeliver(
+            masterEnabled = MomentumNotificationSettings.masterEnabled(context),
+            notificationsAllowed = MomentumNotificationSettings.notificationsAllowed(context)
+        )
+        if (!canDeliver) {
+            // Preserve the saved notification and its repeat schedule while delivery is blocked.
+            val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarms.cancel(pendingIntent(context, id))
+            return
+        }
 
         ZyloNotifications.ensureChannels(context)
         val channel = if (MomentumNotificationSettings.isQuietHours(context)) {
