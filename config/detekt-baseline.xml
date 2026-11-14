@@ -17,7 +17,7 @@
     <ID>CyclomaticComplexMethod:ExpensesScreen.kt$@Composable fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel())</ID>
     <ID>CyclomaticComplexMethod:ExpensesScreen.kt$@Composable private fun OverviewScreen( month: YearMonth, expenses: List&lt;Expense&gt;, spent: Double, previousMonthSpent: Double, budget: Double, fraction: Float, byCategory: Map&lt;String, Double&gt;, vm: ExpenseViewModel, onBudget: () -&gt; Unit, onDelete: (Expense) -&gt; Unit, onAll: () -&gt; Unit )</ID>
     <ID>CyclomaticComplexMethod:FilesScreen.kt$@Composable fun FilesScreen(vm: FileViewModel = hiltViewModel())</ID>
-    <ID>CyclomaticComplexMethod:FilesScreen.kt$@Composable private fun TextFilePreview(file: FileItem, onSaveCopy: (String) -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:FilePreview.kt$@Composable private fun TextFilePreview(file: FileItem, onSaveCopy: (String) -&gt; Unit)</ID>
     <ID>CyclomaticComplexMethod:HabitEditor.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun HabitEditorSheet( initial: Habit?, onDismiss: () -&gt; Unit, onSave: (Habit, List&lt;HabitReminderDraft&gt;) -&gt; Unit, initialReminders: List&lt;HabitReminder&gt; = emptyList() )</ID>
     <ID>CyclomaticComplexMethod:HabitLogic.kt$fun computeStreaks(days: Set&lt;Long&gt;, mask: Int, today: Long): StreakInfo</ID>
     <ID>CyclomaticComplexMethod:HabitReminderManager.kt$@Composable fun HabitReminderManagerSheet( habit: Habit, reminders: List&lt;HabitReminder&gt;, onDismiss: () -&gt; Unit, onAdd: (Int, Int, Int) -&gt; Unit, onUpdate: (HabitReminder) -&gt; Unit, onDelete: (HabitReminder) -&gt; Unit )</ID>
@@ -59,12 +59,12 @@
     <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun MoneyMetric(label: String, value: String, modifier: Modifier)</ID>
     <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun OverviewScreen( month: YearMonth, expenses: List&lt;Expense&gt;, spent: Double, previousMonthSpent: Double, budget: Double, fraction: Float, byCategory: Map&lt;String, Double&gt;, vm: ExpenseViewModel, onBudget: () -&gt; Unit, onDelete: (Expense) -&gt; Unit, onAll: () -&gt; Unit )</ID>
     <ID>FunctionNaming:FilesScreen.kt$@Composable fun FilesScreen(vm: FileViewModel = hiltViewModel())</ID>
-    <ID>FunctionNaming:FilesScreen.kt$@Composable private fun ImageFilePreview(file: FileItem)</ID>
-    <ID>FunctionNaming:FilesScreen.kt$@Composable private fun PdfFilePreview(file: FileItem)</ID>
-    <ID>FunctionNaming:FilesScreen.kt$@Composable private fun PreviewMessage(title: String, message: String)</ID>
-    <ID>FunctionNaming:FilesScreen.kt$@Composable private fun TextFilePreview(file: FileItem, onSaveCopy: (String) -&gt; Unit)</ID>
-    <ID>FunctionNaming:FilesScreen.kt$@Composable private fun UnsupportedFilePreview(file: FileItem)</ID>
-    <ID>FunctionNaming:FilesScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun FilePreviewSheet(file: FileItem, onDismiss: () -&gt; Unit, onSaveCopy: (String) -&gt; Unit)</ID>
+    <ID>FunctionNaming:FilePreview.kt$@Composable private fun ImageFilePreview(file: FileItem)</ID>
+    <ID>FunctionNaming:FilePreview.kt$@Composable private fun PdfFilePreview(file: FileItem)</ID>
+    <ID>FunctionNaming:FilePreview.kt$@Composable private fun PreviewMessage(title: String, message: String)</ID>
+    <ID>FunctionNaming:FilePreview.kt$@Composable private fun TextFilePreview(file: FileItem, onSaveCopy: (String) -&gt; Unit)</ID>
+    <ID>FunctionNaming:FilePreview.kt$@Composable private fun UnsupportedFilePreview(file: FileItem)</ID>
+    <ID>FunctionNaming:FilePreview.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun FilePreviewSheet(file: FileItem, onDismiss: () -&gt; Unit, onSaveCopy: (String) -&gt; Unit)</ID>
     <ID>FunctionNaming:HabitEditor.kt$@Composable private fun DayToggle(letter: String, selected: Boolean, onClick: () -&gt; Unit)</ID>
     <ID>FunctionNaming:HabitEditor.kt$@Composable private fun EditorLabel(text: String)</ID>
     <ID>FunctionNaming:HabitEditor.kt$@Composable private fun HabitReminderDraftCard( index: Int, reminder: HabitReminderDraft, onChange: (HabitReminderDraft) -&gt; Unit, onDelete: () -&gt; Unit )</ID>
