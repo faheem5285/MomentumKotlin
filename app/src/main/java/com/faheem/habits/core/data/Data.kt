@@ -493,7 +493,7 @@ interface HabitDao {
         val existing = if (eligible) getSkip(habitId, epochDay) else null
         val canConsume = eligible && (existing == null || existing.deleted)
 
-        if (canConsume && habit != null) {
+        if (canConsume) {
             upsertSkip(
                 existing?.copy(
                     reason = "freeze",
