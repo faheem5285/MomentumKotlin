@@ -92,3 +92,11 @@ These are incremental improvements, not evidence that every feature screen has c
 - Shared status pills no longer draw decorative elevation when Reduce effects is enabled.
 
 These shared changes improve interaction consistency across modules; they do not replace screen-reader, font-scale, contrast, or device interaction testing.
+
+
+## Additional implementation update — 2026-11-14
+
+- Contacts and Supabase now collect their database/work-status flows with lifecycle-aware Compose collection, avoiding unnecessary active collection while their screens are stopped.
+- Habit tab transitions now honor Reduce effects, matching the shared control behavior.
+
+The automated checks cover compilation and tests; TalkBack, dynamic font scaling, predictive back, haptics, and physical-device layout checks remain open.

@@ -7,6 +7,7 @@ import com.faheem.habits.R
 
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
@@ -132,10 +133,15 @@ fun HabitScreen(
     val tabs = remember {
         habitTabs.map { MomentumTab(it.label, it.icon) }
     }
+    val reduceEffects = LocalReduceEffects.current
 
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {
-            Crossfade(targetState = tab, label = "habitTab") { t ->
+            Crossfade(
+                targetState = tab,
+                animationSpec = tween(if (reduceEffects) 0 else MomentumTokens.motionShort),
+                label = "habitTab"
+            ) { t ->
                 when (t) {
                     0 -> TodayScreen(
                         vm,

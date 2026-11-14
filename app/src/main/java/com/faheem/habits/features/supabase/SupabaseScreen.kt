@@ -41,7 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -132,11 +132,11 @@ fun SupabaseScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val database = remember { AppDatabase.get(context.applicationContext) }
-    val syncStates by database.syncStateDao().observeAll().collectAsState(initial = emptyList())
+    val syncStates by database.syncStateDao().observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
     val syncWorkInfos by remember(context) {
         WorkManager.getInstance(context.applicationContext)
             .getWorkInfosForUniqueWorkFlow("momentum-sync")
-    }.collectAsState(initial = emptyList())
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
     val syncWorkState = syncWorkInfos.firstOrNull { it.state == WorkInfo.State.RUNNING }?.state
         ?: syncWorkInfos.firstOrNull {
             it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED

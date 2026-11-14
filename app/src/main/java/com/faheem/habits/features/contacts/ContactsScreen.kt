@@ -40,7 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -139,7 +139,7 @@ class ContactsViewModel(app: Application) : AndroidViewModel(app) {
 
 @Composable
 fun ContactsScreen(vm: ContactsViewModel = viewModel()) {
-    val contacts by vm.contacts.collectAsState()
+    val contacts by vm.contacts.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Contact?>(null) }
     var creating by remember { mutableStateOf(false) }
