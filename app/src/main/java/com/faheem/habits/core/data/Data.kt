@@ -816,9 +816,97 @@ interface ProfileCacheDao {
     suspend fun upsert(profile: ProfileCache)
 }
 
+@Entity(tableName = "vocabulary_words", indices = [Index("word"), Index("language"), Index("mastered")])
+data class VocabularyWord(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val word: String,
+    val meaning: String,
+    val partOfSpeech: String = "",
+    val example: String = "",
+    val language: String = "en",
+    val tags: String = "",
+    val difficulty: Int = 1,
+    val mastered: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Dao
+interface VocabularyDao {
+    @Query("SELECT * FROM vocabulary_words ORDER BY word COLLATE NOCASE") fun observeAll(): Flow<List<VocabularyWord>>
+    @Query("SELECT * FROM vocabulary_words WHERE word LIKE '%' || :query || '%' OR meaning LIKE '%' || :query || '%' ORDER BY word COLLATE NOCASE") fun search(query: String): Flow<List<VocabularyWord>>
+    @Query("SELECT * FROM vocabulary_words WHERE id = :id LIMIT 1") suspend fun get(id: Long): VocabularyWord?
+    @Query("SELECT * FROM vocabulary_words WHERE mastered = 0 ORDER BY word COLLATE NOCASE") suspend fun getUnmastered(): List<VocabularyWord>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(word: VocabularyWord): Long
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertImported(words: List<VocabularyWord>): List<Long>
+    @Query("DELETE FROM vocabulary_words WHERE id = :id") suspend fun delete(id: Long)
+    @Query("UPDATE vocabulary_words SET mastered = :mastered, updatedAt = :at WHERE id = :id") suspend fun setMastered(id: Long, mastered: Boolean, at: Long = System.currentTimeMillis())
+    @Query("SELECT * FROM vocabulary_words ORDER BY createdAt DESC") suspend fun allForExport(): List<VocabularyWord>
+}
+
+@Entity(tableName = "grammar_notes", indices = [Index("category"), Index("pinned")])
+data class GrammarNote(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val title: String,
+    val category: String = "Other",
+    val explanation: String = "",
+    val correctExample: String = "",
+    val incorrectExample: String = "",
+    val commonMistake: Boolean = false,
+    val pinned: Boolean = false,
+    val tags: String = "",
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Dao
+interface GrammarNoteDao {
+    @Query("SELECT * FROM grammar_notes ORDER BY pinned DESC, title COLLATE NOCASE") fun observeAll(): Flow<List<GrammarNote>>
+    @Query("SELECT * FROM grammar_notes WHERE title LIKE '%' || :query || '%' OR explanation LIKE '%' || :query || '%' ORDER BY pinned DESC, title COLLATE NOCASE") fun search(query: String): Flow<List<GrammarNote>>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(note: GrammarNote): Long
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertImported(notes: List<GrammarNote>): List<Long>
+    @Query("DELETE FROM grammar_notes WHERE id = :id") suspend fun delete(id: Long)
+    @Query("SELECT * FROM grammar_notes ORDER BY updatedAt DESC") suspend fun allForExport(): List<GrammarNote>
+}
+
+@Entity(tableName = "review_states", indices = [Index("nextReviewAt")])
+data class ReviewState(
+    @PrimaryKey val wordId: Long,
+    val box: Int = 0,
+    val nextReviewAt: Long = 0L,
+    val lastReviewedAt: Long = 0L,
+    val correctCount: Int = 0,
+    val reviewCount: Int = 0
+)
+
+@Dao
+interface ReviewStateDao {
+    @Query("SELECT * FROM review_states WHERE nextReviewAt <= :now ORDER BY nextReviewAt") fun due(now: Long): Flow<List<ReviewState>>
+    @Query("SELECT * FROM review_states WHERE wordId = :wordId LIMIT 1") suspend fun get(wordId: Long): ReviewState?
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(state: ReviewState)
+}
+
+@Entity(tableName = "translation_history", indices = [Index("createdAt")])
+data class TranslationHistory(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sourceLanguage: String,
+    val targetLanguage: String,
+    val sourceText: String,
+    val translatedText: String,
+    val createdAt: Long = System.currentTimeMillis(),
+    val favorite: Boolean = false
+)
+
+@Dao
+interface TranslationHistoryDao {
+    @Query("SELECT * FROM translation_history ORDER BY createdAt DESC") fun observeAll(): Flow<List<TranslationHistory>>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insert(item: TranslationHistory): Long
+    @Query("UPDATE translation_history SET favorite = :favorite WHERE id = :id") suspend fun setFavorite(id: Long, favorite: Boolean)
+    @Query("DELETE FROM translation_history") suspend fun clear()
+}
+
 @Database(
-    entities = [Habit::class, Completion::class, HabitSkip::class, HabitReminder::class, Expense::class, CategoryBudget::class, LoanPerson::class, Contact::class, Loan::class, LoanPayment::class, LoanAttachment::class, FileItem::class, VaultRecord::class, ToDoItem::class, LifeRule::class, LifeRuleFile::class, CustomNotification::class, SyncState::class, ProfileCache::class],
-    version = 21,
+    entities = [Habit::class, Completion::class, HabitSkip::class, HabitReminder::class, Expense::class, CategoryBudget::class, LoanPerson::class, Contact::class, Loan::class, LoanPayment::class, LoanAttachment::class, FileItem::class, VaultRecord::class, ToDoItem::class, LifeRule::class, LifeRuleFile::class, CustomNotification::class, SyncState::class, ProfileCache::class, VocabularyWord::class, GrammarNote::class, ReviewState::class, TranslationHistory::class],
+    version = 22,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -833,6 +921,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun customNotificationDao(): CustomNotificationDao
     abstract fun syncStateDao(): SyncStateDao
     abstract fun profileCacheDao(): ProfileCacheDao
+    abstract fun vocabularyDao(): VocabularyDao
+    abstract fun grammarNoteDao(): GrammarNoteDao
+    abstract fun reviewStateDao(): ReviewStateDao
+    abstract fun translationHistoryDao(): TranslationHistoryDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null
@@ -1296,6 +1388,22 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `vocabulary_words` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `word` TEXT NOT NULL, `meaning` TEXT NOT NULL, `partOfSpeech` TEXT NOT NULL, `example` TEXT NOT NULL, `language` TEXT NOT NULL, `tags` TEXT NOT NULL, `difficulty` INTEGER NOT NULL, `mastered` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_vocabulary_words_word` ON `vocabulary_words` (`word`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_vocabulary_words_language` ON `vocabulary_words` (`language`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_vocabulary_words_mastered` ON `vocabulary_words` (`mastered`)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `grammar_notes` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, `category` TEXT NOT NULL, `explanation` TEXT NOT NULL, `correctExample` TEXT NOT NULL, `incorrectExample` TEXT NOT NULL, `commonMistake` INTEGER NOT NULL, `pinned` INTEGER NOT NULL, `tags` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_grammar_notes_category` ON `grammar_notes` (`category`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_grammar_notes_pinned` ON `grammar_notes` (`pinned`)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `review_states` (`wordId` INTEGER NOT NULL, `box` INTEGER NOT NULL, `nextReviewAt` INTEGER NOT NULL, `lastReviewedAt` INTEGER NOT NULL, `correctCount` INTEGER NOT NULL, `reviewCount` INTEGER NOT NULL, PRIMARY KEY(`wordId`))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_review_states_nextReviewAt` ON `review_states` (`nextReviewAt`)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `translation_history` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sourceLanguage` TEXT NOT NULL, `targetLanguage` TEXT NOT NULL, `sourceText` TEXT NOT NULL, `translatedText` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `favorite` INTEGER NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_translation_history_createdAt` ON `translation_history` (`createdAt`)")
+            }
+        }
+
         private fun Double.toMinorUnitsForMigration(): Long {
             require(isFinite()) { "A stored money value is not finite; database migration was stopped to protect data." }
             return BigDecimal.valueOf(this).setScale(2, RoundingMode.HALF_UP).movePointRight(2).longValueExact()
@@ -1326,6 +1434,7 @@ abstract class AppDatabase : RoomDatabase() {
                     .addMigrations(MIGRATION_18_19)
                     .addMigrations(MIGRATION_19_20)
                     .addMigrations(MIGRATION_20_21)
+                    .addMigrations(MIGRATION_21_22)
                     .build().also { instance = it }
             }
     }

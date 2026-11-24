@@ -12,8 +12,8 @@ Branch: `feature/premium-redesign-profile-language` (created from `phase-9-quali
 - [ ] Phase 5 — Cloud & Sync: IN PROGRESS — module sync toggles, account state, recent activity and sync history are implemented; assemble/test/lint are blocked at plugin resolution and ADB cannot initialize its home directory.
 - [ ] Phase 6 — Settings: IN PROGRESS — Settings now uses a searchable module group and grouped Account, Security and Language sections; verification is blocked by Android plugin resolution and ADB home permissions.
 - [ ] Phase 7 — Profile: IN PROGRESS — optional offline entry, Profile/Auth UI, Google Credential Manager exchange, Room profile cache and migration v21 are implemented; assemble/test/lint remain blocked before compilation by Android Gradle Plugin resolution.
-- [ ] Phase 8 — Language: TODO.
-- [ ] Phase 9 — Polish, hardening, final gate: TODO.
+- [ ] Phase 8 — Language: IN PROGRESS — Room v22 entities/migration, local vocabulary and grammar CRUD, review scheduling, Home/Settings entry points, optional SQL guidance and a Leitner unit test are added. Translation, dictionary/TTS, import/export, quiz, and schema export remain incomplete; Gradle cannot resolve AGP 8.5.2.
+- [ ] Phase 9 — Polish, hardening, final gate: IN PROGRESS — summary and final verification record are written. Code review and final gates remain incomplete because AGP 8.5.2 cannot resolve.
 
 ## Phase 0 baseline
 
@@ -112,3 +112,29 @@ No task reached Kotlin or Android resource compilation. Keep the phase gate open
 | Parse exported schema and version catalog | PASS | Room schema JSON and Gradle version catalog TOML parse successfully. |
 
 Three Gradle tasks stop at the same root plugin dependency resolution failure and no source diagnostics are available. The added Profile unit tests and migration test could not execute. Keep this gate open for a machine with Google Maven/Gradle plugin resolution and a working ADB home directory.
+
+## Phase 8 verification attempt
+
+| Command | Result | Notes |
+| --- | --- | --- |
+| `gradlew.bat assembleDebug` (mid-phase and end gate) | FAIL (exit 1) | Root Android Gradle Plugin 8.5.2 resolution failed before project configuration. |
+| `gradlew.bat testDebugUnitTest` | FAIL (exit 1) | Same configuration failure; 0 tests executed. |
+| `gradlew.bat lintDebug` | FAIL (exit 1) | Same configuration failure; lint did not run. |
+| `adb devices` | UNAVAILABLE | Could not create `\\.android`; device state unknown, so install was skipped. |
+| `git diff --check` | PASS | No whitespace errors. |
+| TOML / Room v21 JSON parse | PASS | Catalog TOML and the checked-in v21 schema parse. Room v22 export is pending. |
+
+The Room v22 migration and Language unit test are source changes only; neither has compiled or run. Phase 8 is not marked done because Language functionality and schema export remain incomplete.
+
+## Phase 9 final gate attempt
+
+| Command | Result | Notes |
+| --- | --- | --- |
+| `gradlew.bat clean` | FAIL (exit 1) | Root plugin resolution failure; clean task did not start. |
+| `gradlew.bat assembleDebug` | FAIL (exit 1) | Root plugin resolution failure before compilation. |
+| `gradlew.bat testDebugUnitTest` | FAIL (exit 1) | Same; no tests executed. |
+| `gradlew.bat lintDebug` | FAIL (exit 1) | Same; lint did not run. |
+| `gradlew.bat assembleRelease` | SKIPPED | Release signing properties are not configured. |
+| `gradlew.bat installDebug` | SKIPPED | ADB could not initialize its home; device status unknown. |
+
+See `docs/redesign-verification.md` and `docs/redesign-summary.md`. Phase 9 remains open pending a functioning build environment and completion of Phase 8.

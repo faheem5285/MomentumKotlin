@@ -27,6 +27,7 @@ import com.faheem.habits.features.home.HomeScreen
 import com.faheem.habits.features.profile.ProfileScreen
 import com.faheem.habits.features.loans.LoansScreen
 import com.faheem.habits.features.liferules.LifeRulesScreen
+import com.faheem.habits.features.language.LanguageScreen
 import com.faheem.habits.features.money.ExpensesScreen
 import com.faheem.habits.features.network.NetworkScreen
 import com.faheem.habits.features.screen_time.ScreenTimeScreen
@@ -135,6 +136,7 @@ private fun ModuleScreen(module: AppModule, itemId: Int?, requestToken: Long?, o
                             AppModule.Vault -> VaultScreen()
                             AppModule.Battery -> BatteryScreen()
                             AppModule.Network -> NetworkScreen()
+                            AppModule.Language -> LanguageScreen()
                             AppModule.Supabase -> SupabaseScreen(onOpenProfile = { onOpenModule(AppModule.Profile) })
                             AppModule.Profile -> ProfileScreen(onContinueWithoutAccount = onBack, passwordResetRequestToken = requestToken)
                             AppModule.Settings -> AppSettingsScreen(onOpenModule = onOpenModule)

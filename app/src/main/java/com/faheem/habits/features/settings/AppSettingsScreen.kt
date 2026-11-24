@@ -443,7 +443,7 @@ fun AppSettingsScreen(onOpenModule: (AppModule) -> Unit = {}) {
                         title = "Language learning",
                         supportingText = "Vocabulary, grammar, practice and translation",
                         icon = Icons.Rounded.AutoAwesome,
-                        value = "In development"
+                        value = "Vocabulary · Notes · Practice"
                     )
                 }
             }

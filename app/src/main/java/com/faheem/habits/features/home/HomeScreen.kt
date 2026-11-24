@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -288,6 +289,7 @@ fun HomeScreen(
     val batteryLevel = insights.batteryLevel
     val deviceTools = remember(insights) { listOf(
         TileSpec("Profile", "Account and sign-in options", AppModule.Profile.icon, AppModule.Profile.gradient, AppModule.Profile),
+        TileSpec("Language", "Vocabulary, grammar and practice", AppModule.Language.icon, AppModule.Language.gradient, AppModule.Language),
         TileSpec(
             "Battery",
             insights.batteryLevel?.let { "$it% right now" } ?: "Live charging animation",
@@ -591,6 +593,7 @@ private fun moduleWatermarkIcon(module: AppModule?) = when (module) {
     AppModule.Vault -> Icons.Rounded.Security
     AppModule.Battery -> Icons.Rounded.BatteryChargingFull
     AppModule.Network -> Icons.Rounded.Wifi
+    AppModule.Language -> Icons.AutoMirrored.Rounded.MenuBook
     AppModule.Supabase -> Icons.Rounded.CloudSync
     AppModule.Profile -> Icons.Rounded.Person
     AppModule.Settings -> Icons.Rounded.Tune

@@ -15,3 +15,8 @@
 - **Signed-out Vault access.** The encrypted Vault continues to use its last local account binding after sign-out; only the active Auth identity is cleared. This keeps the local encrypted store reachable while preventing signed-out sessions from scheduling cloud sync.
 - **Profile photos.** Photos selected through the system photo picker stay in app storage through the persisted URI grant. No Storage bucket name exists in project configuration, so photo uploads remain disabled until one is configured.
 - **Account deletion.** The UI requires two confirmations. The repository calls `delete_my_account` only when the Supabase RPC is installed; no SQL function is included because deletion authority and cloud record retention need server-side policy.
+
+## Phase 8
+
+- **Language delivery scope.** This phase adds local vocabulary and grammar CRUD with a Leitner review schedule and adds the Room v22 migration. Translation UI, ML Kit model management, dictionary lookup/TextToSpeech, quiz/session flow, and validated JSON/CSV import/export remain incomplete because the Android plugin cannot resolve, so changes cannot be compiled or exercised safely. No Language sync toggle is exposed because the existing sync adapter has no language table protocol; `language.sql` is optional schema guidance only.
+- **Room schema export.** Migration 21→22 and migration-test coverage are updated, but the Room 22 exported schema was not generated: KSP cannot run while the Android Gradle Plugin is unresolved. Generate and commit it after build dependencies are available before shipping the migration.

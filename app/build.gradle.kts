@@ -141,6 +141,8 @@ dependencies {
     implementation(libs.credentials.core)
     implementation(libs.credentials.play.services)
     implementation(libs.google.id)
+    implementation(libs.mlkit.translate)
+    implementation(libs.mlkit.language.id)
     debugImplementation(libs.leakcanary.android)
     debugImplementation(libs.androidx.compose.ui.tooling)
     ksp(libs.androidx.room.compiler)
