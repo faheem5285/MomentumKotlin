@@ -113,6 +113,8 @@ No task reached Kotlin or Android resource compilation. Keep the phase gate open
 
 Three Gradle tasks stop at the same root plugin dependency resolution failure and no source diagnostics are available. The added Profile unit tests and migration test could not execute. Keep this gate open for a machine with Google Maven/Gradle plugin resolution and a working ADB home directory.
 
+Follow-up from the user's `installDebug` output: Credential Manager 1.6.0 and its resolved AndroidX Core 1.15.0 require compileSdk 35 / AGP 8.6+. Pinned Credential Manager to 1.3.0 to retain the project's compileSdk 34 / AGP 8.5.2 toolchain. The local Gradle retry remains blocked earlier at AGP plugin resolution, so this compatibility fix has not yet been verified by a build.
+
 ## Phase 8 verification attempt
 
 | Command | Result | Notes |

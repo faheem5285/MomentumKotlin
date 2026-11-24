@@ -15,6 +15,7 @@
 - **Signed-out Vault access.** The encrypted Vault continues to use its last local account binding after sign-out; only the active Auth identity is cleared. This keeps the local encrypted store reachable while preventing signed-out sessions from scheduling cloud sync.
 - **Profile photos.** Photos selected through the system photo picker stay in app storage through the persisted URI grant. No Storage bucket name exists in project configuration, so photo uploads remain disabled until one is configured.
 - **Account deletion.** The UI requires two confirmations. The repository calls `delete_my_account` only when the Supabase RPC is installed; no SQL function is included because deletion authority and cloud record retention need server-side policy.
+- **Credential Manager compatibility.** Pin Credential Manager to 1.3.0. The initially selected 1.6.0 requires compileSdk 35 and AGP 8.6+, while this project remains on compileSdk 34 and AGP 8.5.2. The 1.3.0 AndroidX release is compatible with the existing toolchain generation and supports the APIs used by the Google sign-in flow.
 
 ## Phase 8
 
