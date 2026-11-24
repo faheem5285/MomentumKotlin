@@ -5,7 +5,7 @@ Branch: `feature/premium-redesign-profile-language` (created from `phase-9-quali
 ## Phase checklist
 
 - [x] Phase 0 — Audit: audit document completed; both baseline commands attempted and blocked before project configuration by unresolved Android Gradle Plugin 8.5.2.
-- [ ] Phase 1 — Design system foundation: TODO.
+- [ ] Phase 1 — Design system foundation: IN PROGRESS — shared tokens/components and design guide are implemented; verification gate is blocked before project configuration by unresolved Android Gradle Plugin 8.5.2.
 - [ ] Phase 2 — Screen time: TODO.
 - [ ] Phase 3 — Battery: TODO.
 - [ ] Phase 4 — Network: TODO.
@@ -25,3 +25,16 @@ Run from repository root, 2026-11-24:
 | `gradlew.bat testDebugUnitTest` | FAIL (exit 1) | With repository Gradle cache and network permission, failed resolving `com.android.application:8.5.2` before any test task ran. Test count: unavailable. |
 
 No Kotlin compilation or test execution occurred, so these results do not establish an app-code regression or a passing code baseline. The immediate blocker is dependency/plugin resolution in the environment. No unrelated code changes were made to work around it.
+
+## Phase 1 verification attempt
+
+Requested commands from repository root, 2026-11-24:
+
+| Command | Result | Notes |
+| --- | --- | --- |
+| `gradlew.bat assembleDebug` (mid-phase) | FAIL (exit 1) | Failed during root plugin resolution for `com.android.application:8.5.2`; no source compilation started. |
+| `gradlew.bat assembleDebug` (end gate) | FAIL (exit 1) | Repeated after the mid-phase check; same root plugin resolution failure. |
+| `gradlew.bat testDebugUnitTest` | FAIL (exit 1) | Failed at root plugin resolution; 0 tests executed. |
+| `gradlew.bat lintDebug` | FAIL (exit 1) | Failed at root plugin resolution; lint did not run and warning count is unavailable. |
+
+The same dependency-resolution blocker reproduced across three Phase 1 gate tasks after the baseline retry. No safe source change can make an unavailable build plugin resolve; dependency versions and repositories were left unchanged. Continue source work with this gate unresolved, and rerun the full gate when repository access is available.

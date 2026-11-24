@@ -79,6 +79,14 @@ enum class GlassLevel { Low, Medium, High }
 
 /** Shared spacing, radii and motion constants. */
 object MomentumTokens {
+    // Fixed rhythm used by new and refreshed screens.
+    val space4dp = 4.dp
+    val space8dp = 8.dp
+    val space12dp = 12.dp
+    val space16dp = 16.dp
+    val space24dp = 24.dp
+    val space32dp = 32.dp
+
     val radiusSmall = 14.dp
     val radiusMedium = 20.dp
     val radiusLarge = 28.dp
@@ -102,8 +110,13 @@ object MomentumTokens {
     val elevationMedium = 6.dp
     val elevationHigh = 14.dp
 
+    val glassSurface = GlassLevel.Low
+    val glassRaised = GlassLevel.Medium
+    val glassOverlay = GlassLevel.High
+
     const val motionShort = 140
     const val motionMedium = 260
+    const val motionLong = 320
 }
 
 /* ------------------------------------------------------------------------- */

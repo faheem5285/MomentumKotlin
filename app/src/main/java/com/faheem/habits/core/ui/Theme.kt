@@ -21,11 +21,25 @@ import androidx.compose.ui.unit.sp
 import com.faheem.habits.core.settings.ThemeMode
 
 /** Semantic colors used across the app. */
-val Positive = Color(0xFF10B981)
-val Warning = Color(0xFFF59E0B)
+val Positive = Color(0xFF087443)
+val Warning = Color(0xFF8A4B00)
+val Danger = Color(0xFFB3261E)
+val Informational = Color(0xFF1756A9)
 val AccentViolet = Color(0xFF8B5CF6)
 val AccentTeal = Color(0xFF22D3EE)
 val AccentAmber = Color(0xFFFBBF24)
+
+@Immutable
+data class MomentumSemanticColors(
+    val success: Color,
+    val warning: Color,
+    val danger: Color,
+    val info: Color
+)
+
+val LocalSemanticColors = compositionLocalOf {
+    MomentumSemanticColors(Positive, Warning, Danger, Informational)
+}
 
 /** The cool blue lights used throughout the Home screen glass surfaces. */
 val NeonViolet = Color(0xFF596DEB)
@@ -165,6 +179,15 @@ private val DarkGlass = GlassPalette(
     haloAccent = Color(0xFFAA91F2)
 )
 
+private val LightSemantics = MomentumSemanticColors(
+    success = Color(0xFF087443), warning = Color(0xFF8A4B00),
+    danger = Color(0xFFB3261E), info = Color(0xFF1756A9)
+)
+private val DarkSemantics = MomentumSemanticColors(
+    success = Color(0xFF75D9A7), warning = Color(0xFFFFC36B),
+    danger = Color(0xFFFFB4AB), info = Color(0xFF9FC5FF)
+)
+
 private val AppShapes = Shapes(
     small = RoundedCornerShape(14.dp),
     medium = RoundedCornerShape(20.dp),
@@ -289,6 +312,7 @@ fun MomentumTheme(
                 LocalReduceEffects provides reduceEffects,
                 LocalDynamicAccent provides dynamicAccent,
                 LocalGlassPalette provides if (dark) DarkGlass else LightGlass,
+                LocalSemanticColors provides if (dark) DarkSemantics else LightSemantics,
                 content = content
             )
         }
