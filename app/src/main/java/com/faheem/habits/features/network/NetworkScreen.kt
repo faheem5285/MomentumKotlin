@@ -100,6 +100,8 @@ private fun mb(bytes: Long?): String = bytes?.let { String.format(Locale.getDefa
 @Composable
 fun NetworkScreen() {
     val context = LocalContext.current
+    val networkViewModel: NetworkViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    val networkUi by androidx.lifecycle.compose.collectAsStateWithLifecycle(networkViewModel.uiState)
     var period by remember { mutableStateOf(NetworkPeriod.Today) }
     var granted by remember { mutableStateOf(hasUsageAccess(context)) }
     var report by remember { mutableStateOf<NetworkReport?>(null) }
@@ -237,14 +239,59 @@ fun NetworkScreen() {
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
-                HeroCard {
+                GlassCard(contentPadding = PaddingValues(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Connection status", style = MaterialTheme.typography.titleSmall)
+                            Text(networkUi.connection.label, style = MaterialTheme.typography.headlineSmall)
+                        }
+                        StatusPill(
+                            when {
+                                networkUi.connection.label.startsWith("Checking") -> "Checking"
+                                networkUi.connection.online -> "Online"
+                                networkUi.connection.type == "No connection" -> "Offline"
+                                else -> "Limited"
+                            },
+                            when {
+                                networkUi.connection.online -> LocalSemanticColors.current.success
+                                networkUi.connection.type == "No connection" -> LocalSemanticColors.current.danger
+                                else -> LocalSemanticColors.current.warning
+                            }
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    SettingsRow("Connection type", value = networkUi.connection.type)
+                    networkUi.connection.metered?.let { SettingsRow("Data use", value = if (it) "Metered" else "Unmetered") }
+                    networkUi.connection.validated?.let { SettingsRow("Internet", value = if (it) "Available" else "Not validated") }
+                    networkUi.connection.linkSpeedMbps?.let { SettingsRow("Wi-Fi link speed", value = "$it Mbps") }
+                    Spacer(Modifier.height(8.dp))
+                    SecondaryButton("Test connection", onClick = networkViewModel::testConnection, icon = Icons.Rounded.Language)
+                    if (networkUi.testing) {
+                        Spacer(Modifier.height(8.dp))
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                    }
+                    networkUi.testResult?.let { result ->
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            buildString {
+                                append(result.message)
+                                result.latencyMillis?.let { append(" · ").append(it).append(" ms") }
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (result.succeeded) LocalSemanticColors.current.success else MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+            item {
+                GlassCard {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Network usage", Modifier.weight(1f), fontSize = 13.sp, color = Color.White.copy(alpha = .84f))
+                        Text("Data usage", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                         HeroRefreshButton(onClick = { refreshKey++ }, description = "Refresh network usage")
                     }
                     val total = report?.let { if (it.wifi != null && it.mobile != null) mb(it.wifi + it.mobile) else "Unavailable" } ?: "—"
-                    Text(total, fontSize = 33.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
-                    Text("Device traffic · ${period.label.lowercase()}", fontSize = 13.sp, color = Color.White.copy(alpha = .9f))
+                    Text(total, style = MaterialTheme.typography.headlineSmall)
+                    Text("Device traffic · ${period.label.lowercase()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(14.dp))
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                         NetworkPeriod.entries.forEachIndexed { index, item ->
@@ -252,14 +299,6 @@ fun NetworkScreen() {
                                 selected = period == item,
                                 onClick = { period = item },
                                 shape = SegmentedButtonDefaults.itemShape(index, NetworkPeriod.entries.size),
-                                colors = SegmentedButtonDefaults.colors(
-                                    activeContainerColor = Color.White,
-                                    activeContentColor = Color(0xFF26327A),
-                                    activeBorderColor = Color.White,
-                                    inactiveContainerColor = Color.Transparent,
-                                    inactiveContentColor = Color.White,
-                                    inactiveBorderColor = Color.White.copy(alpha = .8f)
-                                )
                             ) { Text(item.label) }
                         }
                     }
@@ -290,6 +329,11 @@ fun NetworkScreen() {
                             }
                         })
                     }
+                    SettingsRow(
+                        title = "Indicator position",
+                        supportingText = "Android controls where ongoing notifications appear.",
+                        value = "System controlled"
+                    )
                     if (indicatorEnabled) {
                         Spacer(Modifier.height(10.dp))
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

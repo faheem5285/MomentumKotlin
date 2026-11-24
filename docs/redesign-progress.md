@@ -8,7 +8,7 @@ Branch: `feature/premium-redesign-profile-language` (created from `phase-9-quali
 - [ ] Phase 1 — Design system foundation: IN PROGRESS — shared tokens/components and design guide are implemented; verification gate is blocked before project configuration by unresolved Android Gradle Plugin 8.5.2.
 - [ ] Phase 2 — Screen time: IN PROGRESS — ViewModel/repository, today-vs-yesterday summary, tappable seven-day chart, and clearer permission/Labs hierarchy are implemented; verification is blocked by plugin resolution.
 - [ ] Phase 3 — Battery: IN PROGRESS — live battery state now flows through a repository/ViewModel, with a ring-first summary, platform-reported charging ETA only, and unsupported detail rows hidden; verification is blocked by plugin resolution.
-- [ ] Phase 4 — Network: TODO.
+- [ ] Phase 4 — Network: IN PROGRESS — callback-based connectivity state, details, and HEAD test are implemented; verification is blocked by plugin resolution. Notification placement is system-controlled and documented.
 - [ ] Phase 5 — Cloud & Sync: TODO.
 - [ ] Phase 6 — Settings: TODO.
 - [ ] Phase 7 — Profile: TODO.
@@ -62,3 +62,15 @@ No code-level failure was reported because Gradle did not configure the project.
 | `adb devices` | UNAVAILABLE | ADB could not create `\.android`, also when pointed to workspace `ANDROID_USER_HOME`; device presence is unknown and `installDebug` was skipped. |
 
 No build task reached source compilation. The gate remains open pending a working Android plugin repository/cache and ADB user directory.
+
+## Phase 4 verification attempt
+
+| Command | Result | Notes |
+| --- | --- | --- |
+| `gradlew.bat assembleDebug` (mid-phase) | FAIL (exit 1) | Plugin resolution failed for `com.android.application:8.5.2` before compilation. |
+| `gradlew.bat assembleDebug` (end gate) | FAIL (exit 1) | Same root configuration failure. |
+| `gradlew.bat testDebugUnitTest` | FAIL (exit 1) | Same root configuration failure; 0 tests executed. |
+| `gradlew.bat lintDebug` | FAIL (exit 1) | Same root configuration failure; lint/warning count unavailable. |
+| `adb devices` | UNAVAILABLE | ADB could not create `\.android` with the default or workspace `ANDROID_USER_HOME`; device presence is unknown and `installDebug` was skipped. |
+
+No task reached Kotlin or Android resource compilation. Keep the phase gate open and rerun after Gradle plugin resolution is available.
