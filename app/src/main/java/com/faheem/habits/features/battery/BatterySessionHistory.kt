@@ -5,7 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** One completed charging session, from plug-in to unplug. */
-internal data class BatteryChargeSession(
+data class BatteryChargeSession(
     val startedAt: Long,
     val endedAt: Long,
     val startPercent: Int,

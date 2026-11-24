@@ -45,7 +45,7 @@ object BatteryAnimationPreferences {
     fun autoShow(context: Context) = context.getSharedPreferences(NAME, Context.MODE_PRIVATE).getBoolean(KEY_AUTO_SHOW, true)
 }
 
-internal data class BatteryDiagnostic(val status: String, val detail: String, val timestamp: Long)
+data class BatteryDiagnostic(val status: String, val detail: String, val timestamp: Long)
 
 internal object BatteryAnimationDiagnostics {
     private const val PREFS = "momentum_battery_diagnostics"

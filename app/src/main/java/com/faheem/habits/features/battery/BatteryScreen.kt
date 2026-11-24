@@ -7,10 +7,8 @@ import com.faheem.habits.core.ui.*
 import com.faheem.habits.R
 
 
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
@@ -80,10 +78,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.Date
 
-internal data class BatteryReading(
+data class BatteryReading(
     val percent: Int,
     val charging: Boolean,
     val source: String,
+    val minutesToFull: Int? = null,
     val health: String = "Unknown",
     val temperatureC: Float? = null,
     val voltageMv: Int? = null,
@@ -127,65 +126,31 @@ private fun batteryHealthLabel(value: Int): String = when (value) {
     else -> "Unknown"
 }
 
+internal fun platformChargingEtaMinutes(context: Context, charging: Boolean): Int? {
+    if (!charging || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return null
+    val manager = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager ?: return null
+    val remainingMillis = runCatching { manager.computeChargeTimeRemaining() }.getOrNull() ?: return null
+    return remainingMillis.takeIf { it > 0L }?.let { ((it + 59_999L) / 60_000L).toInt() }
+}
+
 @Composable
 fun BatteryScreen() {
     val context = LocalContext.current
-    var diagnostic by remember { mutableStateOf(BatteryAnimationDiagnostics.latest(context)) }
-    var lastPluggedState by remember { mutableStateOf(false) }
-    var reading by remember { mutableStateOf(BatteryReading(0, false, "Reading battery…")) }
-    var sessions by remember { mutableStateOf(BatterySessionHistory.recent(context)) }
+    val viewModel: BatteryViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    val dashboard by androidx.lifecycle.compose.collectAsStateWithLifecycle(viewModel.uiState)
+    val reading = dashboard.reading
+    var diagnostic by remember { mutableStateOf(dashboard.diagnostic) }
+    var sessions by remember { mutableStateOf(dashboard.sessions) }
     var usageReport by remember { mutableStateOf<BatteryUsageReport?>(null) }
-    var levels by remember { mutableStateOf(BatteryLevelHistory.samples(context)) }
+    val levels = dashboard.levels
     var usageAllowed by remember { mutableStateOf(hasUsageAccess(context)) }
     var usageRefresh by remember { mutableIntStateOf(0) }
-    DisposableEffect(context) {
-        val appContext = context
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                when (intent?.action) {
-                    Intent.ACTION_POWER_CONNECTED -> BatteryAnimationDiagnostics.record(appContext, "Plug-in signal received by open Battery screen", "The live receiver observed ACTION_POWER_CONNECTED. The manifest receiver may separately launch the overlay.")
-                    Intent.ACTION_POWER_DISCONNECTED -> BatteryAnimationDiagnostics.record(appContext, "Unplug signal received by open Battery screen", "The live receiver observed ACTION_POWER_DISCONNECTED.")
-                    Intent.ACTION_BATTERY_CHANGED -> {
-                        val next = batteryReading(intent)
-                        if (next.charging != lastPluggedState) {
-                            BatteryAnimationDiagnostics.record(
-                                appContext,
-                                if (next.charging) "Live battery state changed to charging" else "Live battery state changed to unplugged",
-                                "ACTION_BATTERY_CHANGED changed the state from ${if (lastPluggedState) "charging" else "on battery"} to ${if (next.charging) "charging" else "on battery"} (${next.source}, ${next.percent}%)."
-                            )
-                        }
-                        lastPluggedState = next.charging
-                        reading = next
-                        BatteryLevelHistory.record(appContext, next.percent, next.charging)
-                        BatteryUsageEstimator.ensureDailyAnchor(appContext)
-                    }
-                }
-                diagnostic = BatteryAnimationDiagnostics.latest(appContext)
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    diagnostic = BatteryAnimationDiagnostics.latest(appContext)
-                    sessions = BatterySessionHistory.recent(appContext)
-                }, 350)
-            }
-        }
-        val filter = IntentFilter().apply {
-            addAction(Intent.ACTION_BATTERY_CHANGED)
-            addAction(Intent.ACTION_POWER_CONNECTED)
-            addAction(Intent.ACTION_POWER_DISCONNECTED)
-        }
-        val initial = ContextCompat.registerReceiver(
-            context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
-        )
-        reading = batteryReading(initial ?: context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)))
-        lastPluggedState = reading.charging
-        BatteryLevelHistory.record(context, reading.percent, reading.charging)
-        BatteryUsageEstimator.ensureDailyAnchor(context)
-        onDispose { runCatching { context.unregisterReceiver(receiver) } }
-    }
     LaunchedEffect(reading.percent, reading.charging, usageRefresh) {
-        levels = BatteryLevelHistory.samples(context)
         usageAllowed = hasUsageAccess(context)
         usageReport = withContext(Dispatchers.IO) { BatteryUsageEstimator.load(context) }
     }
+    LaunchedEffect(dashboard.sessions) { sessions = dashboard.sessions }
+    LaunchedEffect(dashboard.diagnostic) { diagnostic = dashboard.diagnostic }
     var style by remember { mutableStateOf(BatteryAnimationPreferences.style(context)) }
     var autoShow by remember { mutableStateOf(BatteryAnimationPreferences.autoShow(context)) }
     var backgroundListener by remember {
@@ -205,7 +170,7 @@ fun BatteryScreen() {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         overlayAllowed = Settings.canDrawOverlays(context)
         autoShow = BatteryAnimationPreferences.autoShow(context)
-        sessions = BatterySessionHistory.recent(context)
+        sessions = dashboard.sessions
         backgroundListener = context.getSharedPreferences(BatteryAnimationPreferences.NAME, Context.MODE_PRIVATE)
             .getBoolean(BatteryChargingMonitorService.KEY_BACKGROUND_LISTENER, false)
         notificationsAllowed = MomentumNotificationSettings.notificationsAllowed(context)
@@ -213,7 +178,9 @@ fun BatteryScreen() {
     val styles = BATTERY_ANIMATION_STYLES
 
     Column(Modifier.fillMaxSize()) {
-        LazyBatteryContent(
+        if (dashboard.isLoading) {
+            SkeletonLoader(Modifier.padding(MomentumTokens.space4dp))
+        } else LazyBatteryContent(
             reading, style, styles, autoShow, backgroundListener, overlayAllowed, notificationsAllowed,
             diagnostic = diagnostic,
             onRefreshDiagnostics = { diagnostic = BatteryAnimationDiagnostics.latest(context) },
@@ -311,45 +278,46 @@ private fun LazyBatteryContent(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            HeroCard {
+            GlassCard(contentPadding = PaddingValues(20.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Battery studio", Modifier.weight(1f), fontSize = 13.sp, color = Color.White.copy(alpha = .84f))
+                    Column(Modifier.weight(1f)) {
+                        Text(if (reading.charging) "Your phone is charging" else "Your battery", style = MaterialTheme.typography.titleMedium)
+                        Text(reading.source, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     StatusPill(
                         if (reading.charging) "Charging" else "On battery",
-                        if (reading.charging) Positive else Color.White
+                        if (reading.charging) LocalSemanticColors.current.success else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    if (reading.charging) "Charging in progress" else "Battery at a glance",
-                    fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp
-                )
-                Text("Live device status with a calm charging animation", fontSize = 12.5.sp, color = Color.White.copy(alpha = .88f))
-                Spacer(Modifier.height(18.dp))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                    BatteryOrb(displayPercent, reading.charging, style, animate = reading.charging && !reduceMotion)
-                }
-                Spacer(Modifier.height(14.dp))
-                AnimatedBatteryPercent(
-                    displayPercent,
-                    fontSize = 38.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
-                Text(if (reading.charging) "${reading.source} · charging" else reading.source, fontSize = 13.sp, color = Color.White.copy(alpha = .9f))
-                estimate.minutesToFull?.let { minutes ->
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        etaText(minutes),
-                        fontSize = 12.5.sp,
-                        color = Color.White.copy(alpha = .92f)
+                Spacer(Modifier.height(16.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
+                    ProgressRing(
+                        progress = displayPercent / 100f,
+                        label = "${displayPercent.toInt()}%",
+                        caption = "battery",
+                        progressColor = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        labelColor = MaterialTheme.colorScheme.onSurface,
+                        captionColor = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Column(Modifier.weight(1f).padding(start = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(if (reading.charging) "Charging" else "Not charging", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            if (reading.charging) "Power is connected to your phone." else "Connect a charger to start charging.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        reading.minutesToFull?.let { Text(etaText(it), style = MaterialTheme.typography.bodyMedium) }
+                    }
                 }
                 Spacer(Modifier.height(12.dp))
-                PrimaryButton("Preview full-screen animation", onClick = onPreview, icon = Icons.Rounded.BatteryChargingFull)
+                SecondaryButton("Preview charging animation", onClick = onPreview, icon = Icons.Rounded.BatteryChargingFull)
             }
         }
-        item { SectionHeader("Device health", subtitle = "Live readings from Android") }
-        item { BatteryHealthCard(reading) }
+        if (reading.health != "Unknown" || reading.temperatureC != null || reading.voltageMv != null || reading.technology != "Unknown") {
+            item { SectionHeader("Device details", subtitle = "Readings reported by Android") }
+            item { BatteryHealthCard(reading) }
+        }
         item { SectionHeader("Battery level", subtitle = "Recorded over the last 24 hours") }
         item {
             PremiumCard(contentPadding = PaddingValues(16.dp)) {
@@ -482,7 +450,7 @@ private fun LazyBatteryContent(
                 }
             }
         }
-        item { SectionHeader("Animation style", subtitle = "Choose the charging look you like") }
+        item { SectionHeader("Charging overlay", subtitle = "Choose its style and preview") }
         item {
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
@@ -643,26 +611,21 @@ private fun BatteryHealthCard(reading: BatteryReading) {
         "Unknown" -> MaterialTheme.colorScheme.onSurfaceVariant
         else -> Warning
     }
-    PremiumCard(contentPadding = PaddingValues(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconBubble(Icons.Rounded.HealthAndSafety, healthColor, 40.dp)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Battery condition", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                Text(
-                    "Reported by the device fuel gauge",
-                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+    GlassCard(contentPadding = PaddingValues(16.dp)) {
+        if (reading.health != "Unknown") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconBubble(Icons.Rounded.HealthAndSafety, healthColor, 40.dp)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Battery health", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text("Reported by the device fuel gauge", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                StatusPill(reading.health, healthColor)
             }
-            StatusPill(reading.health, healthColor)
         }
-        Spacer(Modifier.height(10.dp))
-        BatteryInfoRow(
-            "Temperature",
-            reading.temperatureC?.let { String.format(java.util.Locale.US, "%.1f °C", it) } ?: "Not reported"
-        )
-        BatteryInfoRow("Voltage", reading.voltageMv?.let { "$it mV" } ?: "Not reported")
-        BatteryInfoRow("Technology", reading.technology)
+        reading.temperatureC?.let { BatteryInfoRow("Temperature", String.format(java.util.Locale.US, "%.1f °C", it)) }
+        reading.voltageMv?.let { BatteryInfoRow("Voltage", "$it mV") }
+        reading.technology.takeIf { it != "Unknown" }?.let { BatteryInfoRow("Battery type", it) }
         BatteryInfoRow("Power source", reading.source)
     }
 }
@@ -959,7 +922,7 @@ internal fun AnimatedBatteryPercent(
     )
 }
 
-internal data class BatteryEstimate(val percent: Float, val minutesToFull: Int?)
+internal data class BatteryEstimate(val percent: Float)
 
 @Composable
 internal fun rememberBatteryEstimate(percent: Int, charging: Boolean): BatteryEstimate {
@@ -976,7 +939,7 @@ internal fun rememberBatteryEstimate(percent: Int, charging: Boolean): BatteryEs
         estimator.update(percent, charging, SystemClock.elapsedRealtime())
         now = SystemClock.elapsedRealtime()
     }
-    return BatteryEstimate(estimator.estimate(now), estimator.minutesToFull(now))
+    return BatteryEstimate(estimator.estimate(now))
 }
 
 @Composable

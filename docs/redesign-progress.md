@@ -7,7 +7,7 @@ Branch: `feature/premium-redesign-profile-language` (created from `phase-9-quali
 - [x] Phase 0 — Audit: audit document completed; both baseline commands attempted and blocked before project configuration by unresolved Android Gradle Plugin 8.5.2.
 - [ ] Phase 1 — Design system foundation: IN PROGRESS — shared tokens/components and design guide are implemented; verification gate is blocked before project configuration by unresolved Android Gradle Plugin 8.5.2.
 - [ ] Phase 2 — Screen time: IN PROGRESS — ViewModel/repository, today-vs-yesterday summary, tappable seven-day chart, and clearer permission/Labs hierarchy are implemented; verification is blocked by plugin resolution.
-- [ ] Phase 3 — Battery: TODO.
+- [ ] Phase 3 — Battery: IN PROGRESS — live battery state now flows through a repository/ViewModel, with a ring-first summary, platform-reported charging ETA only, and unsupported detail rows hidden; verification is blocked by plugin resolution.
 - [ ] Phase 4 — Network: TODO.
 - [ ] Phase 5 — Cloud & Sync: TODO.
 - [ ] Phase 6 — Settings: TODO.
@@ -50,3 +50,15 @@ The same dependency-resolution blocker reproduced across three Phase 1 gate task
 | `adb devices` | UNAVAILABLE | ADB could not initialize its home directory (`\.android` permission denied), including with `ANDROID_USER_HOME` pointed into the workspace. Device status could not be determined; `installDebug` was not run because no device was reported. |
 
 No code-level failure was reported because Gradle did not configure the project. Keep this gate open and rerun when plugin resolution works.
+
+## Phase 3 verification attempt
+
+| Command | Result | Notes |
+| --- | --- | --- |
+| `gradlew.bat assembleDebug` (mid-phase) | FAIL (exit 1) | Could not resolve `com.android.application:8.5.2`; no compilation. |
+| `gradlew.bat assembleDebug` (end gate) | FAIL (exit 1) | Same root configuration failure. |
+| `gradlew.bat testDebugUnitTest` | FAIL (exit 1) | Same root configuration failure; 0 tests executed. |
+| `gradlew.bat lintDebug` | FAIL (exit 1) | Same root configuration failure; lint/warning count unavailable. |
+| `adb devices` | UNAVAILABLE | ADB could not create `\.android`, also when pointed to workspace `ANDROID_USER_HOME`; device presence is unknown and `installDebug` was skipped. |
+
+No build task reached source compilation. The gate remains open pending a working Android plugin repository/cache and ADB user directory.

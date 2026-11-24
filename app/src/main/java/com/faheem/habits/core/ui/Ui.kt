@@ -294,9 +294,18 @@ fun ProgressRing(
     progress: Float,
     label: String,
     modifier: Modifier = Modifier,
-    caption: String = "today"
+    caption: String = "today",
+    progressColor: Color = Color.White,
+    trackColor: Color = Color.White.copy(alpha = 0.22f),
+    labelColor: Color = Color.White,
+    captionColor: Color = Color.White.copy(alpha = 0.75f)
 ) {
-    val anim by animateFloatAsState(progress.coerceIn(0f, 1f), tween(700), label = "ring")
+    val reduceMotion = LocalReduceEffects.current
+    val anim by animateFloatAsState(
+        progress.coerceIn(0f, 1f),
+        tween(if (reduceMotion) 0 else MomentumTokens.motionMedium),
+        label = "ring"
+    )
     Box(
         modifier
             .size(96.dp)
@@ -315,27 +324,27 @@ fun ProgressRing(
             val tl = Offset(sw / 2, sw / 2)
             // Neon bloom behind the progress arc.
             drawArc(
-                color = Color.White.copy(alpha = 0.18f),
+                color = progressColor.copy(alpha = 0.18f),
                 startAngle = -90f, sweepAngle = 360f * anim, useCenter = false,
                 topLeft = tl, size = arcSize,
                 style = Stroke(sw * 2.4f, cap = StrokeCap.Round)
             )
             drawArc(
-                color = Color.White.copy(alpha = 0.22f),
+                color = trackColor,
                 startAngle = 0f, sweepAngle = 360f, useCenter = false,
                 topLeft = tl, size = arcSize,
                 style = Stroke(sw, cap = StrokeCap.Round)
             )
             drawArc(
-                color = Color.White,
+                color = progressColor,
                 startAngle = -90f, sweepAngle = 360f * anim, useCenter = false,
                 topLeft = tl, size = arcSize,
                 style = Stroke(sw, cap = StrokeCap.Round)
             )
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(label, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White)
-            Text(caption, fontSize = 10.sp, color = Color.White.copy(alpha = 0.75f))
+            Text(label, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = labelColor)
+            Text(caption, fontSize = 10.sp, color = captionColor)
         }
     }
 }

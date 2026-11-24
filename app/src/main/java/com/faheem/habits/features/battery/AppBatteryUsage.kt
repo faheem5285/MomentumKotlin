@@ -38,7 +38,7 @@ internal data class BatteryUsageReport(
     val hasData: Boolean get() = apps.isNotEmpty()
 }
 
-internal data class BatteryLevelSample(val timeMillis: Long, val percent: Int, val charging: Boolean)
+data class BatteryLevelSample(val timeMillis: Long, val percent: Int, val charging: Boolean)
 
 private const val PREFS = "momentum_battery_usage"
 private const val KEY_ANCHOR = "daily_anchor"
