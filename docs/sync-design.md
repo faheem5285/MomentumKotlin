@@ -58,6 +58,13 @@ WorkManager backoff; permanent errors expose a short explanation and expandable
 technical detail. Per-table cursors and errors remain separate; the
 `momentum_sync` state row records the last fully successful run.
 
+Cloud & Sync lets users pause or resume each supported feature group. These
+device preferences default to enabled for existing behavior; pausing a group
+leaves local records and existing cloud copies untouched and skips that
+group's push/pull work until resumed. Enabling a group schedules the existing
+sync worker. The screen keeps a short local history of sync outcomes without
+storing account tokens or server error payloads in that history.
+
 Parent records are processed before their dependents: habits before completions,
 skips, and reminders; loan people before loans, then attachments/payments; and
 life rules before life-rule files. File objects are uploaded before their

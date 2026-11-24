@@ -58,6 +58,7 @@ class SupabaseSyncRepository(
         accountKey: ByteArray? = null,
         fullPull: Boolean = false
     ): Int = withSyncLock {
+        if (!SyncModuleSettings.isEnabled(context, SyncModule.Vault)) return@withSyncLock 0
         if (ProjectWipeManager.applyIfNeeded(context) != ProjectWipeManager.CheckResult.UNCHANGED) return@withSyncLock 0
         val table = "momentum_vault_entries"
         val stateDao = db.syncStateDao()
@@ -94,8 +95,10 @@ class SupabaseSyncRepository(
                     lastError = null
                 )
             )
+            SyncHistoryStore.record(context, "Vault synced", "$pushed records uploaded or downloaded.")
             pushed + pulled
         } catch (failure: Exception) {
+            SyncHistoryStore.record(context, "Sync needs attention", "Vault records could not be synced.")
             stateDao.upsert(old.copy(lastError = failure.message?.take(300)))
             throw failure
         }
@@ -116,7 +119,8 @@ class SupabaseSyncRepository(
         var pulled = 0
         var conflicts = 0
         val failures = mutableListOf<Throwable>()
-        suspend fun attempt(table: String? = null, block: suspend () -> Unit) {
+        suspend fun attempt(table: String? = null, module: SyncModule? = null, block: suspend () -> Unit) {
+            if (module != null && !SyncModuleSettings.isEnabled(context, module)) return
             try {
                 block()
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -162,101 +166,101 @@ class SupabaseSyncRepository(
                 lastError = null))
         }
 
-        attempt { fileStorage.uploadPending() }
+        if (SyncModuleSettings.isEnabled(context, SyncModule.Files)) attempt { fileStorage.uploadPending() }
 
         val habits = db.habitDao().getAllForSync()
         val habitIds = habits.associate { it.id to it.uuid }
-        attempt("momentum_habits") {
+        attempt("momentum_habits", SyncModule.Habits) {
             syncEntity("momentum_habits", habits.filter { it.dirty }.map { it.toCloud(device) }, habits.filter { it.dirty }.map { it.uuid },
                 db.habitDao()::markHabitsClean) { applyHabit(it) }
         }
         val completions = db.habitDao().getCompletionsForBackup()
-        attempt("momentum_completions") {
+        attempt("momentum_completions", SyncModule.Habits) {
             syncEntity("momentum_completions", completions.filter { it.dirty }.map { it.toCloud(device, habitIds[it.habitId].orEmpty()) },
                 completions.filter { it.dirty }.map { it.uuid }, db.habitDao()::markCompletionsClean) { applyCompletion(it) }
         }
         val skips = db.habitDao().getAllSkipsForSync()
-        attempt("momentum_habit_skips") {
+        attempt("momentum_habit_skips", SyncModule.Habits) {
             syncEntity("momentum_habit_skips", skips.filter { it.dirty }.map { it.toCloud(device, habitIds[it.habitId].orEmpty()) },
                 skips.filter { it.dirty }.map { it.uuid }, db.habitDao()::markSkipsClean) { applySkip(it) }
         }
         val reminders = db.habitDao().getAllRemindersForSync()
-        attempt("momentum_habit_reminders") {
+        attempt("momentum_habit_reminders", SyncModule.Habits) {
             syncEntity("momentum_habit_reminders", reminders.filter { it.dirty }.map { it.toCloud(device, habitIds[it.habitId].orEmpty()) },
                 reminders.filter { it.dirty }.map { it.uuid }, db.habitDao()::markRemindersClean) { applyReminder(it) }
         }
 
         val expenses = db.expenseDao().getAllForSync()
-        attempt("momentum_expenses") {
+        attempt("momentum_expenses", SyncModule.Money) {
             syncEntity("momentum_expenses", expenses.filter { it.dirty }.map { it.toCloud(device) },
                 expenses.filter { it.dirty }.map { it.uuid }, db.expenseDao()::markClean) { applyExpense(it) }
         }
 
         val contacts = db.contactDao().getAllForSync()
-        attempt("momentum_contacts") {
+        attempt("momentum_contacts", SyncModule.Contacts) {
             syncEntity("momentum_contacts", contacts.filter { it.dirty }.map { it.toCloud(device) },
                 contacts.filter { it.dirty }.map { it.uuid }, db.contactDao()::markClean) { applyContact(it) }
         }
         val budgets = db.expenseDao().getAllBudgetsForSync()
-        attempt("momentum_category_budgets") {
+        attempt("momentum_category_budgets", SyncModule.Money) {
             syncEntity("momentum_category_budgets", budgets.filter { it.dirty }.map { it.toCloud(device) },
                 budgets.filter { it.dirty }.map { it.uuid }, db.expenseDao()::markBudgetsClean) { applyBudget(it) }
         }
 
         val people = db.loanDao().getAllPeopleForSync()
-        attempt("momentum_loan_people") {
+        attempt("momentum_loan_people", SyncModule.Loans) {
             syncEntity("momentum_loan_people", people.filter { it.dirty }.map { it.toCloud(device) },
                 people.filter { it.dirty }.map { it.uuid }, db.loanDao()::markPeopleClean) { applyLoanPerson(it) }
         }
         val syncedPeople = db.loanDao().getAllPeopleForSync()
         val personIds = syncedPeople.associate { it.id to it.uuid }
         val loans = db.loanDao().getAllForSync()
-        attempt("momentum_loans") {
+        attempt("momentum_loans", SyncModule.Loans) {
             syncEntity("momentum_loans", loans.filter { it.dirty }.map { it.toCloud(device, it.personId?.let(personIds::get)) },
                 loans.filter { it.dirty }.map { it.uuid }, db.loanDao()::markClean) { applyLoan(it) }
         }
         val syncedLoans = db.loanDao().getAllForSync()
         val loanIds = syncedLoans.associate { it.id to it.uuid }
         val attachments = db.loanDao().getAllAttachmentsForSync()
-        attempt("momentum_loan_attachments") {
+        attempt("momentum_loan_attachments", SyncModule.Loans) {
             syncEntity("momentum_loan_attachments", attachments.filter { it.dirty }.map { it.toCloud(device, loanIds[it.loanId].orEmpty()) },
                 attachments.filter { it.dirty }.map { it.uuid }, db.loanDao()::markAttachmentsClean) { applyLoanAttachment(it) }
         }
         val payments = db.loanDao().getAllPaymentsForSync()
-        attempt("momentum_loan_payments") {
+        attempt("momentum_loan_payments", SyncModule.Loans) {
             syncEntity("momentum_loan_payments", payments.filter { it.dirty }.map { it.toCloud(device, loanIds[it.loanId].orEmpty()) },
                 payments.filter { it.dirty }.map { it.uuid }, db.loanDao()::markPaymentsClean) { applyPayment(it) }
         }
 
         val files = db.fileDao().getAllForSync()
-        attempt("momentum_files") {
+        attempt("momentum_files", SyncModule.Files) {
             syncEntity("momentum_files", files.filter { it.dirty }.map { it.toCloud(device) },
                 files.filter { it.dirty }.map { it.uuid }, db.fileDao()::markClean) { applyFile(it) }
         }
         val todos = db.toDoDao().getAllForSync()
         val todoIds = todos.associate { it.id to it.uuid }
-        attempt("momentum_todos") {
+        attempt("momentum_todos", SyncModule.ToDos) {
             syncEntity("momentum_todos", todos.filter { it.dirty }.map { it.toCloud(device, todoIds[it.parentId].orEmpty()) },
                 todos.filter { it.dirty }.map { it.uuid }, db.toDoDao()::markClean) { applyTodo(it) }
         }
         val lifeRules = db.lifeRuleDao().getAllForSync()
-        attempt("momentum_life_rules") {
+        attempt("momentum_life_rules", SyncModule.LifeRules) {
             syncEntity("momentum_life_rules", lifeRules.filter { it.dirty }.map { it.toCloud(device) },
                 lifeRules.filter { it.dirty }.map { it.uuid }, db.lifeRuleDao()::markClean) { applyLifeRule(it) }
         }
         val syncedRules = db.lifeRuleDao().getAllForSync()
         val ruleIds = syncedRules.associate { it.id to it.uuid }
         val ruleFiles = db.lifeRuleDao().getAllFilesForSync()
-        attempt("momentum_life_rule_files") {
+        attempt("momentum_life_rule_files", SyncModule.LifeRules) {
             syncEntity("momentum_life_rule_files", ruleFiles.filter { it.dirty }.map { it.toCloud(device, ruleIds[it.ruleId].orEmpty()) },
                 ruleFiles.filter { it.dirty }.map { it.uuid }, db.lifeRuleDao()::markFilesClean) { applyLifeRuleFile(it) }
         }
         val customNotifications = db.customNotificationDao().getAllForSync()
-        attempt("momentum_custom_notifications") {
+        attempt("momentum_custom_notifications", SyncModule.Reminders) {
             syncEntity("momentum_custom_notifications", customNotifications.filter { it.dirty }.map { it.toCloud(device) },
                 customNotifications.filter { it.dirty }.map { it.uuid }, db.customNotificationDao()::markClean) { applyCustomNotification(it) }
         }
-        attempt("momentum_vault_entries") {
+        attempt("momentum_vault_entries", SyncModule.Vault) {
             val accountKey = client.fetchVaultKey()
             try {
                 val vault = db.vaultDao().getAllForSync()
@@ -269,11 +273,15 @@ class SupabaseSyncRepository(
                 accountKey?.fill(0)
             }
         }
-        attempt { fileStorage.restoreMissingFiles() }
-        failures.firstOrNull()?.let { throw it }
+        if (SyncModuleSettings.isEnabled(context, SyncModule.Files)) attempt { fileStorage.restoreMissingFiles() }
+        failures.firstOrNull()?.let {
+            SyncHistoryStore.record(context, "Sync needs attention", "Some records could not be synced.")
+            throw it
+        }
         val statusDao = db.syncStateDao()
         val status = statusDao.get(SYNC_STATUS_TABLE) ?: SyncState(SYNC_STATUS_TABLE)
         statusDao.upsert(status.copy(lastSyncEpochMillis = System.currentTimeMillis(), lastError = null))
+        SyncHistoryStore.record(context, "Sync completed", "$pushed uploaded · $pulled downloaded · $conflicts conflicts")
         SyncRunResult(pushed, pulled, conflicts, pending = 0)
     }
 

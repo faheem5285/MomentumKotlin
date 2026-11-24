@@ -118,9 +118,8 @@ fun SettingsRow(
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val action = onClick ?: if (checked != null && onCheckedChange != null) ({ onCheckedChange(!checked) }) else null
     Row(
-        modifier.fillMaxWidth().heightIn(min = 56.dp).then(if (action != null) Modifier.clickable(onClick = action) else Modifier)
+        modifier.fillMaxWidth().heightIn(min = 56.dp).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .semantics(mergeDescendants = true) {},
         verticalAlignment = Alignment.CenterVertically
     ) {

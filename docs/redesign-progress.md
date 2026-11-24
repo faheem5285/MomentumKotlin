@@ -9,7 +9,7 @@ Branch: `feature/premium-redesign-profile-language` (created from `phase-9-quali
 - [ ] Phase 2 — Screen time: IN PROGRESS — ViewModel/repository, today-vs-yesterday summary, tappable seven-day chart, and clearer permission/Labs hierarchy are implemented; verification is blocked by plugin resolution.
 - [ ] Phase 3 — Battery: IN PROGRESS — live battery state now flows through a repository/ViewModel, with a ring-first summary, platform-reported charging ETA only, and unsupported detail rows hidden; verification is blocked by plugin resolution.
 - [ ] Phase 4 — Network: IN PROGRESS — callback-based connectivity state, details, and HEAD test are implemented; verification is blocked by plugin resolution. Notification placement is system-controlled and documented.
-- [ ] Phase 5 — Cloud & Sync: TODO.
+- [ ] Phase 5 — Cloud & Sync: IN PROGRESS — module sync toggles, account state, recent activity and sync history are implemented; assemble/test/lint are blocked at plugin resolution and ADB cannot initialize its home directory.
 - [ ] Phase 6 — Settings: TODO.
 - [ ] Phase 7 — Profile: TODO.
 - [ ] Phase 8 — Language: TODO.
@@ -74,3 +74,15 @@ No build task reached source compilation. The gate remains open pending a workin
 | `adb devices` | UNAVAILABLE | ADB could not create `\.android` with the default or workspace `ANDROID_USER_HOME`; device presence is unknown and `installDebug` was skipped. |
 
 No task reached Kotlin or Android resource compilation. Keep the phase gate open and rerun after Gradle plugin resolution is available.
+
+## Phase 5 verification attempt
+
+| Command | Result | Notes |
+| --- | --- | --- |
+| `gradlew.bat assembleDebug` (mid-phase) | FAIL (exit 1) | Root plugin `com.android.application:8.5.2` could not be resolved; no Kotlin compilation ran. |
+| `gradlew.bat assembleDebug` (end gate) | FAIL (exit 1) | Same root plugin resolution failure before project configuration. |
+| `gradlew.bat testDebugUnitTest` | FAIL (exit 1) | Same configuration failure; 0 tests executed. |
+| `gradlew.bat lintDebug` | FAIL (exit 1) | Same configuration failure; lint/warning count unavailable. |
+| `adb devices` | UNAVAILABLE | ADB cannot create `\\.android` due to permission denied; device presence is unknown, so `installDebug` was not run. |
+
+`git diff --check` passed. No Gradle task reached source compilation; continue with the gate open and rerun when the configured plugin repository/cache is available.

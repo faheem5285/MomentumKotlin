@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -41,7 +42,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,8 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.work.WorkInfo
-import androidx.work.WorkManager
-import com.faheem.habits.core.data.AppDatabase
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.faheem.habits.core.data.SyncState
 import com.faheem.habits.core.data.supabase.StorageUsage
 import com.faheem.habits.core.data.supabase.SupabaseAuthApi
@@ -67,8 +66,8 @@ import com.faheem.habits.core.data.supabase.SupabaseProvider
 import com.faheem.habits.core.data.supabase.SupabaseRestClient
 import com.faheem.habits.core.data.sync.SupabaseSyncRepository
 import com.faheem.habits.core.data.sync.ProjectWipeManager
-import com.faheem.habits.core.data.sync.SupabaseSyncScheduler
 import com.faheem.habits.core.data.sync.SYNC_STATUS_TABLE
+import com.faheem.habits.core.data.sync.SyncModule
 import com.faheem.habits.core.ui.ChartLegend
 import com.faheem.habits.core.ui.ChartPlaceholder
 import com.faheem.habits.core.ui.ChartSlice
@@ -84,6 +83,9 @@ import com.faheem.habits.core.ui.PremiumCard
 import com.faheem.habits.core.ui.PrimaryButton
 import com.faheem.habits.core.ui.SectionHeader
 import com.faheem.habits.core.ui.StatusPill
+import com.faheem.habits.core.ui.GlassCard
+import com.faheem.habits.core.ui.SettingsGroup
+import com.faheem.habits.core.ui.SettingsRow
 import com.faheem.habits.core.ui.chartColor
 import com.faheem.habits.core.ui.chartSlices
 import kotlinx.coroutines.Dispatchers
@@ -131,20 +133,11 @@ private data class SupabaseMetrics(
 fun SupabaseScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val database = remember { AppDatabase.get(context.applicationContext) }
-    val syncStates by database.syncStateDao().observeAll().collectAsState(initial = emptyList())
-    val syncWorkInfos by remember(context) {
-        WorkManager.getInstance(context.applicationContext)
-            .getWorkInfosForUniqueWorkFlow("momentum-sync")
-    }.collectAsState(initial = emptyList())
-    val syncWorkState = syncWorkInfos.firstOrNull { it.state == WorkInfo.State.RUNNING }?.state
-        ?: syncWorkInfos.firstOrNull {
-            it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED
-        }?.state
-        ?: syncWorkInfos.lastOrNull()?.state
-    val workerError = syncWorkInfos.lastOrNull { it.state == WorkInfo.State.FAILED }
-        ?.takeIf { syncWorkState == WorkInfo.State.FAILED }
-        ?.outputData?.getString("error")
+    val cloudViewModel: CloudSyncViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    val cloudUi by cloudViewModel.uiState.collectAsStateWithLifecycle()
+    val syncStates = cloudUi.syncStates
+    val syncWorkState = cloudUi.workState
+    val workerError = cloudUi.workerError
     val syncBusy = syncWorkState == WorkInfo.State.RUNNING ||
         syncWorkState == WorkInfo.State.ENQUEUED || syncWorkState == WorkInfo.State.BLOCKED
     var metrics by remember { mutableStateOf<SupabaseMetrics?>(null) }
@@ -181,7 +174,7 @@ fun SupabaseScreen() {
     fun syncNow() {
         if (syncBusy) return
         error = null
-        SupabaseSyncScheduler.enqueue(context.applicationContext)
+        cloudViewModel.syncNow()
     }
 
     LaunchedEffect(syncWorkState) {
@@ -235,7 +228,7 @@ fun SupabaseScreen() {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "SUPABASE CLOUD",
+                            "CLOUD & SYNC",
                             fontSize = 10.5.sp,
                             fontWeight = FontWeight.SemiBold,
                             letterSpacing = 1.4.sp,
@@ -254,7 +247,7 @@ fun SupabaseScreen() {
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            "Your records, files and sync health in one place.",
+                            cloudUi.accountEmail ?: if (cloudUi.signedIn) "Your account is connected" else "Sign in to back up and sync",
                             fontSize = 12.5.sp,
                             color = Color.White.copy(alpha = 0.88f)
                         )
@@ -291,6 +284,40 @@ fun SupabaseScreen() {
                 failedTables = current?.counts?.count { it.error != null } ?: 0,
                 onSync = ::syncNow
             )
+        }
+        if (!signedOut) item {
+            SettingsGroup("Choose what syncs") {
+                SyncModule.entries.forEach { module ->
+                    SettingsRow(
+                        title = module.label,
+                        supportingText = module.description,
+                        checked = cloudUi.moduleEnabled[module] ?: true,
+                        onCheckedChange = { cloudViewModel.setModuleEnabled(module, it) }
+                    )
+                }
+            }
+        }
+        if (!signedOut) item {
+            SettingsGroup("Coming soon") {
+                listOf("Screen time", "Battery", "Network", "Language").forEach { moduleName ->
+                    SettingsRow(title = moduleName, supportingText = "This module does not sync yet.", value = "Coming soon")
+                }
+            }
+        }
+        item { SectionHeader("Recent sync activity", subtitle = "Last ${cloudUi.history.size} events") }
+        if (cloudUi.history.isEmpty()) item {
+            EmptyState(Icons.Rounded.Schedule, "No sync activity yet", "A record appears here after the first sync attempt.")
+        }
+        items(cloudUi.history, key = { "${it.timeMillis}:${it.title}:${it.detail}" }) { event ->
+            GlassCard(contentPadding = PaddingValues(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(event.title, fontWeight = FontWeight.SemiBold)
+                        Text(event.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(timeLabel(event.timeMillis), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
         if (!signedOut) item {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
