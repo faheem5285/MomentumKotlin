@@ -1,20 +1,11 @@
 package com.faheem.habits.core.data.sync
 
 import android.content.Context
-import com.faheem.habits.core.data.AppDatabase
-import com.faheem.habits.core.data.supabase.SecureTokenStore
-import com.faheem.habits.core.data.supabase.SupabaseAuthApi
 import com.faheem.habits.core.data.supabase.SupabaseRestClient
-import com.faheem.habits.core.settings.AppearancePreferences
-import com.faheem.habits.core.notifications.MomentumReminderScheduler
-import com.faheem.habits.features.vault.VaultCrypto
-import java.io.File
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 
 /** Applies an administrator's cloud wipe to this installation before it can sync old rows again. */
 object ProjectWipeManager {
@@ -55,38 +46,11 @@ object ProjectWipeManager {
             }
         }
 
-        clearSettings()
-        withContext(Dispatchers.IO) {
-            AppDatabase.get(app).clearAllTables()
-            clearSharedPreferences(app, preserve = setOf(STATE_PREFS, "androidx.work.util.preferences"))
-            clearDirectoryContents(app.filesDir)
-            clearDirectoryContents(app.cacheDir)
-            clearDirectoryContents(app.noBackupFilesDir)
-            app.getExternalFilesDirs(null).filterNotNull().forEach(::clearDirectoryContents)
-            SecureTokenStore.clearForAppReset(app)
-            VaultCrypto.clearBiometricKeyForAppReset()
-            SupabaseAuthApi.clearInMemorySession()
-            check(statePrefs.edit().putLong(APPLIED_GENERATION, remote.generation).commit()) {
-                "Could not save the local project-wipe marker."
-            }
-            AppearancePreferences.load(app)
-            runCatching { MomentumReminderScheduler.scheduleAll(app) }
+        LocalAppDataReset.reset(app, clearSettings)
+        check(statePrefs.edit().putLong(APPLIED_GENERATION, remote.generation).commit()) {
+            "Could not save the local project-wipe marker."
         }
         _wipeEvents.tryEmit(Unit)
         CheckResult.APPLIED
-    }
-
-    private fun clearSharedPreferences(context: Context, preserve: Set<String>) {
-        val directory = File(context.applicationInfo.dataDir, "shared_prefs")
-        directory.listFiles()?.filter { it.isFile && it.name.endsWith(".xml") }?.forEach { file ->
-            val name = file.name.removeSuffix(".xml")
-            if (name !in preserve) {
-                context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
-            }
-        }
-    }
-
-    private fun clearDirectoryContents(directory: File) {
-        directory.listFiles()?.forEach { child -> child.deleteRecursively() }
     }
 }

@@ -134,7 +134,11 @@ class ProfileViewModel @Inject constructor(
             .onFailure { mutableState.value = signedIn.copy(busy = false, error = friendlyError(it)) }
     }
 
-    fun signOut() = viewModelScope.launch { auth.signOut(); mutableEvents.emit(ProfileUiEvent.SignedOut); refresh() }
+    fun signOut(keepLocalData: Boolean = true) = viewModelScope.launch {
+        auth.signOut(keepLocalData)
+        mutableEvents.emit(ProfileUiEvent.SignedOut)
+        refresh()
+    }
     fun requestDeleteAccount() = viewModelScope.launch {
         runCatching { profiles.deleteAccount() }
             .onSuccess { signOut() }

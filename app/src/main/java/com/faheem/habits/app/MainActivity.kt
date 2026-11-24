@@ -212,11 +212,15 @@ fun MomentumApp(
         }
     }
     LaunchedEffect(Unit) {
-        SupabaseAuthApi.signOutEvents.collect {
+        SupabaseAuthApi.signOutEvents.collect { keepLocalData ->
             destination = MomentumDestination.Home
             isAuthenticated = true
             isRestoringSession = false
-            authNotice = "You signed out. Local records are still available on this device."
+            authNotice = if (keepLocalData) {
+                "You signed out. Local records are still available on this device."
+            } else {
+                "You signed out and reset local data. Your cloud account and records remain."
+            }
         }
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {

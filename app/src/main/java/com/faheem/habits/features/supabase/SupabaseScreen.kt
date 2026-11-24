@@ -3,8 +3,11 @@
 package com.faheem.habits.features.supabase
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -26,9 +29,13 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.Logout
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.TableChart
@@ -36,10 +43,14 @@ import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,13 +72,14 @@ import androidx.work.WorkInfo
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.faheem.habits.core.data.SyncState
 import com.faheem.habits.core.data.supabase.StorageUsage
-import com.faheem.habits.core.data.supabase.SupabaseAuthApi
 import com.faheem.habits.core.data.supabase.SupabaseProvider
 import com.faheem.habits.core.data.supabase.SupabaseRestClient
+import com.faheem.habits.core.data.sync.LocalAppDataReset
 import com.faheem.habits.core.data.sync.SupabaseSyncRepository
 import com.faheem.habits.core.data.sync.ProjectWipeManager
 import com.faheem.habits.core.data.sync.SYNC_STATUS_TABLE
 import com.faheem.habits.core.data.sync.SyncModule
+import com.faheem.habits.features.settings.SettingsViewModel
 import com.faheem.habits.core.ui.ChartLegend
 import com.faheem.habits.core.ui.ChartPlaceholder
 import com.faheem.habits.core.ui.ChartSlice
@@ -84,6 +96,7 @@ import com.faheem.habits.core.ui.PrimaryButton
 import com.faheem.habits.core.ui.SectionHeader
 import com.faheem.habits.core.ui.StatusPill
 import com.faheem.habits.core.ui.GlassCard
+import com.faheem.habits.core.ui.GlassTopBar
 import com.faheem.habits.core.ui.SettingsGroup
 import com.faheem.habits.core.ui.SettingsRow
 import com.faheem.habits.core.ui.chartColor
@@ -120,6 +133,28 @@ private val SUPABASE_TABLES = listOf(
 
 private data class CloudRecord(val table: String, val label: String, val count: Int, val error: String? = null)
 
+private fun CloudRecord.belongsTo(module: SyncModule): Boolean = when (module) {
+    SyncModule.Habits -> table in setOf(
+        "momentum_habits",
+        "momentum_completions",
+        "momentum_habit_skips",
+        "momentum_habit_reminders"
+    )
+    SyncModule.ToDos -> table == "momentum_todos"
+    SyncModule.Money -> table in setOf("momentum_expenses", "momentum_category_budgets")
+    SyncModule.Loans -> table in setOf(
+        "momentum_loans",
+        "momentum_loan_payments",
+        "momentum_loan_people",
+        "momentum_loan_attachments"
+    )
+    SyncModule.Contacts -> table == "momentum_contacts"
+    SyncModule.Files -> table == "momentum_files"
+    SyncModule.LifeRules -> table in setOf("momentum_life_rules", "momentum_life_rule_files")
+    SyncModule.Reminders -> table == "momentum_custom_notifications"
+    SyncModule.Vault -> table == "momentum_vault_entries"
+}
+
 private data class SupabaseMetrics(
     val reachable: Boolean,
     val reachError: String?,
@@ -134,6 +169,7 @@ fun SupabaseScreen(onOpenProfile: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val cloudViewModel: CloudSyncViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    val settingsViewModel: SettingsViewModel = androidx.hilt.navigation.compose.hiltViewModel()
     val cloudUi by cloudViewModel.uiState.collectAsStateWithLifecycle()
     val syncStates = cloudUi.syncStates
     val syncWorkState = cloudUi.workState
@@ -146,7 +182,7 @@ fun SupabaseScreen(onOpenProfile: () -> Unit = {}) {
     var wipingProject by remember { mutableStateOf(false) }
     var showProjectWipeConfirm by remember { mutableStateOf(false) }
     var canWipeProject by remember { mutableStateOf(false) }
-    var signedOut by remember { mutableStateOf(false) }
+    var selectedModule by remember { mutableStateOf<SyncModule?>(null) }
 
     suspend fun load() {
         metrics = withContext(Dispatchers.IO) { loadSupabaseMetrics(context.applicationContext) }
@@ -175,6 +211,19 @@ fun SupabaseScreen(onOpenProfile: () -> Unit = {}) {
         if (syncBusy) return
         error = null
         cloudViewModel.syncNow()
+    }
+
+    fun deleteCloudRecords(table: String, todayOnly: Boolean) {
+        scope.launch {
+            try {
+                val repository = SupabaseSyncRepository(context.applicationContext)
+                if (todayOnly) repository.deleteCloudTableUpdatedToday(table)
+                else repository.deleteCloudTable(table)
+                load()
+            } catch (e: Exception) {
+                error = explainSupabaseError(e.message)
+            }
+        }
     }
 
     LaunchedEffect(syncWorkState) {
@@ -214,6 +263,27 @@ fun SupabaseScreen(onOpenProfile: () -> Unit = {}) {
     val current = metrics
     val totalRecords = current?.counts?.filter { it.error == null }?.sumOf { it.count } ?: 0
     val readableTables = current?.counts?.count { it.error == null } ?: 0
+
+    BackHandler(enabled = selectedModule != null) {
+        selectedModule = null
+    }
+
+    selectedModule?.let { module ->
+        CloudSyncModuleSettingsScreen(
+            module = module,
+            records = current?.counts.orEmpty().filter { it.belongsTo(module) },
+            enabled = cloudUi.moduleEnabled[module] ?: true,
+            workState = syncWorkState,
+            error = error,
+            onBack = { selectedModule = null },
+            onRefresh = ::refresh,
+            onEnabledChange = { cloudViewModel.setModuleEnabled(module, it) },
+            onSync = ::syncNow,
+            onDeleteToday = { table -> deleteCloudRecords(table, todayOnly = true) },
+            onDeleteAll = { table -> deleteCloudRecords(table, todayOnly = false) }
+        )
+        return
+    }
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -276,7 +346,7 @@ fun SupabaseScreen(onOpenProfile: () -> Unit = {}) {
                 }
             }
         }
-        if (cloudUi.signedIn && !signedOut) item {
+        if (cloudUi.signedIn) item {
             SyncCard(
                 syncStates = syncStates,
                 workState = syncWorkState,
@@ -285,19 +355,24 @@ fun SupabaseScreen(onOpenProfile: () -> Unit = {}) {
                 onSync = ::syncNow
             )
         }
-        if (cloudUi.signedIn && !signedOut) item {
-            SettingsGroup("Choose what syncs") {
-                SyncModule.entries.forEach { module ->
-                    SettingsRow(
-                        title = module.label,
-                        supportingText = module.description,
-                        checked = cloudUi.moduleEnabled[module] ?: true,
-                        onCheckedChange = { cloudViewModel.setModuleEnabled(module, it) }
-                    )
-                }
+        if (cloudUi.signedIn) {
+            item {
+                SectionHeader(
+                    "Sync modules",
+                    subtitle = "Open a module to manage sync and cloud data."
+                )
+            }
+            items(SyncModule.entries, key = { it.name }) { module ->
+                CloudSyncModuleCard(
+                    module = module,
+                    records = current?.counts.orEmpty().filter { it.belongsTo(module) },
+                    enabled = cloudUi.moduleEnabled[module] ?: true,
+                    onClick = { selectedModule = module },
+                    onEnabledChange = { cloudViewModel.setModuleEnabled(module, it) }
+                )
             }
         }
-        if (!cloudUi.signedIn && !signedOut) item {
+        if (!cloudUi.signedIn) item {
             GlassCard(contentPadding = PaddingValues(18.dp)) {
                 Text("Sign in to back up and sync", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
@@ -306,7 +381,7 @@ fun SupabaseScreen(onOpenProfile: () -> Unit = {}) {
                 PrimaryButton("Open Profile", onOpenProfile)
             }
         }
-        if (cloudUi.signedIn && !signedOut) item {
+        if (cloudUi.signedIn) item {
             SettingsGroup("Coming soon") {
                 listOf("Screen time", "Battery", "Network", "Language").forEach { moduleName ->
                     SettingsRow(title = moduleName, supportingText = "This module does not sync yet.", value = "Coming soon")
@@ -328,52 +403,35 @@ fun SupabaseScreen(onOpenProfile: () -> Unit = {}) {
                 }
             }
         }
-        if (!signedOut && cloudUi.signedIn) item {
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            SupabaseAuthApi.signOut(context.applicationContext)
-                            signedOut = true
-                            error = null
-                            metrics = null
-                        }
-                    },
-                    enabled = !syncBusy && !wipingProject
-                ) {
-                    Icon(Icons.Rounded.Logout, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Sign out")
-                }
-            }
-        }
-        if (canWipeProject && !signedOut) {
+        if (canWipeProject) {
             item {
-                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SectionHeader(
+                        "Danger zone",
+                        subtitle = "Project-wide cleanup affects every user"
+                    )
+                    Text(
+                        "Only use this to erase all synced records and files in this Supabase project.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp
+                    )
                     TextButton(
                         onClick = { showProjectWipeConfirm = true },
-                        enabled = !wipingProject && !syncBusy
+                        enabled = !wipingProject && !syncBusy,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
                     ) {
-                        if (wipingProject) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        } else {
-                            Icon(Icons.Rounded.Delete, contentDescription = null)
-                        }
+                        if (wipingProject) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.Rounded.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                         Spacer(Modifier.width(8.dp))
-                        Text(if (wipingProject) "Deleting project cloud data…" else "Delete all users’ cloud data")
+                        Text(
+                            if (wipingProject) "Deleting project cloud data…" else "Delete all users’ cloud data",
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
                 }
             }
         }
-        if (signedOut) {
-            item {
-                EmptyState(
-                    Icons.Rounded.Cloud,
-                    "Signed out",
-                    "This device’s Supabase session was cleared. Sign in again before syncing."
-                )
-            }
-        } else if (loading && current == null) {
+        if (loading && current == null) {
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                     CircularProgressIndicator()
@@ -410,40 +468,6 @@ fun SupabaseScreen(onOpenProfile: () -> Unit = {}) {
                 }
             }
             item { RecordMixCard(current.counts) }
-            item {
-                SectionHeader(
-                    "Cloud records",
-                    subtitle = "$readableTables of ${current.counts.size} tables readable for this account"
-                )
-            }
-            itemsIndexed(current.counts) { index, record ->
-                CloudRecordCard(
-                    record = record,
-                    accent = chartColor(index),
-                    onDeleteToday = {
-                        scope.launch {
-                            try {
-                                SupabaseSyncRepository(context.applicationContext)
-                                    .deleteCloudTableUpdatedToday(record.table)
-                                load()
-                            } catch (e: Exception) {
-                                error = explainSupabaseError(e.message)
-                            }
-                        }
-                    },
-                    onDeleteAll = {
-                        scope.launch {
-                            try {
-                                SupabaseSyncRepository(context.applicationContext)
-                                    .deleteCloudTable(record.table)
-                                load()
-                            } catch (e: Exception) {
-                                error = explainSupabaseError(e.message)
-                            }
-                        }
-                    }
-                )
-            }
             if (error != null) {
                 item {
                     InfoBanner(
@@ -769,6 +793,178 @@ private fun RecordMixCard(counts: List<CloudRecord>) {
 }
 
 @Composable
+private fun CloudSyncModuleSettingsScreen(
+    module: SyncModule,
+    records: List<CloudRecord>,
+    enabled: Boolean,
+    workState: WorkInfo.State?,
+    error: String?,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
+    onEnabledChange: (Boolean) -> Unit,
+    onSync: () -> Unit,
+    onDeleteToday: (String) -> Unit,
+    onDeleteAll: (String) -> Unit
+) {
+    val syncBusy = workState == WorkInfo.State.RUNNING ||
+        workState == WorkInfo.State.ENQUEUED || workState == WorkInfo.State.BLOCKED
+    val totalRows = records.filter { it.error == null }.sumOf { it.count }
+    val unavailableCount = records.count { it.error != null }
+
+    Column(Modifier.fillMaxSize()) {
+        GlassTopBar(
+            title = "${module.label} settings",
+            onBack = onBack,
+            actions = {
+                IconButton(onClick = onRefresh) {
+                    Icon(Icons.Rounded.Refresh, contentDescription = "Refresh cloud data")
+                }
+            }
+        )
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                horizontal = MomentumTokens.screenPadding,
+                vertical = MomentumTokens.space2
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(module.label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text(
+                                module.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(checked = enabled, onCheckedChange = onEnabledChange)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        if (enabled) "Sync is enabled for this module."
+                        else "Sync is paused for this module. Existing cloud data is kept.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    PrimaryButton(
+                        text = if (syncBusy) "Syncing enabled modules…" else "Sync enabled modules",
+                        onClick = onSync,
+                        enabled = !syncBusy,
+                        loading = syncBusy,
+                        icon = Icons.Rounded.CloudSync
+                    )
+                }
+            }
+            item {
+                SectionHeader(
+                    "Cloud data",
+                    subtitle = if (records.isEmpty()) "Table counts unavailable"
+                    else "$totalRows records across ${records.size} tables"
+                )
+            }
+            item {
+                InfoBanner(
+                    icon = Icons.Rounded.WarningAmber,
+                    text = "Delete actions remove records from Supabase only. Local records on this device are not deleted.",
+                    tint = MaterialTheme.colorScheme.tertiary
+                )
+            }
+            if (records.isEmpty()) {
+                item {
+                    EmptyState(
+                        Icons.Rounded.Cloud,
+                        "Cloud data unavailable",
+                        "Refresh this page when you are connected to load this module's cloud tables."
+                    )
+                }
+            } else {
+                itemsIndexed(records, key = { _, record -> record.table }) { index, record ->
+                    CloudRecordCard(
+                        record = record,
+                        accent = chartColor(index),
+                        onDeleteToday = { onDeleteToday(record.table) },
+                        onDeleteAll = { onDeleteAll(record.table) }
+                    )
+                }
+            }
+            if (unavailableCount > 0) {
+                item {
+                    Text(
+                        "$unavailableCount table(s) could not be read. Check the error shown on each table.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+            error?.let { message ->
+                item {
+                    InfoBanner(
+                        icon = Icons.Rounded.WarningAmber,
+                        text = message,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CloudSyncModuleCard(
+    module: SyncModule,
+    records: List<CloudRecord>,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    onEnabledChange: (Boolean) -> Unit
+) {
+    val tint = when (module) {
+        SyncModule.Vault -> MaterialTheme.colorScheme.tertiary
+        SyncModule.Loans -> MaterialTheme.colorScheme.secondary
+        SyncModule.Files -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.primary
+    }
+    val icon = when (module) {
+        SyncModule.Vault -> Icons.Rounded.Lock
+        SyncModule.Files -> Icons.Rounded.Folder
+        SyncModule.ToDos -> Icons.Rounded.TaskAlt
+        SyncModule.Reminders -> Icons.Rounded.Schedule
+        else -> Icons.Rounded.CloudSync
+    }
+    val totalRows = records.filter { it.error == null }.sumOf { it.count }
+    val unavailableCount = records.count { it.error != null }
+
+    PremiumCard(onClick = onClick, contentPadding = PaddingValues(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBubble(icon, tint, 40.dp)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f).clickable(onClick = onClick)) {
+                Text(module.label, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(
+                    when {
+                        records.isEmpty() -> "Cloud data counts unavailable"
+                        unavailableCount > 0 -> "$totalRows records · $unavailableCount tables unavailable"
+                        else -> "$totalRows records · ${records.size} data tables"
+                    },
+                    fontSize = 11.5.sp,
+                    color = if (unavailableCount > 0) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(checked = enabled, onCheckedChange = onEnabledChange)
+            Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = "Open ${module.label} settings",
+                tint = MaterialTheme.colorScheme.outline
+            )
+        }
+    }
+}
+
+@Composable
 private fun CloudRecordCard(
     record: CloudRecord,
     accent: Color,
@@ -776,6 +972,7 @@ private fun CloudRecordCard(
     onDeleteAll: () -> Unit
 ) {
     var pendingAction by remember { mutableStateOf<String?>(null) }
+    var actionsExpanded by remember(record.table) { mutableStateOf(false) }
     val tint = if (record.error == null) accent else MaterialTheme.colorScheme.error
     PremiumCard(contentPadding = PaddingValues(14.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -810,12 +1007,34 @@ private fun CloudRecordCard(
         }
         if (record.error == null) {
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { pendingAction = "today" }) {
-                    Text("Delete today")
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                IconButton(
+                    onClick = { actionsExpanded = true },
+                    enabled = pendingAction == null
+                ) {
+                    Icon(
+                        Icons.Rounded.MoreVert,
+                        contentDescription = "Data actions for ${record.label}"
+                    )
                 }
-                TextButton(onClick = { pendingAction = "all" }) {
-                    Text("Delete all")
+                DropdownMenu(
+                    expanded = actionsExpanded,
+                    onDismissRequest = { actionsExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Delete today's records", color = MaterialTheme.colorScheme.error) },
+                        onClick = {
+                            actionsExpanded = false
+                            pendingAction = "today"
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete all records", color = MaterialTheme.colorScheme.error) },
+                        onClick = {
+                            actionsExpanded = false
+                            pendingAction = "all"
+                        }
+                    )
                 }
             }
         }

@@ -36,6 +36,7 @@ import kotlinx.serialization.json.*
 private const val SYNC_EPOCH = "1970-01-01T00:00:00Z"
 private const val PULL_PAGE = 200
 private const val PUSH_BATCH = 100
+private const val SYNC_WORK_NAME = "momentum-sync"
 private val syncRunMutex = Mutex()
 private suspend fun <T> withSyncLock(block: suspend () -> T): T =
     syncRunMutex.withLock { withContext(Dispatchers.IO) { block() } }
@@ -564,7 +565,16 @@ object SupabaseSyncScheduler {
             .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, java.time.Duration.ofSeconds(30)).build()
         // Keep a follow-up run if records change during an active sync.
         WorkManager.getInstance(context.applicationContext)
-            .enqueueUniqueWork("momentum-sync", ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+            .enqueueUniqueWork(SYNC_WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+    }
+
+    suspend fun cancel(context: Context) {
+        withContext(Dispatchers.IO) {
+            WorkManager.getInstance(context.applicationContext)
+                .cancelUniqueWork(SYNC_WORK_NAME)
+                .result
+                .get()
+        }
     }
 }
 

@@ -196,10 +196,7 @@ fun ContactsScreen(vm: ContactsViewModel = viewModel()) {
                 })
             }
             if (filtered.isEmpty()) {
-                item {
-                    EmptyState(Icons.Rounded.PersonAdd, "No contacts found", "Add a contact to start your address book.")
-                    PrimaryButton("Add contact", onClick = { creating = true }, icon = Icons.Rounded.PersonAdd)
-                }
+                item { ContactsEmptyState(noContacts = contacts.isEmpty(), onAdd = { creating = true }) }
             }
             items(filtered, key = { it.id }) { contact ->
                 PremiumCard(onClick = { editing = contact }, contentPadding = PaddingValues(14.dp)) {
@@ -229,6 +226,18 @@ fun ContactsScreen(vm: ContactsViewModel = viewModel()) {
         if (contacts.isNotEmpty()) {
             MomentumFab("Add contact", onClick = { creating = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(MomentumTokens.screenPadding))
         }
+    }
+}
+
+@Composable
+private fun ContactsEmptyState(noContacts: Boolean, onAdd: () -> Unit) {
+    EmptyState(
+        Icons.Rounded.PersonAdd,
+        if (noContacts) "No contacts yet" else "No matching contacts",
+        if (noContacts) "Add a contact to start your address book." else "Try a different search."
+    )
+    if (noContacts) {
+        PrimaryButton("Add contact", onClick = onAdd, icon = Icons.Rounded.PersonAdd)
     }
 }
 

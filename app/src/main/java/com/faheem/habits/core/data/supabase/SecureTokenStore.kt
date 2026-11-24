@@ -56,7 +56,9 @@ object SecureTokenStore {
 
     @Synchronized
     fun clear(context: Context) {
-        context.applicationContext.getSharedPreferences(PREFS, 0).edit().remove(TOKEN_KEY).commit()
+        check(context.applicationContext.getSharedPreferences(PREFS, 0).edit().remove(TOKEN_KEY).commit()) {
+            "Could not clear the saved sign-in session."
+        }
     }
 
     @Synchronized

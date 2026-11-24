@@ -880,9 +880,11 @@ data class ReviewState(
 
 @Dao
 interface ReviewStateDao {
+    @Query("SELECT * FROM review_states ORDER BY nextReviewAt") fun observeAll(): Flow<List<ReviewState>>
     @Query("SELECT * FROM review_states WHERE nextReviewAt <= :now ORDER BY nextReviewAt") fun due(now: Long): Flow<List<ReviewState>>
     @Query("SELECT * FROM review_states WHERE wordId = :wordId LIMIT 1") suspend fun get(wordId: Long): ReviewState?
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(state: ReviewState)
+    @Query("DELETE FROM review_states WHERE wordId = :wordId") suspend fun delete(wordId: Long)
 }
 
 @Entity(tableName = "translation_history", indices = [Index("createdAt")])
@@ -901,6 +903,7 @@ interface TranslationHistoryDao {
     @Query("SELECT * FROM translation_history ORDER BY createdAt DESC") fun observeAll(): Flow<List<TranslationHistory>>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insert(item: TranslationHistory): Long
     @Query("UPDATE translation_history SET favorite = :favorite WHERE id = :id") suspend fun setFavorite(id: Long, favorite: Boolean)
+    @Query("DELETE FROM translation_history WHERE id = :id") suspend fun delete(id: Long)
     @Query("DELETE FROM translation_history") suspend fun clear()
 }
 

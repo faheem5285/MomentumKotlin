@@ -24,7 +24,8 @@ class AuthRepository @Inject constructor(@ApplicationContext private val appCont
     }
     suspend fun signUp(email: String, password: String, name: String) = SupabaseAuthApi.signUp(email, password, name)
     suspend fun resetPassword(email: String) = SupabaseAuthApi.sendPasswordReset(email)
-    suspend fun signOut() = SupabaseAuthApi.signOut(appContext)
+    suspend fun signOut(keepLocalData: Boolean = true) =
+        SupabaseAuthApi.signOut(appContext, keepLocalData)
     suspend fun changePassword(email: String, current: String, next: String) =
         SupabaseAuthApi.changePassword(appContext, email, current, next)
     suspend fun setPassword(next: String) = SupabaseAuthApi.setPassword(appContext, next)
@@ -45,8 +46,12 @@ class AuthRepository @Inject constructor(@ApplicationContext private val appCont
         check(credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
             "Google returned an unsupported credential. Try email and password instead."
         }
-        val token = GoogleIdTokenCredential.createFrom(credential.data).idToken
-        SupabaseAuthApi.signInWithGoogle(appContext, token, nonce)
+        val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
+        val token = googleCredential.idToken
+        val photoUrl = googleCredential.profilePictureUri
+            ?.takeIf { it.scheme.equals("https", ignoreCase = true) }
+            ?.toString()
+        SupabaseAuthApi.signInWithGoogle(appContext, token, nonce, photoUrl, googleCredential.displayName)
         scheduleSyncAfterWipeCheck()
     }
 

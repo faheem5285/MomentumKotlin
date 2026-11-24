@@ -59,6 +59,8 @@ class SupabaseRestClient(
             add(buildJsonObject {
                 put("id", profile.userId)
                 put("display_name", profile.displayName)
+                profile.avatarUri.takeIf { it.startsWith("https://", ignoreCase = true) }
+                    ?.let { put("avatar_url", it) }
                 put("phone", profile.phone)
                 put("bio", profile.bio)
                 put("updated_at", Instant.ofEpochMilli(profile.updatedAt).toString())

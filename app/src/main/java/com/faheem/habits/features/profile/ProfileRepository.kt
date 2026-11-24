@@ -24,21 +24,40 @@ class ProfileRepository @Inject constructor(@ApplicationContext private val cont
         val prefs = context.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
         val cached = database.profileCacheDao().observe(userId).first()
         val remote = runCatching { client.fetchProfile(userId) }.getOrNull()
+        val googleAvatar = prefs.getString("google_avatar_uri_$userId", "").orEmpty()
+        val googleName = prefs.getString("google_display_name_$userId", "").orEmpty()
+        val accountEmail = prefs.getString("email", "").orEmpty()
         val profile = if (remote == null) {
-            cached ?: ProfileCache(
+            cached?.let {
+                it.copy(
+                    displayName = it.displayName.ifBlank {
+                        googleName.ifBlank { prefs.getString("display_name", "").orEmpty() }
+                    },
+                    email = it.email.ifBlank { accountEmail },
+                    avatarUri = it.avatarUri.ifBlank { googleAvatar }
+                )
+            } ?: ProfileCache(
                 userId = userId,
-                displayName = prefs.getString("display_name", "").orEmpty(),
-                email = prefs.getString("email", "").orEmpty(),
+                displayName = googleName.ifBlank { prefs.getString("display_name", "").orEmpty() },
+                email = accountEmail,
+                avatarUri = googleAvatar,
                 memberSince = prefs.getLong("member_since", System.currentTimeMillis())
             )
         } else {
             ProfileCache(
                 userId = userId,
-                displayName = remote["display_name"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                email = prefs.getString("email", "").orEmpty(),
+                displayName = remote["display_name"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    .ifBlank {
+                        cached?.displayName.orEmpty().ifBlank {
+                            googleName.ifBlank { prefs.getString("display_name", "").orEmpty() }
+                        }
+                    },
+                email = cached?.email?.ifBlank { accountEmail } ?: accountEmail,
                 phone = remote["phone"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                 bio = remote["bio"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                avatarUri = cached?.avatarUri.orEmpty(),
+                avatarUri = cached?.avatarUri?.takeIf { it.isNotBlank() }
+                    ?: remote["avatar_url"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                    ?: googleAvatar,
                 memberSince = prefs.getLong("member_since", cached?.memberSince ?: System.currentTimeMillis()),
                 updatedAt = System.currentTimeMillis()
             )

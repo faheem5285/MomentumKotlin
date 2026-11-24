@@ -3,6 +3,7 @@ package com.faheem.habits.core.data.supabase
 import android.content.Context
 import com.faheem.habits.BuildConfig
 import com.faheem.habits.core.data.AppDatabase
+import com.faheem.habits.core.data.ProfileCache
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
 import io.ktor.client.request.post
@@ -33,7 +34,7 @@ enum class SessionRestoreResult { AUTHENTICATED, NO_SESSION, TEMPORARY_FAILURE }
 object SupabaseAuthApi {
     private val http = HttpClient(Android)
     private val json = Json { ignoreUnknownKeys = true }
-    private val mutableSignOutEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val mutableSignOutEvents = MutableSharedFlow<Boolean>(extraBufferCapacity = 1)
     val signOutEvents = mutableSignOutEvents.asSharedFlow()
 
     @Serializable
@@ -84,16 +85,37 @@ object SupabaseAuthApi {
         accessTokenExpiresAt = System.currentTimeMillis() + lifetimeMs
     }
 
-    private fun cacheProfile(context: Context, session: AuthResponse) {
-        val name = session.user?.user_metadata?.get("display_name")?.jsonPrimitive?.contentOrNull
-            ?.trim()?.take(80).orEmpty()
+    private fun cacheProfile(
+        context: Context,
+        session: AuthResponse,
+        googleDisplayName: String? = null,
+        googlePhotoUrl: String? = null
+    ) {
+        val metadata = session.user?.user_metadata
+        val name = listOf(
+            googleDisplayName,
+            metadata?.get("display_name")?.jsonPrimitive?.contentOrNull,
+            metadata?.get("full_name")?.jsonPrimitive?.contentOrNull,
+            metadata?.get("name")?.jsonPrimitive?.contentOrNull
+        ).firstOrNull { !it.isNullOrBlank() }?.trim()?.take(80).orEmpty()
+        val photoUrl = listOf(
+            googlePhotoUrl,
+            metadata?.get("avatar_url")?.jsonPrimitive?.contentOrNull,
+            metadata?.get("picture")?.jsonPrimitive?.contentOrNull
+        ).firstOrNull { !it.isNullOrBlank() }?.trim().orEmpty()
         val email = session.user?.email?.trim()?.take(160).orEmpty()
         val userId = session.user?.id?.trim().orEmpty()
         if (name.isNotBlank() || email.isNotBlank() || userId.isNotBlank()) {
             val editor = context.getSharedPreferences("account_profile", Context.MODE_PRIVATE).edit()
             if (name.isNotBlank()) editor.putString("display_name", name)
             if (email.isNotBlank()) editor.putString("email", email)
-            if (userId.isNotBlank()) editor.putString("user_id", userId)
+            if (userId.isNotBlank()) {
+                editor.putString("user_id", userId)
+                if (name.isNotBlank()) editor.putString("google_display_name_$userId", name)
+                if (photoUrl.isNotBlank() && photoUrl.startsWith("https://", ignoreCase = true)) {
+                    editor.putString("google_avatar_uri_$userId", photoUrl)
+                }
+            }
             session.user?.app_metadata?.get("provider")?.jsonPrimitive?.contentOrNull?.let { editor.putString("auth_provider", it) }
             session.user?.created_at?.let { createdAt ->
                 runCatching { java.time.Instant.parse(createdAt).toEpochMilli() }.getOrNull()?.let { editor.putLong("member_since", it) }
@@ -120,14 +142,38 @@ object SupabaseAuthApi {
         request("recover?redirect_to=momentum%3A%2F%2Fauth%2Freset", json.encodeToString(mapOf("email" to email)))
     }
 
-    suspend fun signInWithGoogle(context: Context, idToken: String, nonce: String) {
+    suspend fun signInWithGoogle(
+        context: Context,
+        idToken: String,
+        nonce: String,
+        profilePictureUrl: String? = null,
+        profileDisplayName: String? = null
+    ) {
         val body = request("token?grant_type=id_token", json.encodeToString(IdTokenCredentials("google", idToken, nonce)))
         val session = json.decodeFromString<AuthResponse>(body)
         activateAccountDatabase(context.applicationContext, session)
         rememberSession(session)
-        cacheProfile(context.applicationContext, session)
-        context.applicationContext.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
-            .edit().putString("auth_provider", "google").apply()
+        cacheProfile(context.applicationContext, session, profileDisplayName, profilePictureUrl)
+        val userId = session.user?.id?.trim().orEmpty()
+        if (userId.isNotBlank()) {
+            val prefs = context.applicationContext.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
+            val memberSince = prefs.getLong("member_since", System.currentTimeMillis())
+            val displayName = prefs.getString("google_display_name_$userId", "").orEmpty()
+                .ifBlank { prefs.getString("display_name", "").orEmpty() }
+            val avatarUri = prefs.getString("google_avatar_uri_$userId", "").orEmpty()
+            val email = prefs.getString("email", "").orEmpty()
+            AppDatabase.get(context.applicationContext).profileCacheDao().upsert(
+                ProfileCache(
+                    userId = userId,
+                    displayName = displayName,
+                    email = email,
+                    avatarUri = avatarUri,
+                    memberSince = memberSince,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+            prefs.edit().putString("auth_provider", "google").apply()
+        }
         val refreshToken = session.refresh_token ?: error("Sign-in succeeded but Supabase did not return a refresh token.")
         SecureTokenStore.saveRefreshToken(context.applicationContext, refreshToken)
     }
@@ -241,7 +287,7 @@ object SupabaseAuthApi {
     }
 
     /** Revokes the Supabase session when online and always clears this device's saved session. */
-    suspend fun signOut(context: Context) {
+    suspend fun signOut(context: Context, keepLocalData: Boolean = true) {
         val appContext = context.applicationContext
         val token = runCatching { getAccessToken(appContext) }.getOrNull()
         try {
@@ -258,10 +304,18 @@ object SupabaseAuthApi {
                 }
             }
         } finally {
-            SecureTokenStore.clear(appContext)
+            if (keepLocalData) SecureTokenStore.clear(appContext)
+            else SecureTokenStore.clearForAppReset(appContext)
             clearInMemorySession()
-            clearAuthIdentity(appContext, keepLocalBinding = true)
-            mutableSignOutEvents.tryEmit(Unit)
+            if (keepLocalData) {
+                clearAuthIdentity(appContext, keepLocalBinding = true)
+            } else {
+                check(appContext.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
+                    .edit().clear().commit()) {
+                    "Could not clear local account data."
+                }
+            }
+            mutableSignOutEvents.tryEmit(keepLocalData)
         }
     }
 
