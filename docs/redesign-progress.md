@@ -11,7 +11,7 @@ Branch: `feature/premium-redesign-profile-language` (created from `phase-9-quali
 - [ ] Phase 4 — Network: IN PROGRESS — callback-based connectivity state, details, and HEAD test are implemented; verification is blocked by plugin resolution. Notification placement is system-controlled and documented.
 - [ ] Phase 5 — Cloud & Sync: IN PROGRESS — module sync toggles, account state, recent activity and sync history are implemented; assemble/test/lint are blocked at plugin resolution and ADB cannot initialize its home directory.
 - [ ] Phase 6 — Settings: IN PROGRESS — Settings now uses a searchable module group and grouped Account, Security and Language sections; verification is blocked by Android plugin resolution and ADB home permissions.
-- [ ] Phase 7 — Profile: TODO.
+- [ ] Phase 7 — Profile: IN PROGRESS — optional offline entry, Profile/Auth UI, Google Credential Manager exchange, Room profile cache and migration v21 are implemented; assemble/test/lint remain blocked before compilation by Android Gradle Plugin resolution.
 - [ ] Phase 8 — Language: TODO.
 - [ ] Phase 9 — Polish, hardening, final gate: TODO.
 
@@ -98,3 +98,17 @@ No task reached Kotlin or Android resource compilation. Keep the phase gate open
 | `adb devices` | UNAVAILABLE | ADB could not create `\\.android` due to permission denied; device status is unknown, so `installDebug` was not run. |
 
 `git diff --check` passed. No task reached Kotlin compilation; keep the gate open pending plugin resolution.
+
+## Phase 7 verification attempt
+
+| Command | Result | Notes |
+| --- | --- | --- |
+| `gradlew.bat assembleDebug` (mid-phase) | FAIL (exit 1) | Could not resolve root plugin `com.android.application:8.5.2`; compilation did not start. |
+| `gradlew.bat assembleDebug` (end gate) | FAIL (exit 1) | Same root plugin resolution failure before project configuration. |
+| `gradlew.bat testDebugUnitTest` | FAIL (exit 1) | Same configuration failure; 0 tests executed. |
+| `gradlew.bat lintDebug` | FAIL (exit 1) | Same configuration failure; lint/warning count unavailable. |
+| `adb devices` | UNAVAILABLE | ADB could not create `\\.android` due to permission denied; device status is unknown, so `installDebug` was not run. |
+| `git diff --check` | PASS | No whitespace errors; Git reported line-ending conversion warnings for edited files. |
+| Parse exported schema and version catalog | PASS | Room schema JSON and Gradle version catalog TOML parse successfully. |
+
+Three Gradle tasks stop at the same root plugin dependency resolution failure and no source diagnostics are available. The added Profile unit tests and migration test could not execute. Keep this gate open for a machine with Google Maven/Gradle plugin resolution and a working ADB home directory.

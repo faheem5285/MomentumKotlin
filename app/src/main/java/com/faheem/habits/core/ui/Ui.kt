@@ -402,7 +402,8 @@ enum class AppModule(val label: String, val icon: ImageVector, val gradient: Lis
     Vault("Vault", Icons.Rounded.Lock, listOf(Color(0xFF134E4A), Color(0xFF14B8A6), Color(0xFF5EEAD4))),
     Battery("Battery", Icons.Rounded.Bolt, listOf(Color(0xFF365314), Color(0xFF84CC16), Color(0xFFBEF264))),
     Network("Network", Icons.Rounded.SignalCellularAlt, listOf(Color(0xFF312E81), Color(0xFF6366F1), Color(0xFFA5B4FC))),
-    Supabase("Supabase", Icons.Rounded.Cloud, listOf(Color(0xFF14532D), Color(0xFF22C55E), Color(0xFF86EFAC))),
+    Supabase("Cloud & Sync", Icons.Rounded.Cloud, listOf(Color(0xFF14532D), Color(0xFF22C55E), Color(0xFF86EFAC))),
+    Profile("Profile", Icons.Rounded.Person, listOf(Color(0xFF312E81), Color(0xFF6366F1), Color(0xFFA5B4FC))),
     Settings("Settings", Icons.Rounded.SettingsSuggest, listOf(Color(0xFF1E293B), Color(0xFF64748B), Color(0xFFCBD5E1)));
 
     /** Readable, saturated accent for text, charts and small icons. */

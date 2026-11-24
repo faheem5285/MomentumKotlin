@@ -104,10 +104,12 @@ class MainActivity : FragmentActivity() {
             val themeMode by AppearancePreferences.themeMode.collectAsStateWithLifecycle()
             val reduceMotion by AppearancePreferences.reduceMotion.collectAsStateWithLifecycle()
             val dynamicAccent by AppearancePreferences.dynamicAccent.collectAsStateWithLifecycle()
+            val glassIntensity by AppearancePreferences.glassIntensity.collectAsStateWithLifecycle()
             MomentumTheme(
                 themeMode = themeMode,
                 reduceEffects = reduceMotion,
-                dynamicAccent = dynamicAccent
+                dynamicAccent = dynamicAccent,
+                glassIntensity = glassIntensity.factor
             ) {
                 MomentumApp(notificationTarget = notificationTarget)
             }
@@ -126,7 +128,7 @@ class MainActivity : FragmentActivity() {
         }
         val moduleName = intent?.getStringExtra(ZyloNotifications.EXTRA_TARGET_MODULE)
             ?: deepLink?.pathSegments?.firstOrNull()
-            ?: return null
+            ?: if (intent?.data?.scheme == "momentum" && intent.data?.host == "auth") "Profile" else return null
         val itemId = if (intent?.hasExtra(ZyloNotifications.EXTRA_TARGET_ITEM_ID) == true) {
             intent.getIntExtra(ZyloNotifications.EXTRA_TARGET_ITEM_ID, -1).takeIf { it > 0 }
         } else {
@@ -175,7 +177,7 @@ fun MomentumApp(
                         settingsViewModel.clearForProjectWipe()
                     }
                     if (wipeCheck == ProjectWipeManager.CheckResult.APPLIED) {
-                        authNotice = "An administrator reset app data. Sign in again to start fresh."
+                        authNotice = "An administrator reset app data. You can sign in to sync again or continue offline."
                     } else {
                         isAuthenticated = true
                         if (wipeCheck == ProjectWipeManager.CheckResult.UNCHANGED) {
@@ -189,14 +191,13 @@ fun MomentumApp(
                     authNotice = failure.message
                 }
             }
-            SessionRestoreResult.NO_SESSION -> Unit
+            SessionRestoreResult.NO_SESSION -> isAuthenticated = true
             SessionRestoreResult.TEMPORARY_FAILURE -> {
                 // A failed refresh while offline is not a sign-out. Keep the last
                 // successfully selected account's local database available; sync
                 // will retry authentication after connectivity returns.
-                isAuthenticated = SupabaseAuthApi.currentUserId(context.applicationContext)
-                    ?.isNotBlank() == true
-                authNotice = "Offline: your saved account session is kept. Changes will sync when you reconnect."
+                isAuthenticated = true
+                authNotice = "Offline: your local records are available. Cloud sync will resume when connected."
             }
         }
         isRestoringSession = false
@@ -205,21 +206,22 @@ fun MomentumApp(
         ProjectWipeManager.wipeEvents.collect {
             settingsViewModel.clearForProjectWipe()
             destination = MomentumDestination.Home
-            isAuthenticated = false
+            isAuthenticated = true
             isRestoringSession = false
-            authNotice = "An administrator reset app data. Sign in again to start fresh."
+            authNotice = "An administrator reset app data. You can sign in to sync again or continue offline."
         }
     }
     LaunchedEffect(Unit) {
         SupabaseAuthApi.signOutEvents.collect {
             destination = MomentumDestination.Home
-            isAuthenticated = false
+            isAuthenticated = true
             isRestoringSession = false
-            authNotice = "You signed out. Sign in again to continue."
+            authNotice = "You signed out. Local records are still available on this device."
         }
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        if (isAuthenticated) (context as? ComponentActivity)?.lifecycleScope?.launch(Dispatchers.IO) {
+        if (isAuthenticated && !SupabaseAuthApi.currentUserId(context.applicationContext).isNullOrBlank()) {
+            (context as? ComponentActivity)?.lifecycleScope?.launch(Dispatchers.IO) {
             try {
                 val wipeCheck = ProjectWipeManager.applyIfNeeded(context.applicationContext) {
                     settingsViewModel.clearForProjectWipe()
@@ -227,8 +229,8 @@ fun MomentumApp(
                 if (wipeCheck == ProjectWipeManager.CheckResult.APPLIED) {
                     withContext(Dispatchers.Main) {
                         destination = MomentumDestination.Home
-                        isAuthenticated = false
-                        authNotice = "An administrator reset app data. Sign in again to start fresh."
+                        isAuthenticated = true
+                        authNotice = "An administrator reset app data. You can sign in to sync again or continue offline."
                     }
                     return@launch
                 }
@@ -237,6 +239,7 @@ fun MomentumApp(
                 android.util.Log.e("MomentumStartup", "Reminder rescheduling failed.", e)
             } catch (e: SecurityException) {
                 android.util.Log.e("MomentumStartup", "Reminder rescheduling is not permitted.", e)
+            }
             }
         }
     }
@@ -284,7 +287,7 @@ fun MomentumApp(
                                 settingsViewModel.clearForProjectWipe()
                             }
                             if (wipeCheck == ProjectWipeManager.CheckResult.APPLIED) {
-                                authNotice = "An administrator reset app data. Sign in again to start fresh."
+                                authNotice = "An administrator reset app data. You can sign in to sync again or continue offline."
                             } else {
                                 isAuthenticated = true
                                 if (wipeCheck == ProjectWipeManager.CheckResult.UNCHANGED) {

@@ -21,6 +21,9 @@ val supabaseUrlValue = providers.gradleProperty("SUPABASE_URL")
 val supabasePublishableKeyValue = providers.gradleProperty("SUPABASE_PUBLISHABLE_KEY")
     .orElse(providers.environmentVariable("SUPABASE_PUBLISHABLE_KEY"))
     .orElse("")
+val googleWebClientIdValue = providers.gradleProperty("GOOGLE_WEB_CLIENT_ID")
+    .orElse(providers.environmentVariable("GOOGLE_WEB_CLIENT_ID"))
+    .orElse("")
 
 val releaseStoreFilePath = providers.gradleProperty("RELEASE_STORE_FILE")
     .orElse(providers.environmentVariable("RELEASE_STORE_FILE"))
@@ -69,6 +72,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "SUPABASE_URL", "\"${supabaseUrlValue.get()}\"")
         buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"${supabasePublishableKeyValue.get()}\"")
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${googleWebClientIdValue.get()}\"")
     }
 
     detekt {
@@ -134,6 +138,9 @@ dependencies {
     implementation(libs.hilt.android)
     implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.biometric)
+    implementation(libs.credentials.core)
+    implementation(libs.credentials.play.services)
+    implementation(libs.google.id)
     debugImplementation(libs.leakcanary.android)
     debugImplementation(libs.androidx.compose.ui.tooling)
     ksp(libs.androidx.room.compiler)

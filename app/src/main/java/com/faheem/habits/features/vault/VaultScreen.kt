@@ -109,7 +109,8 @@ class VaultViewModel @Inject constructor(
 ) : AndroidViewModel(app) {
     private val accountKeys = SupabaseRestClient(app)
     private val profilePrefs = app.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
-    private val accountId = profilePrefs.getString("user_id", null).orEmpty()
+    private val accountId = profilePrefs.getString("user_id", null)
+        ?: profilePrefs.getString("local_account_id", null).orEmpty()
     private val prefs = app.getSharedPreferences(
         "momentum_vault_${accountId.ifBlank { "unlinked" }}",
         Context.MODE_PRIVATE
@@ -121,7 +122,8 @@ class VaultViewModel @Inject constructor(
 
     fun isConfigured(): Boolean = prefs.contains(VaultCrypto.SALT_PREF) && prefs.contains(VaultCrypto.CHECK_PREF)
     fun needsAccountLink(): Boolean = isConfigured() && !prefs.getBoolean(accountLinkedPref, false)
-    fun linkedEmail(): String = profilePrefs.getString("email", "").orEmpty()
+    fun linkedEmail(): String = profilePrefs.getString("email", null)
+        ?: profilePrefs.getString("local_email", "").orEmpty()
 
     suspend fun setupAccountPassword(masterPassword: String): ByteArray = withContext(Dispatchers.IO) {
         check(!isConfigured()) { "A Vault password is already set on this device." }

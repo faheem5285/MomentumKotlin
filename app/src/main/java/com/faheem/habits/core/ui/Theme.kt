@@ -281,12 +281,14 @@ private val AppTypography = Typography(
 
 val LocalReduceEffects = compositionLocalOf { false }
 val LocalDynamicAccent = compositionLocalOf { false }
+val LocalGlassIntensity = compositionLocalOf { 1f }
 val LocalGlassPalette = compositionLocalOf { LightGlass }
 
 @Composable
 fun MomentumTheme(
     reduceEffects: Boolean = false,
     dynamicAccent: Boolean = false,
+    glassIntensity: Float = 1f,
     themeMode: ThemeMode = ThemeMode.System,
     content: @Composable () -> Unit
 ) {
@@ -311,6 +313,7 @@ fun MomentumTheme(
             CompositionLocalProvider(
                 LocalReduceEffects provides reduceEffects,
                 LocalDynamicAccent provides dynamicAccent,
+                LocalGlassIntensity provides glassIntensity.coerceIn(0.88f, 1.12f),
                 LocalGlassPalette provides if (dark) DarkGlass else LightGlass,
                 LocalSemanticColors provides if (dark) DarkSemantics else LightSemantics,
                 content = content

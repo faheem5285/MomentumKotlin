@@ -265,7 +265,7 @@ fun HomeScreen(
             chart = TileChart.Trend(s.vaultWeek)
         ),
         TileSpec(
-            "Supabase",
+            "Cloud & Sync",
             if (s.syncTracked == 0) "Cloud records and storage" else "${s.syncHealthy} of ${s.syncTracked} tables healthy",
             AppModule.Supabase.icon, AppModule.Supabase.gradient, AppModule.Supabase,
             chart = if (s.syncTracked == 0) {
@@ -287,6 +287,7 @@ fun HomeScreen(
     }
     val batteryLevel = insights.batteryLevel
     val deviceTools = remember(insights) { listOf(
+        TileSpec("Profile", "Account and sign-in options", AppModule.Profile.icon, AppModule.Profile.gradient, AppModule.Profile),
         TileSpec(
             "Battery",
             insights.batteryLevel?.let { "$it% right now" } ?: "Live charging animation",
@@ -591,6 +592,7 @@ private fun moduleWatermarkIcon(module: AppModule?) = when (module) {
     AppModule.Battery -> Icons.Rounded.BatteryChargingFull
     AppModule.Network -> Icons.Rounded.Wifi
     AppModule.Supabase -> Icons.Rounded.CloudSync
+    AppModule.Profile -> Icons.Rounded.Person
     AppModule.Settings -> Icons.Rounded.Tune
     null -> Icons.Rounded.Apps
 }

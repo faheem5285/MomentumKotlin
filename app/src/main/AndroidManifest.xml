@@ -53,6 +53,12 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="momentum" android:host="module" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="momentum" android:host="auth" />
+            </intent-filter>
         </activity>
         <activity
             android:name=".features.battery.BatteryChargingActivity"

@@ -129,12 +129,13 @@ private fun Color.scaledAlpha(factor: Float): Color =
 @Composable
 private fun glassTones(level: GlassLevel): Pair<Color, Color> {
     val glass = LocalGlassPalette.current
+    val intensity = LocalGlassIntensity.current
     val factor = when (level) {
         GlassLevel.Low -> 0.68f
         GlassLevel.Medium -> 1f
         GlassLevel.High -> 1.34f
     }
-    return glass.cardTop.scaledAlpha(factor) to glass.cardBottom.scaledAlpha(factor)
+    return glass.cardTop.scaledAlpha(factor * intensity) to glass.cardBottom.scaledAlpha(factor * intensity)
 }
 
 @Composable

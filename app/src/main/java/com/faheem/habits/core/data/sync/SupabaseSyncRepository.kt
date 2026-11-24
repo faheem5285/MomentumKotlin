@@ -336,6 +336,7 @@ class SupabaseSyncRepository(
         AppModule.LifeRules -> listOf("momentum_life_rules", "momentum_life_rule_files")
         AppModule.Vault -> listOf("momentum_vault_entries")
         AppModule.Settings -> listOf("momentum_custom_notifications")
+        AppModule.Profile -> emptyList()
         else -> emptyList()
     }
 
@@ -349,6 +350,7 @@ class SupabaseSyncRepository(
         AppModule.ToDos -> listOf("todo_items")
         AppModule.Settings -> listOf("custom_notifications")
         AppModule.Vault -> listOf("vault_entries")
+        AppModule.Profile -> emptyList()
         else -> emptyList()
     }
 

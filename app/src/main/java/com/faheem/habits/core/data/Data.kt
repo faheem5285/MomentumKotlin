@@ -795,9 +795,30 @@ interface SyncStateDao {
     suspend fun upsert(state: SyncState)
 }
 
+@Entity(tableName = "profile_cache")
+data class ProfileCache(
+    @PrimaryKey val userId: String,
+    val displayName: String = "",
+    val email: String = "",
+    val phone: String = "",
+    val bio: String = "",
+    val avatarUri: String = "",
+    val memberSince: Long = 0L,
+    val updatedAt: Long = 0L
+)
+
+@Dao
+interface ProfileCacheDao {
+    @Query("SELECT * FROM profile_cache WHERE userId = :userId LIMIT 1")
+    fun observe(userId: String): Flow<ProfileCache?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(profile: ProfileCache)
+}
+
 @Database(
-    entities = [Habit::class, Completion::class, HabitSkip::class, HabitReminder::class, Expense::class, CategoryBudget::class, LoanPerson::class, Contact::class, Loan::class, LoanPayment::class, LoanAttachment::class, FileItem::class, VaultRecord::class, ToDoItem::class, LifeRule::class, LifeRuleFile::class, CustomNotification::class, SyncState::class],
-    version = 20,
+    entities = [Habit::class, Completion::class, HabitSkip::class, HabitReminder::class, Expense::class, CategoryBudget::class, LoanPerson::class, Contact::class, Loan::class, LoanPayment::class, LoanAttachment::class, FileItem::class, VaultRecord::class, ToDoItem::class, LifeRule::class, LifeRuleFile::class, CustomNotification::class, SyncState::class, ProfileCache::class],
+    version = 21,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -811,6 +832,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun lifeRuleDao(): LifeRuleDao
     abstract fun customNotificationDao(): CustomNotificationDao
     abstract fun syncStateDao(): SyncStateDao
+    abstract fun profileCacheDao(): ProfileCacheDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null
@@ -841,8 +863,10 @@ abstract class AppDatabase : RoomDatabase() {
                 check(isDirectory || mkdirs()) { "Could not prepare account-local data storage." }
             }
             if (baseFile.exists()) {
+                val unassignedFile = File(accountDirectory, "unassigned-legacy-database.db")
                 val previousFile = activeUser?.let { accountDatabaseFile(accountDirectory, it) }
-                    ?: File(accountDirectory, "unassigned-legacy-database.db")
+                    ?: accountDatabaseFile(accountDirectory, normalizedId).takeUnless(File::exists)
+                    ?: unassignedFile
                 baseFile.copyTo(previousFile, overwrite = true)
             }
             deleteDatabaseFiles(baseFile)
@@ -1266,6 +1290,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `profile_cache` (`userId` TEXT NOT NULL, `displayName` TEXT NOT NULL, `email` TEXT NOT NULL, `phone` TEXT NOT NULL, `bio` TEXT NOT NULL, `avatarUri` TEXT NOT NULL, `memberSince` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`userId`))")
+            }
+        }
+
         private fun Double.toMinorUnitsForMigration(): Long {
             require(isFinite()) { "A stored money value is not finite; database migration was stopped to protect data." }
             return BigDecimal.valueOf(this).setScale(2, RoundingMode.HALF_UP).movePointRight(2).longValueExact()
@@ -1295,6 +1325,7 @@ abstract class AppDatabase : RoomDatabase() {
                     .addMigrations(MIGRATION_17_18)
                     .addMigrations(MIGRATION_18_19)
                     .addMigrations(MIGRATION_19_20)
+                    .addMigrations(MIGRATION_20_21)
                     .build().also { instance = it }
             }
     }

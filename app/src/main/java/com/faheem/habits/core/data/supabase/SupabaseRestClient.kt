@@ -25,6 +25,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.add
 import com.faheem.habits.features.vault.VaultCrypto
 import com.faheem.habits.core.data.sync.SyncCursor
 import java.time.Instant
@@ -35,6 +36,56 @@ class SupabaseRestClient(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val storageScanLimit = 5_000
+
+    suspend fun fetchProfile(userId: String): kotlinx.serialization.json.JsonObject? {
+        val token = requireToken()
+        val response = http.get {
+            url("${baseUrl()}/rest/v1/profiles")
+            header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+            header("Authorization", "Bearer $token")
+            url {
+                parameters.append("select", "id,display_name,avatar_url,phone,bio,updated_at")
+                parameters.append("id", "eq.$userId")
+                parameters.append("limit", "1")
+            }
+        }
+        response.requireStatus(setOf(HttpStatusCode.OK), "Profile could not be loaded")
+        return json.parseToJsonElement(response.bodyAsText()).jsonArray.firstOrNull()?.jsonObject
+    }
+
+    suspend fun saveProfile(profile: com.faheem.habits.core.data.ProfileCache): Boolean {
+        val token = requireToken()
+        val rows = buildJsonArray {
+            add(buildJsonObject {
+                put("id", profile.userId)
+                put("display_name", profile.displayName)
+                put("phone", profile.phone)
+                put("bio", profile.bio)
+                put("updated_at", Instant.ofEpochMilli(profile.updatedAt).toString())
+            })
+        }
+        val response = http.postRest("profiles", token) {
+            url { parameters.append("on_conflict", "id") }
+            header("Prefer", "resolution=merge-duplicates,return=minimal")
+            setBody(rows.toString())
+        }
+        response.requireStatus(setOf(HttpStatusCode.Created, HttpStatusCode.OK), "Profile could not be saved")
+        return true
+    }
+
+    suspend fun requestAccountDeletion() {
+        val token = requireToken()
+        val response = http.post {
+            url("${baseUrl()}/rest/v1/rpc/delete_my_account")
+            header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+            header("Authorization", "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody("{}")
+        }
+        if (response.status.value !in 200..299) {
+            error("Account deletion is not configured on this Supabase project. Your account was not deleted.")
+        }
+    }
 
     suspend fun upsert(table: String, rows: JsonArray): Int {
         if (rows.isEmpty()) return 0

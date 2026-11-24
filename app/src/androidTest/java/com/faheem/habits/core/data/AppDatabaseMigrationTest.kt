@@ -37,7 +37,8 @@ class AppDatabaseMigrationTest {
         AppDatabase.MIGRATION_16_17,
         AppDatabase.MIGRATION_17_18,
         AppDatabase.MIGRATION_18_19,
-        AppDatabase.MIGRATION_19_20
+        AppDatabase.MIGRATION_19_20,
+        AppDatabase.MIGRATION_20_21
     )
 
     @Test
@@ -45,7 +46,7 @@ class AppDatabaseMigrationTest {
         val steps = listOf(
             3 to 4, 4 to 5, 5 to 6, 6 to 7, 7 to 8, 8 to 9, 9 to 10, 10 to 11,
             11 to 12, 12 to 13, 13 to 14, 14 to 15, 15 to 16, 16 to 17, 17 to 18,
-            18 to 19, 19 to 20
+            18 to 19, 19 to 20, 20 to 21
         )
         steps.forEach { (from, to) ->
             val dbName = "migration_step_${from}_$to"
@@ -63,7 +64,7 @@ class AppDatabaseMigrationTest {
     fun fullMigrationChainFromVersion3Validates() {
         val dbName = "migration_chain"
         helper.createDatabase(dbName, 3).close()
-        helper.runMigrationsAndValidate(dbName, 20, true, *migrations).close()
+        helper.runMigrationsAndValidate(dbName, 21, true, *migrations).close()
     }
 
     @Test
@@ -77,7 +78,7 @@ class AppDatabaseMigrationTest {
             close()
         }
 
-        val db = helper.runMigrationsAndValidate(dbName, 20, true, *migrations)
+        val db = helper.runMigrationsAndValidate(dbName, 21, true, *migrations)
         db.query("SELECT id, name FROM habits WHERE id = 7").use { cursor ->
             assertTrue(cursor.moveToFirst())
             assertEquals("Keep me", cursor.getString(1))
@@ -137,7 +138,7 @@ class AppDatabaseMigrationTest {
             execSQL("INSERT INTO todo_items (id,title,notes,dueEpochDay,completed,category,priority,reminderHour,reminderMinute) VALUES (6,'Task','',20000,0,'Personal',1,NULL,NULL)")
             close()
         }
-        val db = helper.runMigrationsAndValidate(dbName, 20, true, *migrations)
+        val db = helper.runMigrationsAndValidate(dbName, 21, true, *migrations)
         listOf("habits", "completions", "habit_reminders", "expenses", "loans", "library_files", "todo_items").forEach { table ->
             db.query("SELECT uuid,updatedAt FROM `$table`").use { cursor ->
                 assertTrue("Expected backfilled row in $table", cursor.moveToFirst())

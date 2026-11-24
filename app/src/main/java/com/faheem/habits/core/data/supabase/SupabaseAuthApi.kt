@@ -6,6 +6,7 @@ import com.faheem.habits.core.data.AppDatabase
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.header
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -48,6 +49,12 @@ object SupabaseAuthApi {
     private data class RefreshCredentials(val refresh_token: String)
 
     @Serializable
+    private data class IdTokenCredentials(val provider: String, val id_token: String, val nonce: String)
+
+    @Serializable
+    private data class PasswordUpdate(val password: String)
+
+    @Serializable
     private data class AuthResponse(
         val access_token: String? = null,
         val refresh_token: String? = null,
@@ -60,7 +67,9 @@ object SupabaseAuthApi {
     private data class AuthUser(
         val id: String? = null,
         val email: String? = null,
-        val user_metadata: JsonObject? = null
+        val user_metadata: JsonObject? = null,
+        val app_metadata: JsonObject? = null,
+        val created_at: String? = null
     )
 
     @Volatile
@@ -85,6 +94,10 @@ object SupabaseAuthApi {
             if (name.isNotBlank()) editor.putString("display_name", name)
             if (email.isNotBlank()) editor.putString("email", email)
             if (userId.isNotBlank()) editor.putString("user_id", userId)
+            session.user?.app_metadata?.get("provider")?.jsonPrimitive?.contentOrNull?.let { editor.putString("auth_provider", it) }
+            session.user?.created_at?.let { createdAt ->
+                runCatching { java.time.Instant.parse(createdAt).toEpochMilli() }.getOrNull()?.let { editor.putLong("member_since", it) }
+            }
             editor.apply()
         }
     }
@@ -104,7 +117,57 @@ object SupabaseAuthApi {
     }
 
     suspend fun sendPasswordReset(email: String) {
-        request("recover", json.encodeToString(mapOf("email" to email)))
+        request("recover?redirect_to=momentum%3A%2F%2Fauth%2Freset", json.encodeToString(mapOf("email" to email)))
+    }
+
+    suspend fun signInWithGoogle(context: Context, idToken: String, nonce: String) {
+        val body = request("token?grant_type=id_token", json.encodeToString(IdTokenCredentials("google", idToken, nonce)))
+        val session = json.decodeFromString<AuthResponse>(body)
+        activateAccountDatabase(context.applicationContext, session)
+        rememberSession(session)
+        cacheProfile(context.applicationContext, session)
+        context.applicationContext.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
+            .edit().putString("auth_provider", "google").apply()
+        val refreshToken = session.refresh_token ?: error("Sign-in succeeded but Supabase did not return a refresh token.")
+        SecureTokenStore.saveRefreshToken(context.applicationContext, refreshToken)
+    }
+
+    suspend fun changePassword(context: Context, email: String, current: String, next: String) {
+        signIn(context, email, current)
+        val token = getAccessToken(context) ?: error("Sign in again before changing your password.")
+        val baseUrl = BuildConfig.SUPABASE_URL.trim().trimEnd('/').removeSuffix("/rest/v1").removeSuffix("/auth/v1").trimEnd('/')
+        val response = http.put("$baseUrl/auth/v1/user") {
+            header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+            header("Authorization", "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(PasswordUpdate(next)))
+        }
+        val responseBody = response.bodyAsText()
+        if (response.status.value !in 200..299) throw AuthHttpException(response.status.value, responseBody.take(300))
+    }
+
+    suspend fun setPassword(context: Context, next: String) {
+        val token = getAccessToken(context) ?: error("Sign in again before setting a password.")
+        val baseUrl = BuildConfig.SUPABASE_URL.trim().trimEnd('/').removeSuffix("/rest/v1").removeSuffix("/auth/v1").trimEnd('/')
+        val response = http.put("$baseUrl/auth/v1/user") {
+            header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+            header("Authorization", "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(PasswordUpdate(next)))
+        }
+        if (response.status.value !in 200..299) throw AuthHttpException(response.status.value, response.bodyAsText().take(300))
+        context.getSharedPreferences("account_profile", Context.MODE_PRIVATE).edit().putString("auth_provider", "email").apply()
+    }
+
+    suspend fun completePasswordRecovery(accessToken: String, next: String) {
+        val baseUrl = BuildConfig.SUPABASE_URL.trim().trimEnd('/').removeSuffix("/rest/v1").removeSuffix("/auth/v1").trimEnd('/')
+        val response = http.put("$baseUrl/auth/v1/user") {
+            header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+            header("Authorization", "Bearer $accessToken")
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(PasswordUpdate(next)))
+        }
+        if (response.status.value !in 200..299) throw AuthHttpException(response.status.value, response.bodyAsText().take(300))
     }
 
     suspend fun signIn(context: Context, email: String, password: String) {
@@ -113,6 +176,8 @@ object SupabaseAuthApi {
         activateAccountDatabase(context.applicationContext, session)
         rememberSession(session)
         cacheProfile(context.applicationContext, session)
+        context.applicationContext.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
+            .edit().putString("auth_provider", "email").apply()
         val refreshToken = session.refresh_token
         check(!refreshToken.isNullOrBlank()) {
             "Sign-in succeeded but Supabase did not return a refresh token."
@@ -122,7 +187,10 @@ object SupabaseAuthApi {
 
     suspend fun restoreSession(context: Context): SessionRestoreResult {
         val refreshToken = SecureTokenStore.readRefreshToken(context.applicationContext)
-            ?: return SessionRestoreResult.NO_SESSION
+            ?: run {
+                clearAuthIdentity(context.applicationContext, keepLocalBinding = true)
+                return SessionRestoreResult.NO_SESSION
+            }
         return try {
             val body = request(
                 "token?grant_type=refresh_token",
@@ -143,6 +211,7 @@ object SupabaseAuthApi {
                 SecureTokenStore.clear(context.applicationContext)
                 accessToken = null
                 accessTokenExpiresAt = 0L
+                clearAuthIdentity(context.applicationContext, keepLocalBinding = true, notice = "Your saved session expired. Sign in again to use cloud sync; local records remain available.")
                 SessionRestoreResult.NO_SESSION
             } else {
                 SessionRestoreResult.TEMPORARY_FAILURE
@@ -191,8 +260,7 @@ object SupabaseAuthApi {
         } finally {
             SecureTokenStore.clear(appContext)
             clearInMemorySession()
-            appContext.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
-                .edit().clear().apply()
+            clearAuthIdentity(appContext, keepLocalBinding = true)
             mutableSignOutEvents.tryEmit(Unit)
         }
     }
@@ -200,6 +268,18 @@ object SupabaseAuthApi {
     fun clearInMemorySession() {
         accessToken = null
         accessTokenExpiresAt = 0L
+    }
+
+    private fun clearAuthIdentity(context: Context, keepLocalBinding: Boolean, notice: String? = null) {
+        val prefs = context.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+        if (keepLocalBinding) {
+            prefs.getString("user_id", null)?.let { editor.putString("local_account_id", it) }
+            prefs.getString("email", null)?.let { editor.putString("local_email", it) }
+        }
+        editor.remove("user_id").remove("email").remove("auth_provider").remove("auth_notice")
+        if (notice != null) editor.putString("auth_notice", notice)
+        editor.apply()
     }
 
     private suspend fun request(endpoint: String, body: String): String {

@@ -48,6 +48,7 @@ import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.WarningAmber
@@ -90,6 +91,7 @@ import com.faheem.habits.core.data.backup.MomentumBackup
 import com.faheem.habits.core.data.backup.WeeklyBackupSettings
 import com.faheem.habits.core.notifications.ReminderSettingsScreen
 import com.faheem.habits.core.settings.AppearancePreferences
+import com.faheem.habits.core.settings.GlassIntensity
 import com.faheem.habits.core.settings.ThemeMode
 import com.faheem.habits.core.ui.AppModule
 import com.faheem.habits.core.ui.BrandGradient
@@ -135,6 +137,7 @@ fun AppSettingsScreen(onOpenModule: (AppModule) -> Unit = {}) {
     val themeMode by AppearancePreferences.themeMode.collectAsStateWithLifecycle()
     val reduceMotion by AppearancePreferences.reduceMotion.collectAsStateWithLifecycle()
     val dynamicAccent by AppearancePreferences.dynamicAccent.collectAsStateWithLifecycle()
+    val glassIntensity by AppearancePreferences.glassIntensity.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
@@ -276,6 +279,12 @@ fun AppSettingsScreen(onOpenModule: (AppModule) -> Unit = {}) {
             item {
                 SettingsGroup("Account") {
                     SettingsRow(
+                        title = "Profile",
+                        supportingText = "Edit your details and account security",
+                        icon = Icons.Rounded.Person,
+                        onClick = { onOpenModule(AppModule.Profile) }
+                    )
+                    SettingsRow(
                         title = "Cloud & Sync",
                         supportingText = "Manage your account and cloud backup",
                         icon = Icons.Rounded.CloudDone,
@@ -332,9 +341,11 @@ fun AppSettingsScreen(onOpenModule: (AppModule) -> Unit = {}) {
                     themeMode = themeMode,
                     reduceMotion = reduceMotion,
                     dynamicAccent = dynamicAccent,
+                    glassIntensity = glassIntensity,
                     onThemeChange = { AppearancePreferences.setThemeMode(context, it) },
                     onReduceMotionChange = { AppearancePreferences.setReduceMotion(context, it) },
-                    onDynamicAccentChange = { AppearancePreferences.setDynamicAccent(context, it) }
+                    onDynamicAccentChange = { AppearancePreferences.setDynamicAccent(context, it) },
+                    onGlassIntensityChange = { AppearancePreferences.setGlassIntensity(context, it) }
                 )
             }
             item {
@@ -550,9 +561,11 @@ private fun AppearanceCard(
     themeMode: ThemeMode,
     reduceMotion: Boolean,
     dynamicAccent: Boolean,
+    glassIntensity: GlassIntensity,
     onThemeChange: (ThemeMode) -> Unit,
     onReduceMotionChange: (Boolean) -> Unit,
-    onDynamicAccentChange: (Boolean) -> Unit
+    onDynamicAccentChange: (Boolean) -> Unit,
+    onGlassIntensityChange: (GlassIntensity) -> Unit
 ) {
     PremiumCard(accent = AppModule.Settings.accent, contentPadding = PaddingValues(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -579,6 +592,20 @@ private fun AppearanceCard(
                         ThemeMode.Light -> Icons.Rounded.LightMode
                         ThemeMode.Dark -> Icons.Rounded.DarkMode
                     },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Text("Glass intensity", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+        Text("Adjust surface strength while keeping text contrast clear.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            GlassIntensity.entries.forEach { intensity ->
+                MomentumChip(
+                    selected = glassIntensity == intensity,
+                    onClick = { onGlassIntensityChange(intensity) },
+                    label = intensity.label,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -892,14 +919,14 @@ private fun AboutCard() {
             IconBubble(Icons.Rounded.AutoAwesome, AppModule.Settings.accent, 42.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("Zylo ${BuildConfig.VERSION_NAME}", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                Text("Zylo ${BuildConfig.VERSION_NAME} · build ${BuildConfig.VERSION_CODE}", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 Text(
-                    "Account required · local-first storage",
+                    "Sign-in optional · offline ready",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            StatusPill("Sign-in required", AppModule.Settings.accent)
+            StatusPill("Offline ready", AppModule.Settings.accent)
         }
         Spacer(Modifier.height(10.dp))
         Text(

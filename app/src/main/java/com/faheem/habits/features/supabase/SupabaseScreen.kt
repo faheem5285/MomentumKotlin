@@ -130,7 +130,7 @@ private data class SupabaseMetrics(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SupabaseScreen() {
+fun SupabaseScreen(onOpenProfile: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val cloudViewModel: CloudSyncViewModel = androidx.hilt.navigation.compose.hiltViewModel()
@@ -276,7 +276,7 @@ fun SupabaseScreen() {
                 }
             }
         }
-        if (!signedOut) item {
+        if (cloudUi.signedIn && !signedOut) item {
             SyncCard(
                 syncStates = syncStates,
                 workState = syncWorkState,
@@ -285,7 +285,7 @@ fun SupabaseScreen() {
                 onSync = ::syncNow
             )
         }
-        if (!signedOut) item {
+        if (cloudUi.signedIn && !signedOut) item {
             SettingsGroup("Choose what syncs") {
                 SyncModule.entries.forEach { module ->
                     SettingsRow(
@@ -297,7 +297,16 @@ fun SupabaseScreen() {
                 }
             }
         }
-        if (!signedOut) item {
+        if (!cloudUi.signedIn && !signedOut) item {
+            GlassCard(contentPadding = PaddingValues(18.dp)) {
+                Text("Sign in to back up and sync", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                Text("Your records stay available offline. Connect an account when you want cloud backup.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(12.dp))
+                PrimaryButton("Open Profile", onOpenProfile)
+            }
+        }
+        if (cloudUi.signedIn && !signedOut) item {
             SettingsGroup("Coming soon") {
                 listOf("Screen time", "Battery", "Network", "Language").forEach { moduleName ->
                     SettingsRow(title = moduleName, supportingText = "This module does not sync yet.", value = "Coming soon")
@@ -319,7 +328,7 @@ fun SupabaseScreen() {
                 }
             }
         }
-        if (!signedOut) item {
+        if (!signedOut && cloudUi.signedIn) item {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 TextButton(
                     onClick = {
@@ -334,7 +343,7 @@ fun SupabaseScreen() {
                 ) {
                     Icon(Icons.Rounded.Logout, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Sign out of Supabase")
+                    Text("Sign out")
                 }
             }
         }
