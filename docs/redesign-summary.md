@@ -14,7 +14,7 @@
 
 - Added AndroidX Credential Manager and Google ID dependencies for Google sign-in.
 - Added ML Kit Translate `17.0.3` and Language ID `17.0.6`; their runtime UI and model lifecycle are not yet implemented.
-- Room was v20 before Profile and is v22 in the current source. Migrations 20→21 and 21→22 are present. Room schema v22 has not been exported because Gradle/KSP could not run.
+- Room was v20 before Profile and is v22 in the current source. Migrations 20→21 and 21→22 and the exported v22 schema are present. Migration and build verification are pending.
 - No new Android permissions were added for the language UI. Existing internet permission supports existing network/auth behavior.
 
 ## Tests and verification
@@ -31,7 +31,7 @@
 ## Incomplete work and next steps
 
 - Language still needs dictionary lookup and pronunciation, full vocabulary/grammar editing and filters, quiz/session flow, daily due/streak/reminder experience, ML Kit translation with model management, opted-in MyMemory fallback, translation history UI, and validated JSON/CSV import/export.
-- Generate and commit the Room v22 schema, then compile and run migration/unit tests after Android Gradle Plugin resolution is restored. Resolve any source or lint issues those tasks expose.
+- Compile and run migration/unit tests after Android Gradle Plugin resolution is restored. Resolve any source or lint issues those tasks expose.
 - Phase 9 review and final gates remain blocked by plugin resolution. ADB was also unable to initialize its home, so device availability and installation were not verified.
 
 ## Phone QA checklist

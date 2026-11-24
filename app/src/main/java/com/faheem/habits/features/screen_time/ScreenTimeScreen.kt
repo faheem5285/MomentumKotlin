@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -97,7 +98,7 @@ internal fun loadDailyMinutes(ctx: Context, days: Int): List<Long> {
 fun ScreenTimeScreen() {
     val context = LocalContext.current
     val viewModel: ScreenTimeViewModel = androidx.hilt.navigation.compose.hiltViewModel()
-    val dashboard by androidx.lifecycle.compose.collectAsStateWithLifecycle(viewModel.uiState)
+    val dashboard by viewModel.uiState.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(TimeTab.Overview) }
     var range by remember { mutableStateOf(UsageRange.Today) }
     var granted by remember { mutableStateOf(hasUsageAccess(context)) }

@@ -12,7 +12,7 @@ Branch: `feature/premium-redesign-profile-language` (created from `phase-9-quali
 - [ ] Phase 5 — Cloud & Sync: IN PROGRESS — module sync toggles, account state, recent activity and sync history are implemented; assemble/test/lint are blocked at plugin resolution and ADB cannot initialize its home directory.
 - [ ] Phase 6 — Settings: IN PROGRESS — Settings now uses a searchable module group and grouped Account, Security and Language sections; verification is blocked by Android plugin resolution and ADB home permissions.
 - [ ] Phase 7 — Profile: IN PROGRESS — optional offline entry, Profile/Auth UI, Google Credential Manager exchange, Room profile cache and migration v21 are implemented; assemble/test/lint remain blocked before compilation by Android Gradle Plugin resolution.
-- [ ] Phase 8 — Language: IN PROGRESS — Room v22 entities/migration, local vocabulary and grammar CRUD, review scheduling, Home/Settings entry points, optional SQL guidance and a Leitner unit test are added. Translation, dictionary/TTS, import/export, quiz, and schema export remain incomplete; Gradle cannot resolve AGP 8.5.2.
+- [ ] Phase 8 — Language: IN PROGRESS — Room v22 entities/migration/schema, local vocabulary and grammar CRUD, review scheduling, Home/Settings entry points, optional SQL guidance and a Leitner unit test are added. Translation, dictionary/TTS, import/export and quiz remain incomplete; migration/build verification is pending.
 - [ ] Phase 9 — Polish, hardening, final gate: IN PROGRESS — summary and final verification record are written. Code review and final gates remain incomplete because AGP 8.5.2 cannot resolve.
 
 ## Phase 0 baseline
@@ -124,9 +124,9 @@ Follow-up from the user's `installDebug` output: Credential Manager 1.6.0 and it
 | `gradlew.bat lintDebug` | FAIL (exit 1) | Same configuration failure; lint did not run. |
 | `adb devices` | UNAVAILABLE | Could not create `\\.android`; device state unknown, so install was skipped. |
 | `git diff --check` | PASS | No whitespace errors. |
-| TOML / Room v21 JSON parse | PASS | Catalog TOML and the checked-in v21 schema parse. Room v22 export is pending. |
+| TOML / Room v21/v22 JSON parse | PASS | Catalog TOML and both checked-in schemas parse. Migration validation is pending. |
 
-The Room v22 migration and Language unit test are source changes only; neither has compiled or run. Phase 8 is not marked done because Language functionality and schema export remain incomplete.
+The Room v22 migration and Language unit test have not compiled or run. The v22 export is now present, but Phase 8 remains open because Language functionality and build/migration verification remain incomplete.
 
 ## Phase 9 final gate attempt
 
@@ -140,3 +140,7 @@ The Room v22 migration and Language unit test are source changes only; neither h
 | `gradlew.bat installDebug` | SKIPPED | ADB could not initialize its home; device status unknown. |
 
 See `docs/redesign-verification.md` and `docs/redesign-summary.md`. Phase 9 remains open pending a functioning build environment and completion of Phase 8.
+
+## Compile diagnostics follow-up
+
+The user provided a later `installDebug` result that reached Kotlin compilation and reported navigation callback scope, missing lifecycle Flow collection extension imports, and Cloud & Sync snapshot/UI-state type mismatches. Fixed those root issues in `Navigation.kt`, the Battery/Network/Screen time screens, and `CloudSyncViewModel.kt`. The user's output also shows KSP generated the Room v22 schema. A local rerun in this environment stopped before compilation because AGP 8.5.2 could not resolve, so these fixes still need confirmation with `installDebug` on the user's machine.

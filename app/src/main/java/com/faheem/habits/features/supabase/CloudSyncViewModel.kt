@@ -10,6 +10,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.map
 
 @Immutable
 data class CloudSyncUiState(
@@ -26,7 +27,17 @@ data class CloudSyncUiState(
 class CloudSyncViewModel @Inject constructor(
     private val repository: CloudSyncRepository
 ) : ViewModel() {
-    val uiState: StateFlow<CloudSyncUiState> = repository.observe().stateIn(
+    val uiState: StateFlow<CloudSyncUiState> = repository.observe().map { snapshot ->
+        CloudSyncUiState(
+            signedIn = snapshot.signedIn,
+            accountEmail = snapshot.accountEmail,
+            syncStates = snapshot.syncStates,
+            workState = snapshot.workState,
+            workerError = snapshot.workerError,
+            moduleEnabled = snapshot.moduleEnabled,
+            history = snapshot.history
+        )
+    }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
         CloudSyncUiState()

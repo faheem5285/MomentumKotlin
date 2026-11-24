@@ -91,6 +91,7 @@ fun MomentumNavigationHost(
                     module,
                     entry.arguments?.getInt("itemId", -1)?.takeIf { it > 0 },
                     entry.arguments?.getLong("requestToken", 0L)?.takeIf { it > 0L },
+                    onOpenModule,
                     onBack
                 )
             }
@@ -100,7 +101,13 @@ fun MomentumNavigationHost(
 
 @Composable
 @Suppress("CyclomaticComplexMethod")
-private fun ModuleScreen(module: AppModule, itemId: Int?, requestToken: Long?, onBack: () -> Unit) {
+private fun ModuleScreen(
+    module: AppModule,
+    itemId: Int?,
+    requestToken: Long?,
+    onOpenModule: (AppModule) -> Unit,
+    onBack: () -> Unit
+) {
     BackHandler(onBack = onBack)
     val accent = module.accent
     CompositionLocalProvider(LocalGradient provides module.gradient) {

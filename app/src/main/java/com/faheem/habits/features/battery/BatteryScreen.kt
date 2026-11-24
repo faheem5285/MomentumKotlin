@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.faheem.habits.features.screen_time.hasUsageAccess
@@ -137,7 +138,7 @@ internal fun platformChargingEtaMinutes(context: Context, charging: Boolean): In
 fun BatteryScreen() {
     val context = LocalContext.current
     val viewModel: BatteryViewModel = androidx.hilt.navigation.compose.hiltViewModel()
-    val dashboard by androidx.lifecycle.compose.collectAsStateWithLifecycle(viewModel.uiState)
+    val dashboard by viewModel.uiState.collectAsStateWithLifecycle()
     val reading = dashboard.reading
     var diagnostic by remember { mutableStateOf(dashboard.diagnostic) }
     var sessions by remember { mutableStateOf(dashboard.sessions) }

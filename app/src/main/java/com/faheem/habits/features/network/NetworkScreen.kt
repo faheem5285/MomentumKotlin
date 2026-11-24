@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -101,7 +102,7 @@ private fun mb(bytes: Long?): String = bytes?.let { String.format(Locale.getDefa
 fun NetworkScreen() {
     val context = LocalContext.current
     val networkViewModel: NetworkViewModel = androidx.hilt.navigation.compose.hiltViewModel()
-    val networkUi by androidx.lifecycle.compose.collectAsStateWithLifecycle(networkViewModel.uiState)
+    val networkUi by networkViewModel.uiState.collectAsStateWithLifecycle()
     var period by remember { mutableStateOf(NetworkPeriod.Today) }
     var granted by remember { mutableStateOf(hasUsageAccess(context)) }
     var report by remember { mutableStateOf<NetworkReport?>(null) }
