@@ -55,6 +55,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -106,6 +107,8 @@ import com.faheem.habits.core.ui.SecondaryButton
 import com.faheem.habits.core.ui.SectionHeader
 import com.faheem.habits.core.ui.StackedBar
 import com.faheem.habits.core.ui.StatusPill
+import com.faheem.habits.core.ui.SettingsGroup
+import com.faheem.habits.core.ui.SettingsRow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -113,11 +116,12 @@ import java.text.DateFormat
 import java.util.Locale
 
 @Composable
-fun AppSettingsScreen() {
+fun AppSettingsScreen(onOpenModule: (AppModule) -> Unit = {}) {
     val context = LocalContext.current
     val settingsViewModel: SettingsViewModel = hiltViewModel()
     val moduleVisibility by settingsViewModel.moduleVisibility.collectAsStateWithLifecycle()
     var version by remember { mutableIntStateOf(0) }
+    var moduleSearch by remember { mutableStateOf("") }
     var remindersOpen by remember { mutableStateOf(false) }
     var permissionsOpen by remember { mutableStateOf(false) }
     var backupMessage by remember { mutableStateOf<String?>(null) }
@@ -247,6 +251,9 @@ fun AppSettingsScreen() {
         val modules = AppModule.entries.filter { it != AppModule.Settings }
         val visibleCount = modules.count { moduleVisibility[it.name] ?: true }
         val hiddenCount = modules.size - visibleCount
+        val filteredModules = modules.filter { module ->
+            module.label.contains(moduleSearch, ignoreCase = true) || module.name.contains(moduleSearch, ignoreCase = true)
+        }
         val integrityHealthy = integrityMessage == "ok"
 
         LazyColumn(
@@ -265,6 +272,16 @@ fun AppSettingsScreen() {
                     hiddenCount = hiddenCount,
                     lastBackupAt = lastBackupAt
                 )
+            }
+            item {
+                SettingsGroup("Account") {
+                    SettingsRow(
+                        title = "Cloud & Sync",
+                        supportingText = "Manage your account and cloud backup",
+                        icon = Icons.Rounded.CloudDone,
+                        onClick = { onOpenModule(AppModule.Supabase) }
+                    )
+                }
             }
             item {
                 SectionHeader("At a glance")
@@ -321,32 +338,34 @@ fun AppSettingsScreen() {
                 )
             }
             item {
-                SectionHeader(
-                    title = "Home modules",
-                    subtitle = "$visibleCount of ${modules.size} shown on Home",
-                    actionLabel = "Show all",
-                    onAction = {
+                SettingsGroup("Home modules · $visibleCount of ${modules.size} shown") {
+                    OutlinedTextField(
+                        value = moduleSearch,
+                        onValueChange = { moduleSearch = it },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                        label = { Text("Find a module") },
+                        singleLine = true
+                    )
+                    filteredModules.forEach { module ->
+                        SettingsRow(
+                            title = module.label,
+                            supportingText = if (moduleVisibility[module.name] ?: true) "Visible on Home" else "Hidden, with data kept on this device",
+                            icon = module.icon,
+                            checked = moduleVisibility[module.name] ?: true,
+                            onCheckedChange = { checked ->
+                                settingsViewModel.setModuleVisible(module.name, checked)
+                                version++
+                            }
+                        )
+                    }
+                    if (filteredModules.isEmpty()) {
+                        Text("No modules match that search.", modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    TextButton(onClick = {
                         settingsViewModel.showAllModules()
                         version++
-                    }
-                )
-            }
-            items(modules, key = { "${version}-${it.name}" }) { module ->
-                ModuleToggleCard(
-                    module = module,
-                    visible = moduleVisibility[module.name] ?: true,
-                    onCheckedChange = { checked ->
-                        settingsViewModel.setModuleVisible(module.name, checked)
-                        version++
-                    }
-                )
-            }
-            item {
-                InfoBanner(
-                    icon = Icons.Rounded.Lock,
-                    text = "Hiding a module only removes it from Home. All of its records stay safely on this device.",
-                    tint = AppModule.Vault.accent
-                )
+                    }) { Text("Show all modules") }
+                }
             }
             item { SectionHeader("Data & safety") }
             item {
@@ -394,6 +413,28 @@ fun AppSettingsScreen() {
                     onOpenNotifications = { remindersOpen = true },
                     onOpenPermissions = { permissionsOpen = true }
                 )
+            }
+
+            item {
+                SettingsGroup("Security") {
+                    SettingsRow(
+                        title = "Vault",
+                        supportingText = "Your encrypted passwords and secure records",
+                        icon = Icons.Rounded.Lock,
+                        onClick = { onOpenModule(AppModule.Vault) }
+                    )
+                }
+            }
+
+            item {
+                SettingsGroup("Language") {
+                    SettingsRow(
+                        title = "Language learning",
+                        supportingText = "Vocabulary, grammar, practice and translation",
+                        icon = Icons.Rounded.AutoAwesome,
+                        value = "In development"
+                    )
+                }
             }
 
             item { SectionHeader("About", subtitle = "Local-first by design") }

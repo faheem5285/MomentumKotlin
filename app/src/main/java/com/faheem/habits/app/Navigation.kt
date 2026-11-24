@@ -135,7 +135,7 @@ private fun ModuleScreen(module: AppModule, itemId: Int?, requestToken: Long?, o
                             AppModule.Battery -> BatteryScreen()
                             AppModule.Network -> NetworkScreen()
                             AppModule.Supabase -> SupabaseScreen()
-                            AppModule.Settings -> AppSettingsScreen()
+                            AppModule.Settings -> AppSettingsScreen(onOpenModule = onOpenModule)
                         }
                     }
 
