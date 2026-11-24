@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +47,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+@Immutable
 data class AppUsage(val pkg: String, val label: String, val minutes: Long, val icon: ImageBitmap?)
 private enum class TimeTab(val title: String) { Overview("Overview"), Apps("Apps"), Reels("Reels") }
 private enum class UsageRange(val title: String, val days: Long) { Today("Today", 1), Week("7 days", 7) }
@@ -57,7 +59,7 @@ fun hasUsageAccess(ctx: Context): Boolean {
     return mode == AppOpsManager.MODE_ALLOWED
 }
 
-private fun loadUsage(ctx: Context, days: Long = 1): List<AppUsage> {
+internal fun loadUsage(ctx: Context, days: Long = 1): List<AppUsage> {
     val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
     val startDay = LocalDate.now().minusDays(days - 1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
     val stats = usm.queryAndAggregateUsageStats(startDay, System.currentTimeMillis())
@@ -74,7 +76,7 @@ private fun loadUsage(ctx: Context, days: Long = 1): List<AppUsage> {
 fun durationText(min: Long) = if (min >= 60) "${min / 60}h ${min % 60}m" else "${min}m"
 
 /** Per-day totals for the last [days] days, in minutes. */
-private fun loadDailyMinutes(ctx: Context, days: Int): List<Long> {
+internal fun loadDailyMinutes(ctx: Context, days: Int): List<Long> {
     val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
     val today = LocalDate.now()
     return (days - 1 downTo 0).map { offset ->
@@ -94,12 +96,15 @@ private fun loadDailyMinutes(ctx: Context, days: Int): List<Long> {
 @Composable
 fun ScreenTimeScreen() {
     val context = LocalContext.current
+    val viewModel: ScreenTimeViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    val dashboard by androidx.lifecycle.compose.collectAsStateWithLifecycle(viewModel.uiState)
     var tab by remember { mutableStateOf(TimeTab.Overview) }
     var range by remember { mutableStateOf(UsageRange.Today) }
     var granted by remember { mutableStateOf(hasUsageAccess(context)) }
     var accessibilityOn by remember { mutableStateOf(InstagramScrollCounterService.isEnabled(context)) }
-    var usage by remember { mutableStateOf<List<AppUsage>>(emptyList()) }
-    var weekMinutes by remember { mutableStateOf<List<Long>>(emptyList()) }
+    val usage = dashboard.apps
+    val weekMinutes = dashboard.dailyMinutes
+    var selectedWeekIndex by remember { mutableIntStateOf(6) }
     var reelCount by remember { mutableIntStateOf(0) }
     var reelLimit by remember { mutableIntStateOf(0) }
     var overlayAllowed by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
@@ -123,8 +128,7 @@ fun ScreenTimeScreen() {
         floatingCounter = prefs.getBoolean(InstagramScrollCounterService.PREF_FLOATING_COUNTER, false) && overlayAllowed
         screenLimit = prefs.getInt(PREF_SCREEN_LIMIT, 0)
         screenLimitPeriod = ScreenTimePeriod.fromKey(prefs.getString(PREF_SCREEN_LIMIT_PERIOD, null))
-        usage = if (granted) withContext(Dispatchers.IO) { loadUsage(context, range.days) } else emptyList()
-        weekMinutes = if (granted) withContext(Dispatchers.IO) { loadDailyMinutes(context, 7) } else emptyList()
+        viewModel.refresh(range.days)
         screenLimitUsed = if (granted) withContext(Dispatchers.IO) {
             screenTimeMinutes(context, screenLimitPeriod)?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0
         } else 0
@@ -171,8 +175,12 @@ fun ScreenTimeScreen() {
 
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {
-            when (tab) {
-                TimeTab.Overview -> ScreenOverview(usage, weekMinutes, granted, screenLimit, screenLimitPeriod, screenLimitUsed, reelCount, accessibilityOn, onUsageSettings = { openUsageSettings(context) }, onSetLimit = { showScreenLimit = true }, onSetAlarm = { showScreenAlarm = true }, onOpenReels = { tab = TimeTab.Reels }, onRefresh = { tick++ })
+            if (dashboard.loading && usage.isEmpty()) {
+                SkeletonLoader(Modifier.padding(MomentumTokens.space4dp))
+            } else if (dashboard.errorMessage != null && usage.isEmpty()) {
+                ErrorState(dashboard.errorMessage.orEmpty(), onRetry = { tick++ })
+            } else when (tab) {
+                TimeTab.Overview -> ScreenOverview(usage, weekMinutes, dashboard.yesterdayMinutes, selectedWeekIndex, { selectedWeekIndex = it }, granted, screenLimit, screenLimitPeriod, screenLimitUsed, reelCount, accessibilityOn, onUsageSettings = { openUsageSettings(context) }, onSetLimit = { showScreenLimit = true }, onSetAlarm = { showScreenAlarm = true }, onOpenReels = { tab = TimeTab.Reels }, onRefresh = { tick++ })
                 TimeTab.Apps -> UsageAppsScreen(usage, granted, range, onRange = { range = it }, onUsageSettings = { openUsageSettings(context) }, onRefresh = { tick++ })
                 TimeTab.Reels -> ReelsCounterScreen(
                     reelCount, reelLimit, accessibilityOn, floatingCounter, overlayAllowed,
@@ -204,7 +212,10 @@ fun ScreenTimeScreen() {
                 )
             },
             selected = TimeTab.entries.indexOf(tab),
-            onSelect = { tab = TimeTab.entries[it] }
+            onSelect = {
+                tab = TimeTab.entries[it]
+                if (tab == TimeTab.Overview) range = UsageRange.Today
+            }
         )
     }
 }
@@ -214,11 +225,12 @@ private fun openAccessibilitySettings(context: Context) { context.startActivity(
 
 @Composable
 private fun ScreenOverview(
-    usage: List<AppUsage>, weekMinutes: List<Long>, granted: Boolean, screenLimit: Int,
+    usage: List<AppUsage>, weekMinutes: List<Long>, yesterdayMinutes: Long, selectedWeekIndex: Int,
+    onSelectWeekDay: (Int) -> Unit, granted: Boolean, screenLimit: Int,
     screenLimitPeriod: ScreenTimePeriod, screenLimitUsed: Int, reelCount: Int, accessibilityOn: Boolean,
     onUsageSettings: () -> Unit, onSetLimit: () -> Unit, onSetAlarm: () -> Unit, onOpenReels: () -> Unit, onRefresh: () -> Unit
 ) {
-    val total = usage.sumOf { it.minutes }
+    val total = weekMinutes.lastOrNull() ?: usage.sumOf { it.minutes }
     val maxMin = (usage.maxOfOrNull { it.minutes } ?: 1L).coerceAtLeast(1)
     val fraction = if (screenLimit > 0) screenLimitUsed.toFloat() / screenLimit else 0f
     LazyColumn(
@@ -226,41 +238,58 @@ private fun ScreenOverview(
         contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        if (!granted) item {
+            PermissionCard(
+                title = "Turn on Usage access",
+                benefit = "See how much time you spend in each app and set a daily limit.",
+                grantLabel = "Open Usage access settings",
+                onGrant = onUsageSettings
+            )
+        }
         item {
-            HeroCard {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Your digital balance", Modifier.weight(1f), fontSize = 13.sp, color = Color.White.copy(alpha = .84f))
+            GlassCard(contentPadding = PaddingValues(20.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Screen time today", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if (granted) durationText(total) else "—", style = MaterialTheme.typography.displaySmall, color = MaterialTheme.colorScheme.onSurface)
+                        if (granted) {
+                            val delta = total - yesterdayMinutes
+                            val change = when {
+                                delta == 0L -> "About the same as yesterday"
+                                delta < 0L -> "${durationText(-delta)} less than yesterday"
+                                else -> "${durationText(delta)} more than yesterday"
+                            }
+                            Text(change, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                     HeroRefreshButton(onRefresh, "Refresh screen-time data")
                 }
-                Text(if (granted) durationText(total) else "Usage access needed", fontSize = 33.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
-                Text(if (granted) "Screen time today across ${usage.size} apps" else "Turn on Usage access to see app time", fontSize = 13.sp, color = Color.White.copy(alpha = .9f))
                 if (granted && screenLimit > 0) {
                     Spacer(Modifier.height(14.dp))
-                    ProgressBar(fraction, Color.White, Color.White.copy(alpha = .25f))
+                    ProgressBar(fraction, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.surfaceVariant)
                     Spacer(Modifier.height(6.dp))
                     Text(
                         if (screenLimitUsed >= screenLimit) "${screenLimitPeriod.label} time limit reached"
                         else "${durationText((screenLimit - screenLimitUsed).coerceAtLeast(0).toLong())} left of ${durationText(screenLimit.toLong())} ${screenLimitPeriod.label.lowercase()}",
                         fontSize = 12.5.sp,
-                        color = Color.White.copy(alpha = .9f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Spacer(Modifier.height(6.dp))
                 TextButton(onClick = if (granted) onSetLimit else onUsageSettings) {
-                    Text(if (granted) "${if (screenLimit > 0) "Adjust" else "Set"} ${screenLimitPeriod.label.lowercase()} limit" else "Open Usage access settings", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("${if (screenLimit > 0) "Adjust" else "Set"} ${screenLimitPeriod.label.lowercase()} limit", fontWeight = FontWeight.SemiBold)
                 }
                 TextButton(onClick = onSetAlarm) {
-                    Text("Set alarm", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("Set alarm", fontWeight = FontWeight.SemiBold)
+                }
                 }
             }
-        }
-        if (!granted) item {
-            PermissionInfoCard("Usage access", "Shows time spent in each app. Android keeps this permission under your control.", onUsageSettings)
         }
         if (granted && weekMinutes.any { it > 0L }) {
             item { SectionHeader("Last 7 days", subtitle = "Daily screen time") }
             item {
-                PremiumCard(contentPadding = PaddingValues(16.dp)) {
+                GlassCard(contentPadding = PaddingValues(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconBubble(Icons.Rounded.BarChart, MaterialTheme.colorScheme.primary, 40.dp)
                         Spacer(Modifier.width(12.dp))
@@ -273,20 +302,28 @@ private fun ScreenOverview(
                         }
                     }
                     Spacer(Modifier.height(14.dp))
-                    BarChart(
+                    MiniBarChart(
                         values = weekMinutes.map { it.toFloat() },
                         labels = weekMinutes.indices.map { index ->
                             DateTimeFormatter.ofPattern("EEE", Locale.US)
                                 .format(LocalDate.now().minusDays((weekMinutes.size - 1 - index).toLong()))
                         },
-                        colors = listOf(MaterialTheme.colorScheme.primary),
-                        highlightIndex = weekMinutes.lastIndex,
-                        height = 150.dp,
-                        valueFormatter = { value -> durationText(value.toLong()) }
+                        selectedIndex = selectedWeekIndex.coerceIn(0, weekMinutes.lastIndex),
+                        onSelect = onSelectWeekDay,
+                        valueDescription = { index, value ->
+                            val day = LocalDate.now().minusDays((weekMinutes.size - 1 - index).toLong())
+                            "${DateTimeFormatter.ofPattern("EEEE", Locale.getDefault()).format(day)}: ${durationText(value.toLong())}"
+                        }
+                    )
+                    Text(
+                        "${DateTimeFormatter.ofPattern("EEEE", Locale.getDefault()).format(LocalDate.now().minusDays((weekMinutes.size - 1 - selectedWeekIndex.coerceIn(0, weekMinutes.lastIndex)).toLong()))}: ${durationText(weekMinutes[selectedWeekIndex.coerceIn(0, weekMinutes.lastIndex)])}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
         }
+        item { SectionHeader("Labs", subtitle = "Optional experimental features") }
         item {
             PremiumCard(onClick = onOpenReels, contentPadding = PaddingValues(15.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
