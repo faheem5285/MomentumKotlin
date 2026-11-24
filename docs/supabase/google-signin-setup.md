@@ -1,14 +1,15 @@
 # Google sign-in setup
 
 1. In Google Cloud Console, create an OAuth client of type **Web application**.
-   Save its client ID and secret securely. The secret belongs only in the
-   Supabase Google provider settings and must never go into the Android app.
+   In **Authorized redirect URIs**, add the callback URL shown on the Supabase
+   Google provider page. Save the Web client ID and secret securely.
 2. Create an OAuth client of type **Android** for package `com.faheem.habits`.
    Add the SHA-1 fingerprint for each signing key you use. Obtain local
    fingerprints with `gradlew.bat signingReport`; add both debug and release
    fingerprints where applicable.
 3. In Supabase Dashboard, open **Authentication → Providers → Google**, enable
-   Google, and enter the Web client ID and Web client secret. Save the provider.
+   Google, add the Web and Android client IDs in the **Client IDs** field
+   (comma-separated), and enter the Web client secret. Save the provider.
 4. Put the Web client ID in your user-level `~/.gradle/gradle.properties`:
 
    ```properties

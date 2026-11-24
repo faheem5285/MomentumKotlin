@@ -57,6 +57,30 @@ create trigger on_auth_user_created_profile
   after insert on auth.users
   for each row execute function public.create_profile_for_auth_user();
 
+-- The Profile screen calls this RPC after the user confirms account deletion.
+-- It can delete only the currently authenticated user's Auth account.
+create or replace function public.delete_my_account()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  requesting_user_id uuid := auth.uid();
+begin
+  if requesting_user_id is null then
+    raise exception 'Authentication is required to delete an account.'
+      using errcode = '28000';
+  end if;
+
+  delete from auth.users where id = requesting_user_id;
+end;
+$$;
+
+revoke all on function public.delete_my_account() from public;
+revoke all on function public.delete_my_account() from anon;
+grant execute on function public.delete_my_account() to authenticated;
+
 -- Optional avatar storage: create a private `avatars` bucket. Add authenticated
 -- SELECT/INSERT/UPDATE/DELETE policies scoped to the first object path segment
 -- (`storage.foldername(name))[1] = auth.uid()::text`). The app currently keeps

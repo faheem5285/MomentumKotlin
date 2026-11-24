@@ -24,9 +24,9 @@
 
 ## Manual setup
 
-- Apply `docs/supabase/profiles.sql` if Profile rows should sync; follow `docs/supabase/google-signin-setup.md` and set user-level `GOOGLE_WEB_CLIENT_ID` for Google sign-in.
+- Apply `docs/supabase/profiles.sql` for profile rows and the self-delete RPC; follow `docs/supabase/google-signin-setup.md` and set user-level `GOOGLE_WEB_CLIENT_ID` for Google sign-in.
 - `docs/supabase/language.sql` is optional schema guidance only; the application does not sync Language data.
-- Configure Supabase `delete_my_account` separately if account deletion is required. Configure an avatar Storage bucket separately to enable uploads; photos currently remain local.
+- Configure an avatar Storage bucket separately to enable uploads; photos currently remain local.
 
 ## Incomplete work and next steps
 
