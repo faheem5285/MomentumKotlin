@@ -94,7 +94,7 @@ fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -> Unit) {
                 contentAlignment = Alignment.Center
             ) {
                 Image(
-                    painter = painterResource(R.drawable.zylo_logo),
+                    painter = painterResource(R.drawable.zylo_launcher),
                     contentDescription = "Zylo logo",
                     modifier = Modifier.fillMaxSize()
                 )

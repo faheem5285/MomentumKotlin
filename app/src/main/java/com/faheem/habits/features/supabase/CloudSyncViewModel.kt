@@ -3,7 +3,6 @@ package com.faheem.habits.features.supabase
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.faheem.habits.core.data.sync.SyncHistoryEvent
 import com.faheem.habits.core.data.sync.SyncModule
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -19,8 +18,7 @@ data class CloudSyncUiState(
     val syncStates: List<com.faheem.habits.core.data.SyncState> = emptyList(),
     val workState: androidx.work.WorkInfo.State? = null,
     val workerError: String? = null,
-    val moduleEnabled: Map<SyncModule, Boolean> = SyncModule.entries.associateWith { true },
-    val history: List<SyncHistoryEvent> = emptyList()
+    val moduleEnabled: Map<SyncModule, Boolean> = SyncModule.entries.associateWith { true }
 )
 
 @HiltViewModel
@@ -34,8 +32,7 @@ class CloudSyncViewModel @Inject constructor(
             syncStates = snapshot.syncStates,
             workState = snapshot.workState,
             workerError = snapshot.workerError,
-            moduleEnabled = snapshot.moduleEnabled,
-            history = snapshot.history
+            moduleEnabled = snapshot.moduleEnabled
         )
     }.stateIn(
         viewModelScope,
@@ -45,8 +42,8 @@ class CloudSyncViewModel @Inject constructor(
 
     fun setModuleEnabled(module: SyncModule, enabled: Boolean) {
         repository.setModuleEnabled(module, enabled)
-        if (enabled) repository.enqueueSync()
+        if (enabled) repository.enqueueSync(force = false)
     }
 
-    fun syncNow() = repository.enqueueSync()
+    fun syncNow() = repository.enqueueSync(force = true)
 }

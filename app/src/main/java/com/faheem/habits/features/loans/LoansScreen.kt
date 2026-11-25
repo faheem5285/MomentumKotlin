@@ -40,6 +40,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -205,6 +206,8 @@ fun LoansScreen(
     var showPeople by remember { mutableStateOf(false) }
     var showPersonEditor by remember { mutableStateOf(false) }
     var editingPerson by remember { mutableStateOf<LoanPerson?>(null) }
+    var personDetails by remember { mutableStateOf<LoanPerson?>(null) }
+    var addLoanForPerson by remember { mutableStateOf<LoanPerson?>(null) }
     var selected by remember { mutableStateOf<Loan?>(null) }
     var editing by remember { mutableStateOf<Loan?>(null) }
     var deleting by remember { mutableStateOf<Loan?>(null) }
@@ -225,10 +228,11 @@ fun LoansScreen(
     val toPay = remember(openLoans) { openLoans.asSequence().filter { !it.lent }.sumOf { it.amountMinorUnits } }
     val net = toReceive - toPay
     val filtered = remember(openLoans, settledLoans, tab, direction, query) {
-        (if (tab == 2) settledLoans else openLoans).filter { loan ->
-            (direction == 0 || (direction == 1 && loan.lent) || (direction == 2 && !loan.lent)) &&
-                (query.isBlank() || loan.person.contains(query, true) || loan.note.contains(query, true))
-        }
+            (if (tab == 2) settledLoans else openLoans).filter { loan ->
+                (direction == 0 || (direction == 1 && loan.lent) || (direction == 2 && !loan.lent)) &&
+                (query.isBlank() || loan.person.contains(query, true) || loan.title.contains(query, true) ||
+                    loan.note.contains(query, true) || loan.status.contains(query, true))
+            }
     }
 
     val people by vm.people.collectAsStateWithLifecycle()
@@ -242,7 +246,16 @@ fun LoansScreen(
             }
         )
     }
-    if (showAdd) LoanEditorSheet(null, people, { showAdd = false }) { personId, person, amount, lent, note, title, due, status, proofs -> vm.add(person, personId, amount, lent, note, title, due, status, proofs); showAdd = false }
+    if (showAdd) LoanEditorSheet(
+        initial = null,
+        people = people,
+        onDismiss = { showAdd = false; addLoanForPerson = null },
+        presetPerson = addLoanForPerson
+    ) { personId, person, amount, lent, note, title, due, status, proofs ->
+        vm.add(person, personId, amount, lent, note, title, due, status, proofs)
+        showAdd = false
+        addLoanForPerson = null
+    }
     if (showPersonEditor) {
         PersonEditorSheet(editingPerson, onDismiss = { showPersonEditor = false; editingPerson = null }) { person ->
             if (editingPerson == null) vm.addPerson(person) else vm.updatePerson(person)
@@ -266,6 +279,32 @@ fun LoansScreen(
             onEdit = { editing = loan; selected = null },
             onDelete = { deleting = loan; selected = null },
             onAttach = vm::addAttachment
+        )
+    }
+    personDetails?.let { profile ->
+        val currentProfile = people.firstOrNull { it.id == profile.id } ?: profile
+        val personLoans = loans.filter {
+            it.personId == currentProfile.id ||
+                (it.personId == null && it.person.equals(currentProfile.name, ignoreCase = true))
+        }.sortedWith(compareBy<Loan> { it.settled }.thenByDescending { it.epochDay })
+        PersonDetailsSheet(
+            person = currentProfile,
+            loans = personLoans,
+            onDismiss = { personDetails = null },
+            onAddLoan = {
+                addLoanForPerson = currentProfile
+                personDetails = null
+                showAdd = true
+            },
+            onEdit = {
+                editingPerson = currentProfile
+                personDetails = null
+                showPersonEditor = true
+            },
+            onSelectLoan = { loan ->
+                selected = loan
+                personDetails = null
+            }
         )
     }
     deleting?.let { loan ->
@@ -298,7 +337,14 @@ fun LoansScreen(
                     onOpenLedger = { tab = 1 },
                     onSelect = { selected = it }
                 )
-                3 -> PeopleScreen(people = people, loans = loans, onAdd = { showPersonEditor = true }, onEdit = { editingPerson = it; showPersonEditor = true }, onDelete = { deletingPerson = it })
+                3 -> PeopleScreen(
+                    people = people,
+                    loans = loans,
+                    onAdd = { showPersonEditor = true },
+                    onOpen = { personDetails = it },
+                    onEdit = { editingPerson = it; showPersonEditor = true },
+                    onDelete = { deletingPerson = it }
+                )
                 else -> LoanLedger(
                     loans = filtered,
                     people = people,
@@ -340,9 +386,17 @@ private fun PeopleScreen(
         people: List<LoanPerson>,
         loans: List<Loan>,
         onAdd: () -> Unit,
+        onOpen: (LoanPerson) -> Unit,
         onEdit: (LoanPerson) -> Unit,
         onDelete: (LoanPerson) -> Unit
     ) {
+        val loansByPerson = remember(people, loans) {
+            val linked = loans.filter { it.personId != null }.groupBy { it.personId }
+            val legacy = loans.filter { it.personId == null }.groupBy { it.person.trim().lowercase() }
+            people.associate { person ->
+                person.id to (linked[person.id].orEmpty() + legacy[person.name.trim().lowercase()].orEmpty())
+            }
+        }
         LazyColumn(
             Modifier.fillMaxSize(),
             contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp),
@@ -362,32 +416,89 @@ private fun PeopleScreen(
                 }
             }
             items(people, key = { it.id }) { person ->
-                PremiumCard(onClick = { onEdit(person) }, contentPadding = PaddingValues(14.dp)) {
+                PremiumCard(onClick = { onOpen(person) }, contentPadding = PaddingValues(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         PersonAvatar(person, 46.dp)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(person.name, fontWeight = FontWeight.SemiBold)
                             Text(person.phone.ifBlank { person.address.ifBlank { "No contact details" } }, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            val related = loans.filter { loan ->
-                                loan.personId == person.id || (loan.personId == null && loan.person.equals(person.name, ignoreCase = true))
-                            }
+                            val related = loansByPerson[person.id].orEmpty()
                             if (related.isNotEmpty()) {
                                 val openCount = related.count { !it.settled }
-                                val outstanding = related.filterNot { it.settled }.sumOf { it.amountMinorUnits }
+                                val receive = related.filter { !it.settled && it.lent }.sumOf { it.amountMinorUnits }
+                                val repay = related.filter { !it.settled && !it.lent }.sumOf { it.amountMinorUnits }
                                 Text(
-                                    "${related.size} loan${if (related.size == 1) "" else "s"} · $openCount open · ${money(outstanding)} outstanding",
+                                    "${related.size} record${if (related.size == 1) "" else "s"} · $openCount open · ${money(receive)} to receive · ${money(repay)} to repay",
                                     fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = MaterialTheme.colorScheme.primary,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
+                        IconButton(onClick = { onEdit(person) }) { Icon(Icons.Rounded.Edit, "Edit ${person.name}") }
                         IconButton(onClick = { onDelete(person) }) { Icon(Icons.Rounded.DeleteOutline, "Delete person", tint = MaterialTheme.colorScheme.error) }
                     }
                 }
             }
         }
     }
+
+@Composable
+private fun PersonDetailsSheet(
+    person: LoanPerson,
+    loans: List<Loan>,
+    onDismiss: () -> Unit,
+    onAddLoan: () -> Unit,
+    onEdit: () -> Unit,
+    onSelectLoan: (Loan) -> Unit
+) {
+    val openLoans = loans.filterNot { it.settled }
+    val toReceive = openLoans.filter { it.lent }.sumOf { it.amountMinorUnits }
+    val toRepay = openLoans.filterNot { it.lent }.sumOf { it.amountMinorUnits }
+    var previewAvatar by remember(person.id) { mutableStateOf(false) }
+
+    FormSheet(person.name, onDismiss) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PersonAvatar(person, 64.dp) {
+                if (person.profileImageUri.isNotBlank()) previewAvatar = true
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(person.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "${loans.size} record${if (loans.size == 1) "" else "s"} · ${openLoans.size} open",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = onEdit) {
+                Icon(Icons.Rounded.Edit, contentDescription = "Edit ${person.name}")
+            }
+        }
+        if (previewAvatar && person.profileImageUri.isNotBlank()) {
+            ImagePreviewDialog(person.profileImageUri, "${person.name} profile photo") { previewAvatar = false }
+        }
+        if (person.phone.isNotBlank()) LoanDetailLine("Phone", person.phone)
+        if (person.address.isNotBlank()) LoanDetailLine("Address", person.address)
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LoanMetric("To receive", money(toReceive), Icons.Rounded.ArrowUpward, Modifier.weight(1f))
+            LoanMetric("To repay", money(toRepay), Icons.Rounded.ArrowDownward, Modifier.weight(1f))
+        }
+        PrimaryButton("Add loan for ${person.name}", onAddLoan, icon = Icons.Rounded.Add)
+
+        SectionHeader("Loan records", subtitle = "Select a record to view its details")
+        if (loans.isEmpty()) {
+            EmptyState(Icons.Rounded.ReceiptLong, "No loans yet", "Add the first loan directly to this person.")
+        } else {
+            loans.forEach { loan ->
+                LoanRow(loan, person) { onSelectLoan(loan) }
+            }
+        }
+    }
+}
 
 @Composable
 private fun PersonEditorSheet(initial: LoanPerson?, onDismiss: () -> Unit, onSave: (LoanPerson) -> Unit) {
@@ -793,8 +904,8 @@ private fun LoanDetailLine(label: String, value: String) {
             .padding(horizontal = 14.dp, vertical = 11.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
-        Text(value, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, maxLines = 2)
+        Text(label, modifier = Modifier.weight(0.4f), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+        Text(value, modifier = Modifier.weight(0.6f), fontWeight = FontWeight.SemiBold, fontSize = 13.sp, maxLines = 2, textAlign = TextAlign.End)
     }
 }
 
@@ -803,12 +914,13 @@ private fun LoanEditorSheet(
     initial: Loan?,
     people: List<LoanPerson>,
     onDismiss: () -> Unit,
+    presetPerson: LoanPerson? = null,
     onSave: (Int?, String, Double, Boolean, String, String, Long?, String, List<String>) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var person by remember(initial) { mutableStateOf(initial?.person ?: "") }
-    var selectedPersonId by remember(initial) { mutableIntStateOf(initial?.personId ?: 0) }
-    var creatingPerson by remember(initial) { mutableStateOf(initial == null) }
+    var person by remember(initial, presetPerson) { mutableStateOf(initial?.person ?: presetPerson?.name.orEmpty()) }
+    var selectedPersonId by remember(initial, presetPerson) { mutableIntStateOf(initial?.personId ?: presetPerson?.id ?: 0) }
+    var creatingPerson by remember(initial, presetPerson) { mutableStateOf(initial == null && presetPerson == null) }
     var peopleExpanded by remember { mutableStateOf(false) }
     var amount by remember(initial) { mutableStateOf(initial?.amountMinorUnits?.toString() ?: "") }
     var note by remember(initial) { mutableStateOf(initial?.note ?: "") }
@@ -824,7 +936,7 @@ private fun LoanEditorSheet(
             if (uri.toString() !in proofUris) proofUris.add(uri.toString())
         }
     }
-    val selectedPerson = if (creatingPerson) null else (
+    val selectedPerson = if (presetPerson != null) people.firstOrNull { it.id == presetPerson.id } ?: presetPerson else if (creatingPerson) null else (
         people.firstOrNull { it.id == selectedPersonId }
             ?: people.firstOrNull { initial != null && it.name.equals(initial.person, ignoreCase = true) }
         )
@@ -833,6 +945,18 @@ private fun LoanEditorSheet(
             MomentumChip(selected = lent, onClick = { lent = true }, label = "I lent", icon = Icons.Rounded.ArrowUpward)
             MomentumChip(selected = !lent, onClick = { lent = false }, label = "I borrowed", icon = Icons.Rounded.ArrowDownward)
         }
+        if (presetPerson != null) {
+            PremiumCard(contentPadding = PaddingValues(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    PersonAvatar(selectedPerson ?: presetPerson, 38.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text("Person", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(selectedPerson?.name ?: presetPerson.name, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        } else {
         Text("Person", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Box {
             OutlinedButton(onClick = { peopleExpanded = true }, modifier = Modifier.fillMaxWidth()) {
@@ -861,6 +985,7 @@ private fun LoanEditorSheet(
         if (selectedPerson == null) {
             MomentumTextField(value = person, onValueChange = { person = it }, label = { Text("New person name") }, singleLine = true)
             Text("Saving this loan will add this person to your people list, so you can reuse the profile for future loans.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         }
         MomentumTextField(value = title, onValueChange = { title = it }, label = { Text("Purpose / title") }, singleLine = true)
         MomentumTextField(

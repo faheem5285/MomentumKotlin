@@ -30,34 +30,25 @@ import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.CloudDone
-import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Contrast
 import androidx.compose.material.icons.rounded.DarkMode
-import androidx.compose.material.icons.rounded.Dashboard
-import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.FactCheck
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.FileUpload
-import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -74,7 +65,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.hilt.navigation.compose.hiltViewModel
 import com.faheem.habits.core.data.backup.MomentumBackup
 import com.faheem.habits.core.notifications.ReminderSettingsScreen
 import com.faheem.habits.core.settings.AppearancePreferences
@@ -97,10 +87,6 @@ import kotlinx.coroutines.launch
 @Composable
 fun AppSettingsScreen(onOpenModule: (AppModule) -> Unit = {}) {
     val context = LocalContext.current
-    val settingsViewModel: SettingsViewModel = hiltViewModel()
-    val moduleVisibility by settingsViewModel.moduleVisibility.collectAsStateWithLifecycle()
-    var version by remember { mutableIntStateOf(0) }
-    var moduleSearch by remember { mutableStateOf("") }
     var remindersOpen by remember { mutableStateOf(false) }
     var permissionsOpen by remember { mutableStateOf(false) }
     var backupMessage by remember { mutableStateOf<String?>(null) }
@@ -196,14 +182,7 @@ fun AppSettingsScreen(onOpenModule: (AppModule) -> Unit = {}) {
         return
     }
 
-    key(version) {
-        val modules = AppModule.entries.filter { it != AppModule.Settings }
-        val visibleCount = modules.count { moduleVisibility[it.name] ?: true }
-        val hiddenCount = modules.size - visibleCount
-        val filteredModules = modules.filter { module ->
-            module.label.contains(moduleSearch, ignoreCase = true) || module.name.contains(moduleSearch, ignoreCase = true)
-        }
-        LazyColumn(
+    LazyColumn(
             Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 horizontal = MomentumTokens.screenPadding,
@@ -234,36 +213,6 @@ fun AppSettingsScreen(onOpenModule: (AppModule) -> Unit = {}) {
                     onThemeChange = { AppearancePreferences.setThemeMode(context, it) }
                 )
             }
-            item {
-                SettingsGroup("Home modules · $visibleCount of ${modules.size} shown") {
-                    OutlinedTextField(
-                        value = moduleSearch,
-                        onValueChange = { moduleSearch = it },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-                        placeholder = { Text("Search modules") },
-                        singleLine = true
-                    )
-                    filteredModules.forEach { module ->
-                        SettingsRow(
-                            title = module.label,
-                            supportingText = if (moduleVisibility[module.name] ?: true) "Visible on Home" else "Hidden, with data kept on this device",
-                            icon = module.icon,
-                            checked = moduleVisibility[module.name] ?: true,
-                            onCheckedChange = { checked ->
-                                settingsViewModel.setModuleVisible(module.name, checked)
-                                version++
-                            }
-                        )
-                    }
-                    if (filteredModules.isEmpty()) {
-                        Text("No modules match that search.", modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    TextButton(onClick = {
-                        settingsViewModel.showAllModules()
-                        version++
-                    }) { Text("Show all modules") }
-                }
-            }
             item { SectionHeader("Backup") }
             item {
                 BackupRestoreCard(
@@ -282,7 +231,6 @@ fun AppSettingsScreen(onOpenModule: (AppModule) -> Unit = {}) {
             }
 
         }
-    }
 }
 
 @Composable
@@ -319,55 +267,6 @@ private fun AppearanceCard(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun ModuleToggleCard(
-    module: AppModule,
-    visible: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    val tint = module.accent
-    PremiumCard(accent = tint, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconBubble(module.icon, tint, 42.dp)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        module.label,
-                        Modifier.weight(1f),
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    StatusPill(
-                        if (visible) "Shown" else "Hidden",
-                        if (visible) tint else MaterialTheme.colorScheme.outline
-                    )
-                }
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    if (visible) "Appears on your Home screen" else "Hidden, all data is kept",
-                    fontSize = 11.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Spacer(Modifier.width(10.dp))
-            Switch(checked = visible, onCheckedChange = onCheckedChange)
-        }
-        Spacer(Modifier.height(10.dp))
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(3.dp)
-                .clip(CircleShape)
-                .background(Brush.horizontalGradient(module.gradient))
-        )
     }
 }
 
@@ -487,4 +386,3 @@ private fun SettingLinkRow(
         Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.outline)
     }
 }
-

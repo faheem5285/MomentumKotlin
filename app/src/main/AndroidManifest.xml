@@ -36,9 +36,9 @@
     <application
         android:name=".app.MomentumApplication"
         android:allowBackup="false"
-        android:icon="@drawable/zylo_logo"
+        android:icon="@drawable/zylo_launcher"
         android:label="Zylo"
-        android:roundIcon="@drawable/zylo_logo"
+        android:roundIcon="@drawable/zylo_launcher"
         android:theme="@style/Theme.Zylo">
         <activity
             android:name=".app.MainActivity"

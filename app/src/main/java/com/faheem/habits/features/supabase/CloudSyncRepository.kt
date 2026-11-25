@@ -6,8 +6,6 @@ import androidx.work.WorkManager
 import com.faheem.habits.core.data.AppDatabase
 import com.faheem.habits.core.data.SyncState
 import com.faheem.habits.core.data.supabase.SupabaseAuthApi
-import com.faheem.habits.core.data.sync.SyncHistoryEvent
-import com.faheem.habits.core.data.sync.SyncHistoryStore
 import com.faheem.habits.core.data.sync.SyncModule
 import com.faheem.habits.core.data.sync.SyncModuleSettings
 import com.faheem.habits.core.data.sync.SupabaseSyncScheduler
@@ -23,8 +21,7 @@ data class CloudSyncSnapshot(
     val syncStates: List<SyncState>,
     val workState: WorkInfo.State?,
     val workerError: String?,
-    val moduleEnabled: Map<SyncModule, Boolean>,
-    val history: List<SyncHistoryEvent>
+    val moduleEnabled: Map<SyncModule, Boolean>
 )
 
 @Singleton
@@ -37,9 +34,8 @@ class CloudSyncRepository @Inject constructor(
     fun observe(): Flow<CloudSyncSnapshot> = combine(
         database.syncStateDao().observeAll(),
         workManager.getWorkInfosForUniqueWorkFlow("momentum-sync"),
-        SyncModuleSettings.observe(context),
-        SyncHistoryStore.observe(context)
-    ) { states, workInfos, modules, history ->
+        SyncModuleSettings.observe(context)
+    ) { states, workInfos, modules ->
         val state = workInfos.firstOrNull { it.state == WorkInfo.State.RUNNING }?.state
             ?: workInfos.firstOrNull { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED }?.state
             ?: workInfos.lastOrNull()?.state
@@ -54,13 +50,12 @@ class CloudSyncRepository @Inject constructor(
             syncStates = states,
             workState = state,
             workerError = workerError,
-            moduleEnabled = modules,
-            history = history
+            moduleEnabled = modules
         )
     }
 
     fun setModuleEnabled(module: SyncModule, enabled: Boolean) =
         SyncModuleSettings.setEnabled(context, module, enabled)
 
-    fun enqueueSync() = SupabaseSyncScheduler.enqueue(context)
+    fun enqueueSync(force: Boolean = false) = SupabaseSyncScheduler.enqueue(context, force)
 }

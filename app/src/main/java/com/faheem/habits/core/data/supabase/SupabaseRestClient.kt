@@ -35,7 +35,6 @@ class SupabaseRestClient(
     private val http: HttpClient = sharedSupabaseHttpClient
 ) {
     private val json = Json { ignoreUnknownKeys = true }
-    private val storageScanLimit = 5_000
 
     suspend fun fetchProfile(userId: String): kotlinx.serialization.json.JsonObject? {
         val token = requireToken()
@@ -349,46 +348,6 @@ class SupabaseRestClient(
         }
     }
 
-    suspend fun storageUsage(bucket: String): StorageUsage {
-        val token = requireToken()
-        var offset = 0
-        var objectCount = 0
-        var bytes = 0L
-        var truncated = false
-        do {
-            val response = http.post {
-                url("${baseUrl()}/storage/v1/object/list/$bucket")
-                header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
-                header("Authorization", "Bearer $token")
-                contentType(ContentType.Application.Json)
-                setBody(buildJsonObject {
-                    put("prefix", "")
-                    put("limit", 1000)
-                    put("offset", offset)
-                    put("sortBy", buildJsonObject {
-                        put("column", "name")
-                        put("order", "asc")
-                    })
-                }.toString())
-            }
-            check(response.status == HttpStatusCode.OK) {
-                "Supabase storage usage failed (${response.status.value}): ${response.bodyAsText().take(500)}"
-            }
-            val objects = json.parseToJsonElement(response.bodyAsText()).jsonArray
-            objects.forEach { element ->
-                val objectJson = element.jsonObject
-                if (objectJson["id"] != null) {
-                    objectCount++
-                    bytes += objectJson["metadata"]?.jsonObject?.get("size")
-                        ?.jsonPrimitive?.content?.toLongOrNull() ?: 0L
-                }
-            }
-            offset += objects.size
-            truncated = objects.size == 1000 && offset >= storageScanLimit
-        } while (objects.size == 1000 && offset < storageScanLimit)
-        return StorageUsage(objectCount, bytes, truncated)
-    }
-
     private suspend fun requireToken(): String =
         SupabaseAuthApi.getAccessToken(context)
             ?: error("Sign in to sync Zylo data.")
@@ -398,8 +357,6 @@ class SupabaseRestClient(
 
 /** Reuse Ktor's connection pool across sync, health checks and file operations. */
 private val sharedSupabaseHttpClient: HttpClient = HttpClient(Android)
-
-data class StorageUsage(val objectCount: Int, val bytes: Long, val truncated: Boolean = false)
 
 data class ProjectWipeState(
     val generation: Long,
