@@ -7,6 +7,7 @@ const corsHeaders = {
 };
 
 const tables = [
+  "profiles",
   "momentum_loan_attachments",
   "momentum_loan_payments",
   "momentum_habit_reminders",

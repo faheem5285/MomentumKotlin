@@ -280,18 +280,19 @@ fun GlassCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val glass = LocalGlassPalette.current
-    val (top, bottom) = glassTones(level)
     val elevation = glassElevation(level)
-    val glow = neonGlow()
+    val surface = if (glass.dark) {
+        Color(0xFF162238).copy(alpha = 0.94f)
+    } else {
+        Color(0xFFFDFEFF).copy(alpha = 0.92f)
+    }
     Column(
         modifier
             .fillMaxWidth()
-            .glassShadow(elevation, shape, glass, glow)
+            .glassShadow(elevation, shape, glass)
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(top, bottom)))
-            .background(glassSheenBrush(glass))
-            .background(neonWashBrush(glass, glow))
-            .border(1.dp, neonEdgeBrush(glass, glow), shape)
+            .background(surface)
+            .border(1.dp, glass.panelBorder, shape)
             .padding(contentPadding),
         content = content
     )
@@ -414,7 +415,7 @@ fun GlassTopBar(
                 onClick = onBack,
                 modifier = Modifier
                     .padding(end = MomentumTokens.space1)
-                    .size(40.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .background(glass.cardTop)
                     .border(1.dp, neonEdgeBrush(glass), CircleShape)
@@ -476,7 +477,7 @@ fun ModuleHeader(
                 onClick = onBack,
                 modifier = Modifier
                     .padding(end = MomentumTokens.space2)
-                    .size(40.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .background(glass.cardTop)
                     .border(1.dp, neonEdgeBrush(glass), CircleShape)
@@ -804,7 +805,6 @@ fun PrimaryButton(
     loading: Boolean = false
 ) {
     val colors = MaterialTheme.colorScheme
-    val glass = LocalGlassPalette.current
     val shape = RoundedCornerShape(18.dp)
     Button(
         onClick = onClick,
@@ -812,38 +812,17 @@ fun PrimaryButton(
             .fillMaxWidth()
             .height(54.dp)
             .alpha(if (enabled) 1f else 0.5f)
-            .shadow(
-                16.dp,
-                shape,
-                clip = false,
-                ambientColor = colors.primary.copy(alpha = if (glass.dark) 0.70f else 0.45f),
-                spotColor = colors.tertiary.copy(alpha = if (glass.dark) 0.45f else 0.30f)
-            )
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        colors.primary,
-                        colors.primary.copy(alpha = 0.80f)
-                    )
-                ),
-                shape
-            )
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color.White.copy(alpha = 0.26f), Color.Transparent, Color.Black.copy(alpha = 0.10f))
-                ),
-                shape
-            ),
+            .shadow(4.dp, shape, clip = false),
         enabled = enabled,
         shape = shape,
         border = BorderStroke(
             1.dp,
-            Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.60f), Color.White.copy(alpha = 0.10f)))
+            Color.White.copy(alpha = 0.18f)
         ),
         colors = ButtonDefaults.buttonColors(
-            containerColor = Color.Transparent,
+            containerColor = colors.primary,
             contentColor = colors.onPrimary,
-            disabledContainerColor = Color.Transparent,
+            disabledContainerColor = colors.primary.copy(alpha = 0.38f),
             disabledContentColor = colors.onPrimary
         ),
         elevation = null

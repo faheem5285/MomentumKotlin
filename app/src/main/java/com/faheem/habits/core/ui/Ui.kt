@@ -34,6 +34,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.faheem.habits.R
 
 /**
  * The luminous glass hero panel at the top of every module. It carries the
@@ -215,6 +217,102 @@ fun EmptyState(icon: ImageVector, title: String, subtitle: String) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
+}
+
+@Composable
+fun ListLoadingState(modifier: Modifier = Modifier) {
+    val loadingDescription = stringResource(R.string.state_loading)
+    Box(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = 220.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier
+                .size(32.dp)
+                .semantics { contentDescription = loadingDescription }
+        )
+    }
+}
+
+@Composable
+fun ListEmptyState(
+    icon: ImageVector,
+    title: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null
+) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = 220.dp)
+            .padding(horizontal = MomentumTokens.space5, vertical = MomentumTokens.space6),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            modifier = Modifier.size(48.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.height(MomentumTokens.space3))
+        Text(title, style = MaterialTheme.typography.titleMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        subtitle?.let {
+            Spacer(Modifier.height(MomentumTokens.space1))
+            Text(
+                it,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
+        Spacer(Modifier.height(MomentumTokens.space4))
+        PrimaryButton(
+            text = actionLabel,
+            onClick = onAction,
+            modifier = Modifier.widthIn(max = 240.dp)
+        )
+    }
+}
+
+@Composable
+fun ListErrorState(
+    message: String,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = 220.dp)
+            .padding(MomentumTokens.space5),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            Icons.Rounded.ErrorOutline,
+            contentDescription = null,
+            modifier = Modifier.size(48.dp),
+            tint = MaterialTheme.colorScheme.error
+        )
+        Spacer(Modifier.height(MomentumTokens.space3))
+        Text(
+            message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+        Spacer(Modifier.height(MomentumTokens.space4))
+        PrimaryButton(
+            text = stringResource(R.string.action_retry),
+            onClick = onRetry,
+            modifier = Modifier.widthIn(max = 240.dp)
         )
     }
 }

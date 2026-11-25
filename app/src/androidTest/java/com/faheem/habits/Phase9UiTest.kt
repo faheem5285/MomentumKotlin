@@ -7,6 +7,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.platform.ComposeView
+import com.faheem.habits.core.ui.ListErrorState
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.faheem.habits.app.MainActivity
 import com.faheem.habits.app.MomentumDestination
@@ -21,6 +22,24 @@ import org.junit.runner.RunWith
 class Phase9UiTest {
     @get:Rule
     val rule = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun listErrorStateOffersRetry() {
+        var retried = false
+        rule.activity.runOnUiThread {
+            rule.activity.setContentView(
+                ComposeView(rule.activity).apply {
+                    setContent {
+                        MomentumTheme {
+                            ListErrorState(message = "Could not load", onRetry = { retried = true })
+                        }
+                    }
+                }
+            )
+        }
+        rule.onNodeWithText("Retry").performClick()
+        assert(retried)
+    }
 
     @Test
     fun createHabitFlowIsReachable() {

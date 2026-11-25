@@ -34,6 +34,7 @@ class SupabaseRestClient(
     private val context: Context,
     private val http: HttpClient = sharedSupabaseHttpClient
 ) {
+    private val appContext = context.applicationContext
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun fetchProfile(userId: String): kotlinx.serialization.json.JsonObject? {
@@ -43,7 +44,7 @@ class SupabaseRestClient(
             header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
             header("Authorization", "Bearer $token")
             url {
-                parameters.append("select", "id,display_name,avatar_url,phone,bio,updated_at")
+                parameters.append("select", "id,display_name,email,avatar_url,phone,bio,member_since,updated_at")
                 parameters.append("id", "eq.$userId")
                 parameters.append("limit", "1")
             }
@@ -58,10 +59,12 @@ class SupabaseRestClient(
             add(buildJsonObject {
                 put("id", profile.userId)
                 put("display_name", profile.displayName)
+                put("email", profile.email)
                 profile.avatarUri.takeIf { it.startsWith("https://", ignoreCase = true) }
                     ?.let { put("avatar_url", it) }
                 put("phone", profile.phone)
                 put("bio", profile.bio)
+                put("member_since", profile.memberSince)
                 put("updated_at", Instant.ofEpochMilli(profile.updatedAt).toString())
             })
         }
@@ -83,9 +86,10 @@ class SupabaseRestClient(
             contentType(ContentType.Application.Json)
             setBody("{}")
         }
-        if (response.status.value !in 200..299) {
-            error("Account deletion is not configured on this Supabase project. Your account was not deleted.")
-        }
+        response.requireStatus(
+            setOf(HttpStatusCode.OK, HttpStatusCode.Created, HttpStatusCode.Accepted, HttpStatusCode.NoContent),
+            "Account deletion failed"
+        )
     }
 
     suspend fun upsert(table: String, rows: JsonArray): Int {
@@ -132,14 +136,15 @@ class SupabaseRestClient(
             header("Authorization", "Bearer $token")
             url { parameters.append("id", "not.is.null") }
         }
-        check(response.status == HttpStatusCode.NoContent) {
-            "Supabase cloud deletion failed (${response.status.value})."
-        }
+        response.requireStatus(
+            setOf(HttpStatusCode.OK, HttpStatusCode.NoContent),
+            "Supabase cloud deletion failed"
+        )
     }
 
     /** Deletes cloud records and file objects for every user through the protected Edge Function. */
     suspend fun isCurrentUserAdmin(): Boolean {
-        val token = SupabaseAuthApi.getAccessToken(context) ?: return false
+        val token = SupabaseAuthApi.getAccessToken(appContext) ?: return false
         val response = http.get {
             url("${baseUrl()}/auth/v1/user")
             header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
@@ -166,9 +171,10 @@ class SupabaseRestClient(
             contentType(ContentType.Application.Json)
             setBody("{}")
         }
-        check(response.status == HttpStatusCode.OK) {
-            "Project cloud wipe failed (${response.status.value}): ${response.bodyAsText().take(500)}"
-        }
+        response.requireStatus(
+            setOf(HttpStatusCode.OK, HttpStatusCode.Accepted, HttpStatusCode.NoContent),
+            "Project cloud wipe failed"
+        )
     }
 
     suspend fun projectWipeState(): ProjectWipeState {
@@ -199,7 +205,7 @@ class SupabaseRestClient(
                 ?: error("Project wipe generation is invalid."),
             updatedAtEpochMillis = row["updated_at"]?.jsonPrimitive?.content?.let {
                 runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
-            } ?: 0L,
+            } ?: error("Project wipe timestamp is invalid."),
             wipeInProgress = row["wipe_in_progress"]?.jsonPrimitive?.content?.toBooleanStrictOrNull()
                 ?: error("Project wipe status is invalid. Apply the updated Supabase schema.")
         )
@@ -213,9 +219,10 @@ class SupabaseRestClient(
             header("Authorization", "Bearer $token")
             url { parameters.append("user_id", "not.is.null") }
         }
-        check(response.status == HttpStatusCode.NoContent) {
-            "Supabase Vault-key deletion failed (${response.status.value}): ${response.bodyAsText().take(500)}"
-        }
+        response.requireStatus(
+            setOf(HttpStatusCode.OK, HttpStatusCode.NoContent),
+            "Supabase Vault-key deletion failed"
+        )
     }
 
     suspend fun deleteUpdatedSince(table: String, timestamp: String) {
@@ -226,9 +233,10 @@ class SupabaseRestClient(
             header("Authorization", "Bearer $token")
             url { parameters.append("updated_at", "gte.$timestamp") }
         }
-        check(response.status == HttpStatusCode.NoContent) {
-            "Supabase record deletion failed (${response.status.value}): ${response.bodyAsText().take(500)}"
-        }
+        response.requireStatus(
+            setOf(HttpStatusCode.OK, HttpStatusCode.NoContent),
+            "Supabase record deletion failed"
+        )
     }
 
     suspend fun uploadStorage(bucket: String, path: String, bytes: ByteArray, mime: String) {
@@ -343,13 +351,14 @@ class SupabaseRestClient(
                 add(buildJsonObject { put("key_material", VaultCrypto.encode(key)) })
             }.toString())
         }
-        check(response.status == HttpStatusCode.Created || response.status == HttpStatusCode.OK) {
-            "Vault account-key save failed (${response.status.value}): ${response.bodyAsText().take(500)}"
-        }
+        response.requireStatus(
+            setOf(HttpStatusCode.Created, HttpStatusCode.OK),
+            "Vault account-key save failed"
+        )
     }
 
     private suspend fun requireToken(): String =
-        SupabaseAuthApi.getAccessToken(context)
+        SupabaseAuthApi.getAccessToken(appContext)
             ?: error("Sign in to sync Zylo data.")
 
     private fun baseUrl(): String = BuildConfig.SUPABASE_URL.trimEnd('/')

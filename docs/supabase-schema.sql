@@ -38,6 +38,44 @@ $$;
 revoke all on function public.momentum_sync_writes_allowed() from public, anon;
 grant execute on function public.momentum_sync_writes_allowed() to authenticated;
 
+-- Private per-account profile. These fields are separate from module sync data
+-- and are readable/writable only by the owning authenticated account.
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  display_name text not null default '',
+  email text not null default '',
+  avatar_url text,
+  phone text not null default '',
+  bio text not null default '',
+  member_since bigint not null default 0,
+  updated_at timestamptz not null default now()
+);
+alter table public.profiles
+  add column if not exists display_name text not null default '',
+  add column if not exists email text not null default '',
+  add column if not exists avatar_url text,
+  add column if not exists phone text not null default '',
+  add column if not exists bio text not null default '',
+  add column if not exists member_since bigint not null default 0,
+  add column if not exists updated_at timestamptz not null default now();
+
+alter table public.profiles enable row level security;
+drop policy if exists profiles_owner_select on public.profiles;
+drop policy if exists profiles_owner_insert on public.profiles;
+drop policy if exists profiles_owner_update on public.profiles;
+drop policy if exists profiles_owner_delete on public.profiles;
+create policy profiles_owner_select on public.profiles
+  for select using (id = auth.uid());
+create policy profiles_owner_insert on public.profiles
+  for insert with check (id = auth.uid() and public.momentum_sync_writes_allowed());
+create policy profiles_owner_update on public.profiles
+  for update using (id = auth.uid() and public.momentum_sync_writes_allowed())
+  with check (id = auth.uid() and public.momentum_sync_writes_allowed());
+create policy profiles_owner_delete on public.profiles
+  for delete using (id = auth.uid() and public.momentum_sync_writes_allowed());
+
+grant select, insert, update, delete on public.profiles to authenticated;
+
 -- Private bucket for file contents. File metadata remains in momentum_files;
 -- object ownership is enforced by Supabase Storage RLS.
 insert into storage.buckets (id, name, public)
@@ -225,6 +263,25 @@ create table if not exists public.momentum_loan_attachments (
   device_id text not null,
   version bigint not null default 1
 );
+alter table public.momentum_loan_attachments
+  add column if not exists id uuid,
+  add column if not exists user_id uuid,
+  add column if not exists loan_id uuid,
+  add column if not exists name text not null default '',
+  add column if not exists object_path text not null default '',
+  add column if not exists mime text not null default '',
+  add column if not exists added_at timestamptz not null default now(),
+  add column if not exists updated_at timestamptz not null default now(),
+  add column if not exists deleted_at timestamptz,
+  add column if not exists device_id text not null default '',
+  add column if not exists version bigint not null default 1;
+alter table public.momentum_loan_attachments
+  alter column user_id set default auth.uid(),
+  alter column mime set default '',
+  alter column added_at set default now(),
+  alter column updated_at set default now(),
+  alter column device_id set default '',
+  alter column version set default 1;
 
 create table if not exists public.momentum_contacts (
   id uuid primary key,
@@ -269,6 +326,19 @@ create table if not exists public.momentum_life_rule_files (
   device_id text not null,
   version bigint not null default 1
 );
+alter table public.momentum_life_rule_files
+  add column if not exists id uuid,
+  add column if not exists user_id uuid,
+  add column if not exists rule_id uuid,
+  add column if not exists name text not null default '',
+  add column if not exists object_path text not null default '',
+  add column if not exists mime text not null default '',
+  add column if not exists folder_path text not null default '',
+  add column if not exists added_at timestamptz not null default now(),
+  add column if not exists updated_at timestamptz not null default now(),
+  add column if not exists deleted_at timestamptz,
+  add column if not exists device_id text not null default '',
+  add column if not exists version bigint not null default 1;
 
 create table if not exists public.momentum_custom_notifications (
   id uuid primary key,

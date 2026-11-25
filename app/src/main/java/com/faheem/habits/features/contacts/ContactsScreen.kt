@@ -63,8 +63,13 @@ class ContactsViewModel(app: Application) : AndroidViewModel(app) {
         if (normalized.id == 0) dao.insert(normalized) else dao.update(normalized)
     }
 
-    fun delete(contact: Contact) = viewModelScope.launch {
+    fun delete(contact: Contact, onDeleted: () -> Unit = {}) = viewModelScope.launch {
         dao.softDelete(contact.id)
+        onDeleted()
+    }
+
+    fun restore(contact: Contact) = viewModelScope.launch {
+        dao.update(contact.copy(deleted = false, dirty = true, updatedAt = System.currentTimeMillis()))
     }
 
     internal fun importContacts(rows: List<ImportedContact>, onComplete: (Int, Int, Int) -> Unit) = viewModelScope.launch {
@@ -111,7 +116,8 @@ fun ContactsScreen(vm: ContactsViewModel = viewModel()) {
     var query by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Contact?>(null) }
     var creating by remember { mutableStateOf(false) }
-    var deleting by remember { mutableStateOf<Contact?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarScope = rememberCoroutineScope()
     val context = LocalContext.current
     val importScope = rememberCoroutineScope()
     val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -151,16 +157,6 @@ fun ContactsScreen(vm: ContactsViewModel = viewModel()) {
             editing = null
         })
     }
-    deleting?.let { contact ->
-        MomentumDialog(
-            onDismissRequest = { deleting = null },
-            title = { Text("Delete ${contact.name}?") },
-            text = { Text("This contact will be removed from this device and synced as deleted.") },
-            confirmButton = { TextButton(onClick = { vm.delete(contact); deleting = null }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } }
-        )
-    }
-
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.fillMaxSize(),
@@ -216,7 +212,18 @@ fun ContactsScreen(vm: ContactsViewModel = viewModel()) {
                                 Text(contact.email, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
-                        IconButton(onClick = { deleting = contact }) {
+                        IconButton(onClick = {
+                            vm.delete(contact) {
+                                snackbarScope.launch {
+                                    val result = snackbarHostState.showSnackbar(
+                                        message = "${contact.name} deleted",
+                                        actionLabel = "Undo",
+                                        withDismissAction = true
+                                    )
+                                    if (result == SnackbarResult.ActionPerformed) vm.restore(contact)
+                                }
+                            }
+                        }) {
                             Icon(Icons.Rounded.DeleteOutline, contentDescription = "Delete ${contact.name}", tint = MaterialTheme.colorScheme.error)
                         }
                     }
@@ -226,6 +233,10 @@ fun ContactsScreen(vm: ContactsViewModel = viewModel()) {
         if (contacts.isNotEmpty()) {
             MomentumFab("Add contact", onClick = { creating = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(MomentumTokens.screenPadding))
         }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 88.dp)
+        )
     }
 }
 

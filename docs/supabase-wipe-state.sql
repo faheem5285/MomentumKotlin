@@ -35,6 +35,41 @@ $$;
 revoke all on function public.momentum_sync_writes_allowed() from public, anon;
 grant execute on function public.momentum_sync_writes_allowed() to authenticated;
 
+alter table if exists public.momentum_loan_attachments
+  add column if not exists object_path text not null default '',
+  add column if not exists mime text not null default '',
+  add column if not exists added_at timestamptz not null default now(),
+  add column if not exists updated_at timestamptz not null default now(),
+  add column if not exists deleted_at timestamptz,
+  add column if not exists device_id text not null default '',
+  add column if not exists version bigint not null default 1;
+
+alter table if exists public.momentum_life_rule_files
+  add column if not exists object_path text not null default '',
+  add column if not exists mime text not null default '',
+  add column if not exists folder_path text not null default '',
+  add column if not exists added_at timestamptz not null default now(),
+  add column if not exists updated_at timestamptz not null default now(),
+  add column if not exists deleted_at timestamptz,
+  add column if not exists device_id text not null default '',
+  add column if not exists version bigint not null default 1;
+
+do $$
+begin
+  if to_regclass('public.profiles') is not null then
+    drop policy if exists profiles_owner_insert on public.profiles;
+    drop policy if exists profiles_owner_update on public.profiles;
+    drop policy if exists profiles_owner_delete on public.profiles;
+    create policy profiles_owner_insert on public.profiles
+      for insert with check (id = auth.uid() and public.momentum_sync_writes_allowed());
+    create policy profiles_owner_update on public.profiles
+      for update using (id = auth.uid() and public.momentum_sync_writes_allowed())
+      with check (id = auth.uid() and public.momentum_sync_writes_allowed());
+    create policy profiles_owner_delete on public.profiles
+      for delete using (id = auth.uid() and public.momentum_sync_writes_allowed());
+  end if;
+end $$;
+
 -- Update existing record-table policies as well as policies created by the
 -- full schema. Reads remain available; app writes pause while the wipe runs.
 do $$

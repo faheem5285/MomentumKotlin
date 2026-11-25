@@ -58,11 +58,15 @@ class ProfileRepository @Inject constructor(@ApplicationContext private val cont
                 avatarUri = cached?.avatarUri?.takeIf { it.isNotBlank() }
                     ?: remote["avatar_url"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
                     ?: googleAvatar,
-                memberSince = prefs.getLong("member_since", cached?.memberSince ?: System.currentTimeMillis()),
+                memberSince = remote["member_since"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+                    ?: prefs.getLong("member_since", cached?.memberSince ?: System.currentTimeMillis()),
                 updatedAt = System.currentTimeMillis()
             )
         }
         database.profileCacheDao().upsert(profile)
+        if (remote == null) {
+            runCatching { client.saveProfile(profile) }
+        }
         return profile
     }
 

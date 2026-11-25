@@ -43,7 +43,7 @@ private suspend fun <T> withSyncLock(block: suspend () -> T): T =
     syncRunMutex.withLock { withContext(Dispatchers.IO) { block() } }
 
 private val allCloudTables = listOf(
-    "momentum_habits", "momentum_completions", "momentum_habit_skips", "momentum_habit_reminders",
+    "profiles", "momentum_habits", "momentum_completions", "momentum_habit_skips", "momentum_habit_reminders",
     "momentum_expenses", "momentum_category_budgets", "momentum_loan_people", "momentum_loans",
     "momentum_loan_attachments", "momentum_loan_payments", "momentum_contacts", "momentum_files",
     "momentum_todos", "momentum_life_rules", "momentum_life_rule_files", "momentum_custom_notifications",
@@ -393,7 +393,7 @@ class SupabaseSyncRepository(
         AppModule.LifeRules -> listOf("momentum_life_rules", "momentum_life_rule_files")
         AppModule.Vault -> listOf("momentum_vault_entries")
         AppModule.Settings -> listOf("momentum_custom_notifications")
-        AppModule.Profile -> emptyList()
+        AppModule.Profile -> listOf("profiles")
         else -> emptyList()
     }
 
