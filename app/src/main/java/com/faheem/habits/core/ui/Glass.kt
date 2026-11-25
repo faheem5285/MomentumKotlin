@@ -811,7 +811,6 @@ fun PrimaryButton(
         modifier = modifier
             .fillMaxWidth()
             .height(54.dp)
-            .alpha(if (enabled) 1f else 0.5f)
             .shadow(4.dp, shape, clip = false),
         enabled = enabled,
         shape = shape,
@@ -828,11 +827,18 @@ fun PrimaryButton(
         elevation = null
     ) {
         when {
-            loading -> CircularProgressIndicator(
-                modifier = Modifier.size(20.dp),
-                color = colors.onPrimary,
-                strokeWidth = 2.dp
-            )
+            loading -> Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = colors.onPrimary,
+                    strokeWidth = 2.dp
+                )
+                Spacer(Modifier.width(MomentumTokens.space2))
+                Text(text, style = MaterialTheme.typography.labelLarge)
+            }
             icon != null -> {
                 Icon(icon, null, Modifier.size(20.dp))
                 Spacer(Modifier.width(MomentumTokens.space2))
