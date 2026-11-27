@@ -2,6 +2,8 @@
 
 package com.faheem.habits.features.home
 import com.faheem.habits.core.data.*
+import com.faheem.habits.core.settings.PermissionStatusRepository
+import com.faheem.habits.core.settings.PermissionStatuses
 import com.faheem.habits.core.ui.*
 import com.faheem.habits.features.settings.SettingsViewModel
 import com.faheem.habits.features.battery.BatteryLevelHistory
@@ -21,6 +23,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -31,6 +34,7 @@ import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.Immutable
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -58,12 +63,20 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+
+private val HOME_DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE, MMM d")
 
 @Immutable
 data class HomeState(
@@ -89,15 +102,31 @@ data class HomeState(
     val syncHealthy: Int = 0,
     val syncTracked: Int = 0,
     val lifeRules: Int = 0,
-    val pinnedRules: Int = 0
+    val pinnedRules: Int = 0,
+    val isLoading: Boolean = false,
+    val error: String? = null
 )
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    repository: HomeRepository
+    private val repository: HomeRepository
 ) : ViewModel() {
-    val state: StateFlow<HomeState> = repository.state
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeState())
+    private val reloadSignal = MutableSharedFlow<Unit>(replay = 1).also { it.tryEmit(Unit) }
+
+    val state: StateFlow<HomeState> = reloadSignal
+        .flatMapLatest {
+            flow {
+                emit(HomeState(isLoading = true))
+                emitAll(repository.state.map { data -> data.copy(isLoading = false, error = null) })
+            }
+        }
+        .catch { emit(HomeState(isLoading = false, error = "Could not load dashboard. Try again.")) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeState(isLoading = true))
+
+    fun reload() {
+        reloadSignal.tryEmit(Unit)
+    }
 }
 
 @Immutable
@@ -156,23 +185,33 @@ private fun loadDeviceInsights(context: Context): DeviceInsights {
 fun HomeScreen(
     onOpen: (AppModule) -> Unit,
     vm: HomeViewModel = hiltViewModel(),
-    settingsViewModel: SettingsViewModel = hiltViewModel()
+    settingsViewModel: SettingsViewModel = hiltViewModel(),
+    cloudSignedIn: Boolean = true,
+    onOpenPermissions: () -> Unit = {},
+    onOpenSearch: () -> Unit = {}
 ) {
     val s by vm.state.collectAsStateWithLifecycle()
     val moduleVisibility by settingsViewModel.moduleVisibility.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
+    val permissionRepository = remember(ctx) { PermissionStatusRepository(ctx) }
     var screenText by remember { mutableStateOf("Tap to set up") }
     var insights by remember { mutableStateOf(DeviceInsights()) }
     var tick by remember { mutableIntStateOf(0) }
+    var permissionStatuses by remember { mutableStateOf(PermissionStatuses()) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { tick++ }
     LaunchedEffect(tick) {
-        val loaded = withContext(Dispatchers.IO) { loadDeviceInsights(ctx) }
-        insights = loaded
+        val loaded = withContext(Dispatchers.IO) {
+            val perms = permissionRepository.snapshot()
+            val device = loadDeviceInsights(ctx)
+            perms to device
+        }
+        permissionStatuses = loaded.first
+        insights = loaded.second
         screenText = if (!hasUsageAccess(ctx)) {
             "Tap to set up"
         } else {
-            loaded.screenWeek.lastOrNull()
+            loaded.second.screenWeek.lastOrNull()
                 ?.let { "${durationText(it.toLong())} today" }
                 ?: "Tap to set up"
         }
@@ -312,7 +351,6 @@ fun HomeScreen(
     }
     val settingsTile = TileSpec("Settings", "Manage modules and preferences", AppModule.Settings.icon, AppModule.Settings.gradient, AppModule.Settings)
 
-    val rows = visibleTiles.chunked(2)
     val reduce = LocalReduceEffects.current
     var entered by remember { mutableStateOf(reduce) }
     val enter = animateFloatAsState(
@@ -322,47 +360,65 @@ fun HomeScreen(
     )
     LaunchedEffect(Unit) { entered = true }
 
-    ScreenBackground(tint = BrandGradient.first()) {
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                horizontal = MomentumTokens.screenPadding,
-                vertical = MomentumTokens.space3
-            ),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item {
-                HomeHeader(
-                    onSettings = { onOpen(AppModule.Settings) },
-                    modifier = Modifier.homeEntrance(enter, 0)
-                )
-            }
-            itemsIndexed(
-                items = rows,
-                key = { _, row -> row.joinToString("|") { it.title } },
-                contentType = { _, _ -> "module-row" }
-            ) { index, row ->
-                Row(
-                    Modifier.fillMaxWidth().homeEntrance(enter, index + 1),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    row.forEach { spec -> ModuleTile(spec, Modifier.weight(1f)) { spec.module?.let(onOpen) } }
-                    if (row.size == 1) Spacer(Modifier.weight(1f))
+    BoxWithConstraints {
+        val columns = when {
+            maxWidth < 360.dp -> 1
+            maxWidth < 600.dp -> 2
+            else -> 3
+        }
+        val rows = visibleTiles.chunked(columns)
+        ScreenBackground(tint = BrandGradient.first()) {
+            LazyColumn(
+                Modifier
+                    .fillMaxSize()
+                    .testTag("home-scroll")
+                    .semantics { contentDescription = "Home records" },
+                contentPadding = PaddingValues(
+                    horizontal = MomentumTokens.screenPadding,
+                    vertical = MomentumTokens.space3
+                ),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item {
+                    HomeHeader(
+                        onSettings = { onOpen(AppModule.Settings) },
+                        onSearch = onOpenSearch,
+                        modifier = Modifier.homeEntrance(enter, 0)
+                    )
                 }
-            }
-            item { SectionHeader("On this device", Modifier.homeEntrance(enter, rows.size + 1)) }
-            item {
-                Column(
-                    Modifier.homeEntrance(enter, rows.size + 2),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    visibleDeviceTools.forEach { spec ->
-                        DeviceRow(spec) { spec.module?.let(onOpen) }
+                if (s.isLoading) {
+                    item { ListLoadingState() }
+                } else if (s.error != null) {
+                    item { ListErrorState(message = s.error!!, onRetry = vm::reload) }
+                } else {
+                    itemsIndexed(
+                        items = rows,
+                        key = { _, row -> row.joinToString("|") { it.module?.name ?: it.title } },
+                        contentType = { _, _ -> "module-row" }
+                    ) { index, row ->
+                        Row(
+                            Modifier.fillMaxWidth().homeEntrance(enter, index + 1),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            row.forEach { spec -> ModuleTile(spec, Modifier.weight(1f)) { spec.module?.let(onOpen) } }
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                    item { SectionHeader("On this device", Modifier.homeEntrance(enter, rows.size + 2)) }
+                    item {
+                        Column(
+                            Modifier.homeEntrance(enter, rows.size + 3),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            visibleDeviceTools.forEach { spec ->
+                                DeviceRow(spec) { spec.module?.let(onOpen) }
+                            }
+                        }
+                    }
+                    item {
+                        DeviceRow(settingsTile, Modifier.homeEntrance(enter, rows.size + 4)) { onOpen(AppModule.Settings) }
                     }
                 }
-            }
-            item {
-                DeviceRow(settingsTile, Modifier.homeEntrance(enter, rows.size + 3)) { onOpen(AppModule.Settings) }
             }
         }
     }
@@ -371,6 +427,7 @@ fun HomeScreen(
 @Composable
 private fun HomeHeader(
     onSettings: () -> Unit,
+    onSearch: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val glass = LocalGlassPalette.current
@@ -386,12 +443,20 @@ private fun HomeHeader(
                     .padding(horizontal = 11.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.CalendarMonth, null, Modifier.size(20.dp), tint = accent)
                     Spacer(Modifier.width(8.dp))
-                    Text(LocalDate.now().format(DateTimeFormatter.ofPattern("EEE, MMM d")), fontSize = 14.sp,
+                    Text(LocalDate.now().format(HOME_DATE_FORMAT), fontSize = 14.sp,
                         fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
                     Spacer(Modifier.width(4.dp))
                     Icon(Icons.Rounded.ChevronRight, null, Modifier.size(19.dp), tint = MaterialTheme.colorScheme.onSurface)
                 }
                 Spacer(Modifier.weight(1f))
+                Box(Modifier.size(40.dp).clip(CircleShape)
+                    .background(Color.White.copy(alpha = if (glass.dark) 0.12f else 0.68f))
+                    .border(1.dp, Color.White.copy(alpha = 0.64f), CircleShape)
+                    .clickable(role = Role.Button, onClickLabel = "Search all records", onClick = onSearch),
+                    contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.Search, "Search all records", Modifier.size(21.dp), tint = MaterialTheme.colorScheme.onSurface)
+                }
+                Spacer(Modifier.width(8.dp))
                 Box(Modifier.size(40.dp).clip(CircleShape)
                     .background(Color.White.copy(alpha = if (glass.dark) 0.12f else 0.68f))
                     .border(1.dp, Color.White.copy(alpha = 0.64f), CircleShape)

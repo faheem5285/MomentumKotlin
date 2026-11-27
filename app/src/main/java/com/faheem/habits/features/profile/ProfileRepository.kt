@@ -5,6 +5,7 @@ import com.faheem.habits.core.data.AppDatabase
 import com.faheem.habits.core.data.ProfileCache
 import com.faheem.habits.core.data.supabase.SupabaseAuthApi
 import com.faheem.habits.core.data.supabase.SupabaseRestClient
+import com.faheem.habits.core.data.sync.FileStorageSync
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -12,6 +13,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+
+data class DeletionResult(val cloudFilesRemoved: Int = 0)
 
 @Singleton
 class ProfileRepository @Inject constructor(@ApplicationContext private val context: Context) {
@@ -76,7 +79,16 @@ class ProfileRepository @Inject constructor(@ApplicationContext private val cont
         return runCatching { client.saveProfile(updated) }.getOrDefault(false)
     }
 
-    suspend fun deleteAccount() = client.requestAccountDeletion()
+    /**
+     * Deletes known cloud file objects first, then calls the canonical RPC.
+     * Local Room/DataStore records are deliberately untouched; the UI says so.
+     */
+    suspend fun deleteAccount(): DeletionResult {
+        val paths = FileStorageSync(context, database).storagePathsForAccount()
+        val removed = client.deleteStorageObjects(paths, strict = true)
+        client.requestAccountDeletion()
+        return DeletionResult(removed)
+    }
 
     fun currentUserId(): String? = SupabaseAuthApi.currentUserId(context)
     fun hasPassword(): Boolean = context.getSharedPreferences("account_profile", Context.MODE_PRIVATE)

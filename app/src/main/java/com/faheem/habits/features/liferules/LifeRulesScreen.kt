@@ -11,6 +11,7 @@ import com.faheem.habits.core.data.LifeRule
 import com.faheem.habits.core.data.LifeRuleFile
 import com.faheem.habits.core.ui.EmptyState
 import com.faheem.habits.core.ui.FormSheet
+import com.faheem.habits.core.ui.HeroCaption
 import com.faheem.habits.core.ui.HeroCard
 import com.faheem.habits.core.ui.IconBubble
 import com.faheem.habits.core.ui.MomentumChip
@@ -269,7 +270,7 @@ fun LifeRulesScreen(vm: LifeRulesViewModel = hiltViewModel()) {
 @Composable
 private fun LifeRulesHero(rules: List<LifeRule>, pinnedCount: Int) {
     HeroCard {
-        Text("The philosophy you choose", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
+        HeroCaption("The philosophy you choose")
         Text(
             if (rules.isEmpty()) "Start with one line" else "${rules.size} entr${if (rules.size == 1) "y" else "ies"} kept",
             fontSize = 27.sp,

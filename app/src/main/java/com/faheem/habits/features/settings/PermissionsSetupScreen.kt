@@ -1,5 +1,6 @@
 package com.faheem.habits.features.settings
 
+import com.faheem.habits.features.screen_time.overlayPermissionCopy
 import android.Manifest
 import android.app.AppOpsManager
 import android.content.Context
@@ -46,6 +47,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.faheem.habits.core.settings.PermissionKind
+import com.faheem.habits.core.settings.PermissionStatus
+import com.faheem.habits.core.settings.PermissionStatusRepository
 import com.faheem.habits.core.ui.GlassTopBar
 import com.faheem.habits.core.ui.HeroCard
 import com.faheem.habits.core.ui.IconBubble
@@ -97,46 +101,37 @@ fun PermissionsSetupScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         }
     }
 
-    fun notificationGranted(): Boolean =
-        NotificationManagerCompat.from(context).areNotificationsEnabled() &&
-            (Build.VERSION.SDK_INT < 33 || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
-
-    fun exactAlarmGranted(): Boolean =
-        Build.VERSION.SDK_INT < 31 || context.getSystemService(android.app.AlarmManager::class.java).canScheduleExactAlarms()
-
-    fun usageGranted(): Boolean {
-        val ops = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        @Suppress("DEPRECATION")
-        return ops.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName) == AppOpsManager.MODE_ALLOWED
+    val permissionStatus = remember(context) { PermissionStatusRepository(context) }
+    fun stateOf(kind: PermissionKind): PermissionState = when (permissionStatus.status(kind)) {
+        PermissionStatus.GRANTED -> PermissionState.ENABLED
+        PermissionStatus.DENIED -> PermissionState.DISABLED
+        PermissionStatus.UNSUPPORTED -> PermissionState.UNAVAILABLE
     }
 
-    fun overlayGranted(): Boolean = Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(context)
-    fun batteryUnrestricted(): Boolean = Build.VERSION.SDK_INT < 23 ||
-        context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
-
-    val permissions = remember(refresh, openingSettings) {
+    val permissions = remember(refresh, openingSettings, permissionStatus) {
+        val overlayCopy = overlayPermissionCopy()
         listOf(
-            SetupPermission("Notifications", "Allow Zylo to show reminders and ongoing network status notifications.", "Without it, reminders and the network notification may be hidden.", if (notificationGranted()) PermissionState.ENABLED else PermissionState.DISABLED) {
+            SetupPermission("Notifications", "Allow Zylo to show reminders and ongoing network status notifications.", "Without it, reminders and the network notification may be hidden.", stateOf(PermissionKind.NOTIFICATIONS)) {
                 if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                     notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 } else openSettings(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
             },
-            SetupPermission("Display over other apps", "Allows the optional floating network indicator to appear above other apps.", "The floating network indicator cannot appear; other network features remain available.", if (overlayGranted()) PermissionState.ENABLED else if (Build.VERSION.SDK_INT >= 23) PermissionState.DISABLED else PermissionState.UNAVAILABLE) {
+            SetupPermission("Display over other apps", overlayCopy.benefit, overlayCopy.whenDenied, stateOf(PermissionKind.OVERLAY)) {
                 if (Build.VERSION.SDK_INT >= 23) openSettings(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
             },
-            SetupPermission("Alarms & reminders", "Allows scheduled reminders to fire at their intended time on Android 12 and newer.", "Reminders may be delayed or less precise.", if (exactAlarmGranted()) PermissionState.ENABLED else PermissionState.DISABLED) {
+            SetupPermission("Alarms & reminders", "Allows scheduled reminders to fire at their intended time on Android 12 and newer.", "Reminders may be delayed or less precise.", stateOf(PermissionKind.EXACT_ALARMS)) {
                 if (Build.VERSION.SDK_INT >= 31) openSettings(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}")))
             },
-            SetupPermission("Usage access", "Reads app usage totals to power Screen Time and network data summaries.", "Screen Time totals and Wi-Fi/mobile usage summaries will be unavailable.", if (usageGranted()) PermissionState.ENABLED else PermissionState.DISABLED) {
+            SetupPermission("Usage access", "Reads app usage totals to power Screen Time and network data summaries.", "Screen Time totals and Wi-Fi/mobile usage summaries will be unavailable.", stateOf(PermissionKind.USAGE_ACCESS)) {
                 openSettings(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
             },
-            SetupPermission("Accessibility service", "Checks app changes to show the optional Instagram counter and counts Instagram scrolls. Zylo does not read screen text.", "The Reels scroll estimate and floating count will remain off.", if (com.faheem.habits.features.screen_time.InstagramScrollCounterService.isEnabled(context)) PermissionState.ENABLED else PermissionState.DISABLED) {
+            SetupPermission("Accessibility service", "Checks app changes to show the optional Instagram counter and counts Instagram scrolls. Zylo does not read screen text.", "The Reels scroll estimate and floating count will remain off.", stateOf(PermissionKind.ACCESSIBILITY)) {
                 openSettings(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             },
             SetupPermission("Background autostart", "Some manufacturers provide an additional autostart switch for reliable background reminders and monitoring.", "Background work may be stopped by manufacturer-specific power management.", PermissionState.UNAVAILABLE) {
                 openSettings(appDetailsIntent(context))
             },
-            SetupPermission("Battery optimization", "Excluding Zylo from battery optimization can improve reliability of user-requested background reminders.", "Android or the manufacturer may delay background work. This setting is optional.", if (batteryUnrestricted()) PermissionState.ENABLED else PermissionState.DISABLED) {
+            SetupPermission("Battery optimization", "Excluding Zylo from battery optimization can improve reliability of user-requested background reminders.", "Android or the manufacturer may delay background work. This setting is optional.", stateOf(PermissionKind.BATTERY_OPTIMIZATION)) {
                 openSettings(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
             },
             SetupPermission("Background restrictions", "Review Android's per-app battery and background usage controls.", "Restricted apps may have delayed reminders or background updates.", PermissionState.UNAVAILABLE) {

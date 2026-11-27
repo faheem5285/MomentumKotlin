@@ -197,7 +197,7 @@ fun NetworkScreen() {
                         }
                     }
                     Text(
-                        "Limits reset ${limitPeriod.label.lowercase()}. Use 0 to disable an alarm. Automatic alerts need Usage Access and monitoring enabled.",
+                        networkLimitHelperCopy(limitPeriod.label),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -325,10 +325,17 @@ fun NetworkScreen() {
                                 indicatorEnabled = true
                             } else {
                                 indicatorEnabled = false
-                                context.getSharedPreferences(NetworkIndicatorService.PREFS, Context.MODE_PRIVATE).edit().putBoolean(NetworkIndicatorService.KEY_ENABLED, false).apply()
-                                context.startService(Intent(context, NetworkIndicatorService::class.java).setAction(NetworkIndicatorService.ACTION_STOP))
+                                NetworkIndicatorService.setEnabled(context, false)
                             }
                         })
+                    }
+                    if (indicatorEnabled) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Android may block automatic restart after a reboot; open Zylo if the indicator does not return.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     SettingsRow(
                         title = "Indicator position",
@@ -534,8 +541,7 @@ fun NetworkScreen() {
 }
 
 private fun startNetworkIndicator(context: Context) {
-    context.getSharedPreferences(NetworkIndicatorService.PREFS, Context.MODE_PRIVATE).edit().putBoolean(NetworkIndicatorService.KEY_ENABLED, true).apply()
-    ContextCompat.startForegroundService(context, Intent(context, NetworkIndicatorService::class.java))
+    NetworkIndicatorService.setEnabled(context, true)
 }
 
 @Composable

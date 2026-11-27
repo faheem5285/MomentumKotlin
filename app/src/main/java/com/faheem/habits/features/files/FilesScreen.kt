@@ -7,7 +7,6 @@ import com.faheem.habits.R
 
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color as AndroidColor
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
@@ -47,11 +46,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.lifecycle.HiltViewModel
+import com.faheem.habits.features.files.data.FileAddResult
+import com.faheem.habits.features.files.data.FileLinkDraft
 import com.faheem.habits.features.files.data.FileRepository
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -63,21 +66,107 @@ class FileViewModel @Inject constructor(
     private val repository: FileRepository
 ) : ViewModel() {
     val files: StateFlow<List<FileItem>> = repository.files.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    fun add(name: String, uri: String, mime: String, folder: String = "") {
-        viewModelScope.launch { repository.add(name, uri, mime, folder) }
+    private val _addResult = MutableStateFlow<FileAddResult?>(null)
+    val addResult: StateFlow<FileAddResult?> = _addResult.asStateFlow()
+
+    fun clearAddResult() {
+        _addResult.value = null
     }
+
+    fun reportAccessDenied() {
+        _addResult.value = FileAddResult.ACCESS_DENIED
+    }
+
+    fun add(draft: FileLinkDraft) {
+        viewModelScope.launch { _addResult.value = repository.add(draft) }
+    }
+
+    fun reconnect(file: FileItem, draft: FileLinkDraft) {
+        viewModelScope.launch { _addResult.value = repository.reconnect(file, draft) }
+    }
+
+    fun markAccessed(file: FileItem) {
+        viewModelScope.launch { repository.markAccessed(file) }
+    }
+
+    fun markMissing(file: FileItem) {
+        viewModelScope.launch { repository.markMissing(file) }
+    }
+
+    fun markAvailable(file: FileItem) {
+        viewModelScope.launch { repository.markAvailable(file) }
+    }
+
     fun remove(file: FileItem) { viewModelScope.launch { repository.delete(file) } }
+}
+
+internal fun fileAddMessage(result: FileAddResult): String = when (result) {
+    FileAddResult.LINKED -> "File linked from its provider."
+    FileAddResult.TEMPORARY_LINK -> "File linked, but access is temporary. Re-select it after a restart if it stops working."
+    FileAddResult.TOO_LARGE -> "This file is over 10 MB and was not linked."
+    FileAddResult.ACCESS_DENIED -> "Access was denied. The file was not linked; select it again to grant access."
+    FileAddResult.INVALID_FILE -> "That file could not be identified. Nothing was linked."
+    FileAddResult.FAILED -> "The file could not be linked. Nothing was changed."
+}
+
+internal data class FileMetadata(val name: String, val sizeBytes: Long?)
+
+internal fun fileMetadata(context: android.content.Context, uri: Uri): FileMetadata {
+    var name = "File"
+    var sizeBytes: Long? = null
+    try {
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val nameColumn = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameColumn >= 0) name = cursor.getString(nameColumn) ?: name
+                val sizeColumn = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (sizeColumn >= 0) {
+                    val size = cursor.getLong(sizeColumn)
+                    if (size >= 0) sizeBytes = size
+                }
+            }
+        }
+    } catch (_: Exception) {
+        return FileMetadata("File", null)
+    }
+    return FileMetadata(name, sizeBytes)
+}
+
+internal fun hasPersistedReadPermission(context: android.content.Context, uri: Uri): Boolean = try {
+    context.contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
+} catch (_: Exception) {
+    false
+}
+
+@Composable
+internal fun FileAddStatusCard(result: FileAddResult, onDismiss: () -> Unit) {
+    PremiumCard(contentPadding = PaddingValues(12.dp)) {
+        Text(
+            fileAddMessage(result),
+            fontSize = 12.5.sp,
+            color = if (
+                result == FileAddResult.TOO_LARGE ||
+                result == FileAddResult.ACCESS_DENIED ||
+                result == FileAddResult.INVALID_FILE ||
+                result == FileAddResult.FAILED
+            ) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+        )
+        TextButton(onClick = onDismiss) { Text("Dismiss") }
+    }
 }
 
 private val badgeColors = listOf(Color(0xFFEF4444), Color(0xFF3B82F6), Color(0xFF10B981), Color(0xFFF59E0B), Color(0xFF8B5CF6), Color(0xFFEC4899))
 private enum class FileKind(val label: String) { All("All"), Image("Images"), Pdf("PDFs"), Text("Text"), Other("Other") }
 
+private val IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "heic")
+private val TEXT_EXTENSIONS = setOf("txt", "md", "csv", "json", "xml", "html", "css", "js", "kt", "java", "log", "yaml", "yml", "properties")
+
 private fun fileKind(file: FileItem): FileKind {
     val ext = file.name.substringAfterLast('.', "").lowercase()
     return when {
-        file.mime.startsWith("image/") || ext in setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "heic") -> FileKind.Image
+        file.mime.startsWith("image/") || ext in IMAGE_EXTENSIONS -> FileKind.Image
         file.mime == "application/pdf" || ext == "pdf" -> FileKind.Pdf
-        file.mime.startsWith("text/") || ext in setOf("txt", "md", "csv", "json", "xml", "html", "css", "js", "kt", "java", "log", "yaml", "yml", "properties") -> FileKind.Text
+        file.mime.startsWith("text/") || ext in TEXT_EXTENSIONS -> FileKind.Text
         else -> FileKind.Other
     }
 }
@@ -85,26 +174,62 @@ private fun fileKind(file: FileItem): FileKind {
 @Composable
 fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
     val files by vm.files.collectAsStateWithLifecycle()
+    val addResult by vm.addResult.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var query by remember { mutableStateOf("") }
     var kind by remember { mutableStateOf(FileKind.All) }
     var preview by remember { mutableStateOf<FileItem?>(null) }
     var removeTarget by remember { mutableStateOf<FileItem?>(null) }
+    var reconnectTarget by remember { mutableStateOf<FileItem?>(null) }
     var pendingText by remember { mutableStateOf("") }
     var folderPath by remember { mutableStateOf("") }
     var editingFolder by remember { mutableStateOf(false) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
-            try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
-            var name = "File"
-            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (column >= 0) name = cursor.getString(column) ?: name
-                }
+            vm.clearAddResult()
+            val persisted = try {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                hasPersistedReadPermission(context, uri)
+            } catch (_: Exception) {
+                false
             }
-            vm.add(name, uri.toString(), context.contentResolver.getType(uri) ?: "*/*", folderPath)
+            val metadata = fileMetadata(context, uri)
+            vm.add(
+                FileLinkDraft(
+                    name = metadata.name,
+                    uri = uri.toString(),
+                    mime = context.contentResolver.getType(uri) ?: "*/*",
+                    folder = folderPath,
+                    sizeBytes = metadata.sizeBytes,
+                    persisted = persisted || uri.scheme != "content"
+                )
+            )
+        }
+    }
+    val reconnectPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        val target = reconnectTarget
+        reconnectTarget = null
+        if (uri != null && target != null) {
+            vm.clearAddResult()
+            val persisted = try {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                hasPersistedReadPermission(context, uri)
+            } catch (_: Exception) {
+                false
+            }
+            val metadata = fileMetadata(context, uri)
+            vm.reconnect(
+                target,
+                FileLinkDraft(
+                    name = metadata.name,
+                    uri = uri.toString(),
+                    mime = context.contentResolver.getType(uri) ?: target.mime,
+                    folder = target.folder,
+                    sizeBytes = metadata.sizeBytes,
+                    persisted = persisted || uri.scheme != "content"
+                )
+            )
         }
     }
     val saveCopy = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
@@ -118,6 +243,20 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
         }
     }
 
+    LaunchedEffect(preview?.id, preview?.uri) {
+        val target = preview ?: return@LaunchedEffect
+        val readable = withContext(Dispatchers.IO) {
+            val uri = runCatching { Uri.parse(target.uri) }.getOrNull()
+            if (uri == null) false else try {
+                context.contentResolver.openInputStream(uri)?.use { true } ?: false
+            } catch (_: Exception) {
+                false
+            }
+        }
+        if (!readable && !target.missing) vm.markMissing(target)
+        if (readable && target.missing) vm.markAvailable(target)
+    }
+
     preview?.let { file ->
         FilePreviewSheet(
             file = file,
@@ -127,13 +266,17 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
                 val base = file.name.substringBeforeLast('.', file.name)
                 val ext = file.name.substringAfterLast('.', "txt").ifBlank { "txt" }
                 saveCopy.launch("${base}_edited.$ext")
+            },
+            onReconnect = {
+                reconnectTarget = file
+                reconnectPicker.launch(arrayOf("*/*"))
             }
         )
     }
     removeTarget?.let { file ->
         MomentumDialog(
             onDismissRequest = { removeTarget = null }, title = { Text("Remove from library?") },
-            text = { Text("${file.name} will be removed from Zylo. The original file will stay on your device.") },
+            text = { Text("Zylo will remove the link from your library. The original file stays with its provider and is not deleted.") },
             confirmButton = { TextButton(onClick = { vm.remove(file); removeTarget = null }) { Text("Remove", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { removeTarget = null }) { Text("Cancel") } }
         )
@@ -157,10 +300,26 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
             dismissButton = { TextButton(onClick = { editingFolder = false }) { Text("Cancel") } }
         )
     }
-    val shown = files.filter {
-        (kind == FileKind.All || fileKind(it) == kind) &&
-            (folderPath.isBlank() || it.folder == folderPath) &&
-            it.name.contains(query, ignoreCase = true)
+    val shown = remember(files, kind, folderPath, query) {
+        files.filter {
+            (kind == FileKind.All || fileKind(it) == kind) &&
+                (folderPath.isBlank() || it.folder == folderPath) &&
+                it.name.contains(query, ignoreCase = true)
+        }
+    }
+    val fileMixSlices = remember(files) {
+        files.groupingBy { fileKind(it) }.eachCount()
+            .filterKeys { it != FileKind.All }
+            .entries
+            .sortedByDescending { it.value }
+            .mapIndexed { index, entry -> ChartSlice(entry.key.label, entry.value.toFloat(), chartColor(index)) }
+    }
+    val additions14d = remember(files) {
+        val today = LocalDate.now()
+        (13 downTo 0).map { offset ->
+            val day = today.minusDays(offset.toLong()).toEpochDay()
+            files.count { it.addedEpochDay == day }.toFloat()
+        }
     }
     Box(Modifier.fillMaxSize()) {
         androidx.compose.foundation.lazy.LazyColumn(
@@ -182,7 +341,7 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
                         }
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Your file space", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
+                            HeroCaption("Your file space")
                             Text(
                                 "${files.size} file${if (files.size == 1) "" else "s"}",
                                 fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp
@@ -191,10 +350,15 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
                     }
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "Preview images, PDFs and text files here. Edit text and save a copy.",
+                        "Files stay with their provider. Zylo stores a link so you can preview and organise them here.",
                         fontSize = 12.5.sp,
                         color = Color.White.copy(alpha = 0.88f)
                     )
+                }
+            }
+            addResult?.let { result ->
+                item {
+                    FileAddStatusCard(result = result, onDismiss = { vm.clearAddResult() })
                 }
             }
             item {
@@ -230,17 +394,10 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
             }
             if (files.isNotEmpty()) {
                 item {
-                    val counts = files.groupingBy { fileKind(it) }.eachCount()
-                        .filterKeys { it != FileKind.All }
-                        .entries
-                        .sortedByDescending { it.value }
-                    val slices = counts.mapIndexed { index, entry ->
-                        ChartSlice(entry.key.label, entry.value.toFloat(), chartColor(index))
-                    }
                     PremiumCard(contentPadding = PaddingValues(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             DonutChart(
-                                slices = slices,
+                                slices = fileMixSlices,
                                 modifier = Modifier.width(146.dp),
                                 centerValue = "${files.size}",
                                 centerLabel = "files",
@@ -251,7 +408,7 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
                                 Text("Library mix", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                                 Spacer(Modifier.height(6.dp))
                                 ChartLegend(
-                                    slices = slices,
+                                    slices = fileMixSlices,
                                     maxRows = 4,
                                     valueFormatter = { "${it.toInt()}" }
                                 )
@@ -260,12 +417,8 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
                     }
                 }
                 item {
-                    val today = LocalDate.now()
-                    val additions = (13 downTo 0).map { offset ->
-                        val day = today.minusDays(offset.toLong()).toEpochDay()
-                        files.count { it.addedEpochDay == day }.toFloat()
-                    }
-                    if (additions.any { it > 0f }) {
+                    if (additions14d.any { it > 0f }) {
+                        val today = LocalDate.now()
                         PremiumCard(contentPadding = PaddingValues(16.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 IconBubble(Icons.Rounded.Insights, MaterialTheme.colorScheme.primary, 40.dp)
@@ -273,20 +426,20 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
                                 Column(Modifier.weight(1f)) {
                                     Text("Additions", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                                     Text(
-                                        "${additions.sumOf { it.toInt() }} files added in 14 days",
+                                        "${additions14d.sumOf { it.toInt() }} files added in 14 days",
                                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
                             Spacer(Modifier.height(14.dp))
                             BarChart(
-                                values = additions,
+                                values = additions14d,
                                 labels = (13 downTo 0).map { offset ->
                                     val day = today.minusDays(offset.toLong())
                                     if (offset % 2 == 0) "${day.dayOfMonth}" else ""
                                 },
                                 colors = listOf(MaterialTheme.colorScheme.secondary),
-                                highlightIndex = additions.lastIndex,
+                                highlightIndex = additions14d.lastIndex,
                                 height = 132.dp,
                                 showValues = false
                             )
@@ -294,7 +447,12 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
                     }
                 }
             }
-            item { SectionHeader("${shown.size} file${if (shown.size == 1) "" else "s"}", subtitle = "Stored on this device") }
+            item {
+                SectionHeader(
+                    "${shown.size} file${if (shown.size == 1) "" else "s"}",
+                    subtitle = "Linked from your device · Zylo does not store a copy"
+                )
+            }
             if (shown.isEmpty()) {
                 item { EmptyState(Icons.Rounded.FolderOpen, if (files.isEmpty()) "Your library is empty" else "No matching files", if (files.isEmpty()) "Add a file to preview and manage it here" else "Try another search or file type") }
             }
@@ -302,7 +460,10 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
                 val ext = file.name.substringAfterLast('.', "").uppercase().take(5).ifEmpty { "FILE" }
                 val badge = badgeColors[Math.floorMod(ext.hashCode(), badgeColors.size)]
                 PremiumCard(
-                    onClick = { preview = file },
+                    onClick = {
+                        preview = file
+                        vm.markAccessed(file)
+                    },
                     contentPadding = PaddingValues(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 4.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -327,9 +488,18 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(file.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            val details = buildList {
+                                add("${fileKind(file).label} · Added ${dayText(file.addedEpochDay)}")
+                                file.folder.takeIf(String::isNotBlank)?.let { add("Folder: $it") }
+                                file.tags.takeIf(String::isNotBlank)?.let { add("Tags: $it") }
+                                if (file.lastAccessedEpochDay > 0) add("Opened ${dayText(file.lastAccessedEpochDay)}")
+                                if (file.missing) add("Link needs re-grant")
+                            }
                             Text(
-                                "${fileKind(file).label} · Added ${dayText(file.addedEpochDay)}",
-                                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                details.joinToString(" · "),
+                                fontSize = 12.sp,
+                                maxLines = 3,
+                                color = if (file.missing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         IconButton(onClick = { removeTarget = file }) { Icon(Icons.Rounded.MoreVert, "More options", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -347,7 +517,12 @@ fun FilesScreen(vm: FileViewModel = hiltViewModel()) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FilePreviewSheet(file: FileItem, onDismiss: () -> Unit, onSaveCopy: (String) -> Unit) {
+private fun FilePreviewSheet(
+    file: FileItem,
+    onDismiss: () -> Unit,
+    onSaveCopy: (String) -> Unit,
+    onReconnect: () -> Unit
+) {
     val glass = LocalGlassPalette.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -366,6 +541,26 @@ private fun FilePreviewSheet(file: FileItem, onDismiss: () -> Unit, onSaveCopy: 
                 IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close preview") }
             }
             Spacer(Modifier.height(8.dp))
+            if (file.missing) {
+                PremiumCard(contentPadding = PaddingValues(12.dp)) {
+                    Text(
+                        "This link is no longer available. Re-select the file to grant access again.",
+                        fontSize = 12.5.sp,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    TextButton(onClick = onReconnect) { Text("Re-select file") }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+            val metadata = buildList {
+                file.folder.takeIf(String::isNotBlank)?.let { add("Folder: $it") }
+                file.tags.takeIf(String::isNotBlank)?.let { add("Tags: $it") }
+                if (file.lastAccessedEpochDay > 0) add("Opened ${dayText(file.lastAccessedEpochDay)}")
+            }.joinToString(" · ")
+            if (metadata.isNotBlank()) {
+                Text(metadata, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+            }
             when (fileKind(file)) {
                 FileKind.Image -> ImageFilePreview(file)
                 FileKind.Pdf -> PdfFilePreview(file)
@@ -387,18 +582,8 @@ private fun ImageFilePreview(file: FileItem) {
     else Image(state.second!!.asImageBitmap(), contentDescription = file.name, modifier = Modifier.fillMaxWidth().heightIn(min = 220.dp, max = 620.dp).padding(16.dp), contentScale = ContentScale.Fit)
 }
 
-private fun decodeImage(context: android.content.Context, uri: Uri): Bitmap? {
-    return try {
-        val resolver = context.contentResolver
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-        var sample = 1
-        while (bounds.outWidth / sample > 1800 || bounds.outHeight / sample > 1800) sample *= 2
-        val options = BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.RGB_565 }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-    } catch (_: Exception) { null }
-}
+private fun decodeImage(context: android.content.Context, uri: Uri): Bitmap? =
+    decodeBoundedImage(context, uri)
 
 @Composable
 private fun PdfFilePreview(file: FileItem) {
@@ -433,8 +618,9 @@ private fun renderPdfPage(context: android.content.Context, uri: Uri, index: Int
                 if (renderer.pageCount == 0) return PdfPage(0, null)
                 val safeIndex = index.coerceIn(0, renderer.pageCount - 1)
                 renderer.openPage(safeIndex).use { page ->
-                    val scale = minOf(1400f / page.height, 1100f / page.width, 2f)
-                    val bitmap = Bitmap.createBitmap((page.width * scale).toInt().coerceAtLeast(1), (page.height * scale).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+                    val scale = ImagePreviewPolicy.pdfScale(page.width, page.height)
+                    val (width, height) = ImagePreviewPolicy.pdfDimensions(page.width, page.height, scale)
+                    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                     bitmap.eraseColor(AndroidColor.WHITE)
                     page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                     PdfPage(renderer.pageCount, bitmap)
@@ -466,7 +652,9 @@ private fun TextFilePreview(file: FileItem, onSaveCopy: (String) -> Unit) {
                     output.toString()
                 } ?: throw FileNotFoundException()
                 content to null
-            } catch (e: Exception) { null to (e.message ?: "Could not read this file.") }
+            } catch (_: Exception) {
+                null to "This file could not be read. It may be unavailable or too large to preview."
+            }
         }
         text = result.first
         error = result.second
@@ -503,7 +691,7 @@ private fun UnsupportedFilePreview(file: FileItem) {
         Icon(Icons.AutoMirrored.Rounded.InsertDriveFile, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(12.dp))
         Text("Preview not available yet", fontWeight = FontWeight.SemiBold)
-        Text("${file.name} is saved in your library. In-app preview supports images, PDFs and common text files.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("${file.name} is linked in your library. In-app preview supports images, PDFs and common text files.", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

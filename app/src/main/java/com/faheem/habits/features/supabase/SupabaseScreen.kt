@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import androidx.work.WorkInfo
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.faheem.habits.core.data.SyncState
+import com.faheem.habits.core.data.supabase.HttpErrorSanitizer
 import com.faheem.habits.core.data.supabase.SupabaseProvider
 import com.faheem.habits.core.data.supabase.SupabaseRestClient
 import com.faheem.habits.core.data.sync.LocalAppDataReset
@@ -76,6 +77,7 @@ import com.faheem.habits.core.data.sync.SupabaseSyncRepository
 import com.faheem.habits.core.data.sync.ProjectWipeManager
 import com.faheem.habits.core.data.sync.SYNC_STATUS_TABLE
 import com.faheem.habits.core.data.sync.SyncModule
+import com.faheem.habits.core.data.sync.summarizeSyncStatus
 import com.faheem.habits.features.settings.SettingsViewModel
 import com.faheem.habits.core.ui.AppModule
 import com.faheem.habits.core.ui.ChartLegend
@@ -199,7 +201,7 @@ fun SupabaseScreen(onOpenProfile: () -> Unit = {}) {
     suspend fun load() {
         metrics = loadSupabaseMetrics(context.applicationContext) { result ->
             cloudReachable = result.getOrDefault(false)
-            reachError = result.exceptionOrNull()?.message
+            reachError = result.exceptionOrNull()?.message?.let { HttpErrorSanitizer.forDisplay(it) }
         }
     }
 
@@ -522,26 +524,26 @@ private fun SyncCard(
     failedTables: Int,
     onSync: () -> Unit
 ) {
-    val pending = syncStates.sumOf { it.pendingCount }
-    val conflicts = syncStates.sumOf { it.conflictCount }
-    val trackedTableCount = syncStates.count { it.tableName != SYNC_STATUS_TABLE }
-    val lastError = syncStates.firstOrNull { !it.lastError.isNullOrBlank() }?.lastError ?: workerError
-    val syncErrors = syncStates.count { !it.lastError.isNullOrBlank() }
-    val hasSynced = syncStates.any { it.lastSyncEpochMillis > 0 }
-    val syncing = workState == WorkInfo.State.RUNNING
-    val waiting = workState == WorkInfo.State.ENQUEUED ||
-        workState == WorkInfo.State.BLOCKED || pending > 0
-    val needsAttention = !waiting && (workState == WorkInfo.State.FAILED || failedTables > 0 || syncErrors > 0)
+    val summary = summarizeSyncStatus(
+        states = syncStates,
+        failedTables = failedTables,
+        workRunning = workState == WorkInfo.State.RUNNING,
+        workQueued = workState == WorkInfo.State.ENQUEUED || workState == WorkInfo.State.BLOCKED,
+        workFailed = workState == WorkInfo.State.FAILED
+    )
+    val pending = summary.pending
+    val lastError = (syncStates.firstOrNull { !it.lastError.isNullOrBlank() }?.lastError ?: workerError)
+        ?.let { HttpErrorSanitizer.forDisplay(it) }
     val statusColor = when {
-        needsAttention -> MaterialTheme.colorScheme.error
-        hasSynced -> MaterialTheme.colorScheme.primary
+        summary.needsAttention -> MaterialTheme.colorScheme.error
+        summary.hasSynced -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.secondary
     }
     val statusText = when {
-        syncing -> "Syncing"
-        waiting -> "Waiting to sync"
-        needsAttention -> "Needs attention"
-        hasSynced -> "Synced"
+        summary.running -> "Syncing"
+        summary.needsAttention -> "Needs attention"
+        summary.waiting -> "Waiting to sync"
+        summary.hasSynced -> "Synced"
         else -> "Waiting to sync"
     }
     var showTechnicalDetail by remember { mutableStateOf(false) }
@@ -559,7 +561,7 @@ private fun SyncCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            if (syncing) {
+            if (summary.running) {
                 CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
             } else {
                 StatusPill(statusText, statusColor)
@@ -569,8 +571,8 @@ private fun SyncCard(
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SyncStat("Pending", pending.toString(), Modifier.weight(1f))
-                SyncStat("Conflicts", conflicts.toString(), Modifier.weight(1f))
-                SyncStat("Tracked tables", trackedTableCount.toString(), Modifier.weight(1f))
+                SyncStat("Conflicts", summary.conflicts.toString(), Modifier.weight(1f))
+                SyncStat("Tracked tables", summary.trackedTables.toString(), Modifier.weight(1f))
             }
         }
         lastError?.let { detail ->
@@ -585,7 +587,7 @@ private fun SyncCard(
             }
             if (showTechnicalDetail) {
                 Text(
-                    detail,
+                    HttpErrorSanitizer.forDisplay(detail),
                     fontSize = 10.5.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -594,15 +596,15 @@ private fun SyncCard(
         Spacer(Modifier.height(14.dp))
         PrimaryButton(
             text = when {
-                syncing -> "Syncing…"
-                waiting && pending == 0 -> "Queued…"
-                needsAttention -> "Retry sync"
+                summary.running -> "Syncing…"
+                summary.needsAttention -> "Retry sync"
+                summary.waiting && pending == 0 -> "Queued…"
                 else -> "Sync now"
             },
             onClick = onSync,
             icon = Icons.Rounded.CloudSync,
-            enabled = !syncing,
-            loading = syncing
+            enabled = !summary.running,
+            loading = summary.running
         )
     }
 }
@@ -1084,6 +1086,8 @@ private fun dayLabel(epochMillis: Long): String =
     DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(epochMillis))
 
 private fun explainSupabaseError(message: String?): String {
+    // Error text is only used to choose guidance; raw server details are never
+    // shown because they can contain tokens, account ids or personal data.
     val detail = message.orEmpty()
     return when {
         detail.contains("A project wipe is already running", ignoreCase = true) ->
@@ -1095,22 +1099,20 @@ private fun explainSupabaseError(message: String?): String {
         detail.contains("not configured", ignoreCase = true) ->
             "Add SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY to your user Gradle properties, then rebuild the app."
         detail.contains("not allowed to wipe project data", ignoreCase = true) ->
-            "This Supabase account is not marked as an admin. Set app_metadata.role=admin for it using a trusted Supabase admin workflow. Details: $detail"
+            "This Supabase account is not marked as an admin. Set app_metadata.role=admin for it using a trusted Supabase admin workflow."
         detail.contains("Sign in", ignoreCase = true) ||
             detail.contains("401") ||
             detail.contains("JWT", ignoreCase = true) ||
             detail.contains("token", ignoreCase = true) ->
-            "Sign in to Supabase in the app first, then tap Refresh. Details: $detail"
+            "Sign in to Supabase in the app first, then tap Refresh."
         detail.contains("requested function was not found", ignoreCase = true) ||
             (detail.contains("functions/v1/", ignoreCase = true) && detail.contains("404")) ->
-            "The admin-wipe-cloud Edge Function is not deployed to this Supabase project. Deploy supabase/functions/admin-wipe-cloud and check the function's server-side Supabase keys and your app_metadata.role=admin setting. Details: $detail"
+            "The admin-wipe-cloud Edge Function is not deployed to this Supabase project. Deploy supabase/functions/admin-wipe-cloud and check the function's server-side Supabase keys and your app_metadata.role=admin setting."
         detail.contains("relation", ignoreCase = true) ||
             detail.contains("404") ->
-            "Run docs/supabase-schema.sql in the Supabase SQL Editor, then tap Refresh. Details: $detail"
+            "Run docs/supabase-schema.sql in the Supabase SQL Editor, then tap Refresh."
         else ->
-            "Check your Supabase URL, publishable key, internet connection, and project status. Details: ${
-                detail.ifBlank { "unknown error" }
-            }"
+            "Check your Supabase URL, publishable key, internet connection, and project status."
     }
 }
 

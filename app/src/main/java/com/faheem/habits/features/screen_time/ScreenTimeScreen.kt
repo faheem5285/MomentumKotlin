@@ -102,6 +102,8 @@ fun ScreenTimeScreen() {
     var tab by remember { mutableStateOf(TimeTab.Overview) }
     var range by remember { mutableStateOf(UsageRange.Today) }
     var granted by remember { mutableStateOf(hasUsageAccess(context)) }
+    var previouslyGranted by remember { mutableStateOf(granted) }
+    var accessRevoked by remember { mutableStateOf(false) }
     var accessibilityOn by remember { mutableStateOf(InstagramScrollCounterService.isEnabled(context)) }
     val usage = dashboard.apps
     val weekMinutes = dashboard.dailyMinutes
@@ -120,7 +122,11 @@ fun ScreenTimeScreen() {
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { tick++ }
     LaunchedEffect(tick, range) {
-        granted = hasUsageAccess(context)
+        val currentAccess = hasUsageAccess(context)
+        if (previouslyGranted && !currentAccess) accessRevoked = true
+        if (currentAccess) accessRevoked = false
+        previouslyGranted = currentAccess
+        granted = currentAccess
         accessibilityOn = InstagramScrollCounterService.isEnabled(context)
         overlayAllowed = Settings.canDrawOverlays(context)
         val prefs = context.getSharedPreferences(SCREEN_TIME_PREFS, Context.MODE_PRIVATE)
@@ -134,17 +140,22 @@ fun ScreenTimeScreen() {
             screenTimeMinutes(context, screenLimitPeriod)?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0
         } else 0
         withContext(Dispatchers.IO) { checkScreenTimeAlarm(context) }
+        UsageLimitSchedule.refresh(context)
     }
+    val usageLimitationCopy = if (!granted) {
+        if (accessRevoked) USAGE_ACCESS_REVOCATION_COPY else USAGE_ACCESS_LIMITATION_COPY
+    } else null
 
     if (showScreenAlarm) DurationLimitSheet(
         title = "Screen time alarm",
         currentMinutes = context.getSharedPreferences(SCREEN_TIME_PREFS, Context.MODE_PRIVATE).getInt(PREF_SCREEN_ALARM, 0),
         currentPeriod = ScreenTimePeriod.fromKey(context.getSharedPreferences(SCREEN_TIME_PREFS, Context.MODE_PRIVATE).getString(PREF_SCREEN_ALARM_PERIOD, null)),
-        helper = "Alert when screen time reaches this amount",
+        helper = SCREEN_ALARM_HELPER,
         onSave = { minutes, period ->
             context.getSharedPreferences(SCREEN_TIME_PREFS, Context.MODE_PRIVATE).edit()
                 .putInt(PREF_SCREEN_ALARM, minutes).putString(PREF_SCREEN_ALARM_PERIOD, period.key)
                 .remove("screen_time_alarm_last_period").apply()
+            UsageLimitSchedule.refresh(context)
             showScreenAlarm = false
             tick++
         },
@@ -181,8 +192,8 @@ fun ScreenTimeScreen() {
             } else if (dashboard.errorMessage != null && usage.isEmpty()) {
                 ErrorState(dashboard.errorMessage.orEmpty(), onRetry = { tick++ })
             } else when (tab) {
-                TimeTab.Overview -> ScreenOverview(usage, weekMinutes, dashboard.yesterdayMinutes, selectedWeekIndex, { selectedWeekIndex = it }, granted, screenLimit, screenLimitPeriod, screenLimitUsed, reelCount, accessibilityOn, onUsageSettings = { openUsageSettings(context) }, onSetLimit = { showScreenLimit = true }, onSetAlarm = { showScreenAlarm = true }, onOpenReels = { tab = TimeTab.Reels }, onRefresh = { tick++ })
-                TimeTab.Apps -> UsageAppsScreen(usage, granted, range, onRange = { range = it }, onUsageSettings = { openUsageSettings(context) }, onRefresh = { tick++ })
+                TimeTab.Overview -> ScreenOverview(usage, weekMinutes, dashboard.yesterdayMinutes, selectedWeekIndex, { selectedWeekIndex = it }, granted, usageLimitationCopy, screenLimit, screenLimitPeriod, screenLimitUsed, reelCount, accessibilityOn, onUsageSettings = { openUsageSettings(context) }, onSetLimit = { showScreenLimit = true }, onSetAlarm = { if (granted) showScreenAlarm = true }, onOpenReels = { tab = TimeTab.Reels }, onRefresh = { tick++ })
+                TimeTab.Apps -> UsageAppsScreen(usage, granted, usageLimitationCopy, range, onRange = { range = it }, onUsageSettings = { openUsageSettings(context) }, onRefresh = { tick++ })
                 TimeTab.Reels -> ReelsCounterScreen(
                     reelCount, reelLimit, accessibilityOn, floatingCounter, overlayAllowed,
                     onSettings = { openAccessibilitySettings(context) },
@@ -227,7 +238,7 @@ private fun openAccessibilitySettings(context: Context) { context.startActivity(
 @Composable
 private fun ScreenOverview(
     usage: List<AppUsage>, weekMinutes: List<Long>, yesterdayMinutes: Long, selectedWeekIndex: Int,
-    onSelectWeekDay: (Int) -> Unit, granted: Boolean, screenLimit: Int,
+    onSelectWeekDay: (Int) -> Unit, granted: Boolean, limitationCopy: String?, screenLimit: Int,
     screenLimitPeriod: ScreenTimePeriod, screenLimitUsed: Int, reelCount: Int, accessibilityOn: Boolean,
     onUsageSettings: () -> Unit, onSetLimit: () -> Unit, onSetAlarm: () -> Unit, onOpenReels: () -> Unit, onRefresh: () -> Unit
 ) {
@@ -239,13 +250,24 @@ private fun ScreenOverview(
         contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        if (!granted) item {
-            PermissionCard(
-                title = "Turn on Usage access",
-                benefit = "See how much time you spend in each app and set a daily limit.",
-                grantLabel = "Open Usage access settings",
-                onGrant = onUsageSettings
-            )
+        if (!granted) {
+            item {
+                PermissionCard(
+                    title = "Turn on Usage access",
+                    benefit = "See how much time you spend in each app and set a daily limit.",
+                    grantLabel = "Open Usage access settings",
+                    onGrant = onUsageSettings
+                )
+            }
+            limitationCopy?.let { copy ->
+                item {
+                    InfoBanner(
+                        icon = Icons.Rounded.Info,
+                        text = copy,
+                        tint = MaterialTheme.colorScheme.tertiary
+                    )
+                }
+            }
         }
         item {
             GlassCard(contentPadding = PaddingValues(20.dp)) {
@@ -281,8 +303,8 @@ private fun ScreenOverview(
                 TextButton(onClick = if (granted) onSetLimit else onUsageSettings) {
                     Text("${if (screenLimit > 0) "Adjust" else "Set"} ${screenLimitPeriod.label.lowercase()} limit", fontWeight = FontWeight.SemiBold)
                 }
-                TextButton(onClick = onSetAlarm) {
-                    Text("Set alarm", fontWeight = FontWeight.SemiBold)
+                TextButton(onClick = onSetAlarm, enabled = granted) {
+                    Text(screenAlarmLabel(granted), fontWeight = FontWeight.SemiBold)
                 }
                 }
             }
@@ -381,7 +403,7 @@ private fun ScreenOverview(
 }
 
 @Composable
-private fun UsageAppsScreen(usage: List<AppUsage>, granted: Boolean, range: UsageRange, onRange: (UsageRange) -> Unit, onUsageSettings: () -> Unit, onRefresh: () -> Unit) {
+private fun UsageAppsScreen(usage: List<AppUsage>, granted: Boolean, limitationCopy: String?, range: UsageRange, onRange: (UsageRange) -> Unit, onUsageSettings: () -> Unit, onRefresh: () -> Unit) {
     val total = usage.sumOf { it.minutes }
     val maxMin = (usage.maxOfOrNull { it.minutes } ?: 1L).coerceAtLeast(1)
     if (!granted) {
@@ -390,7 +412,11 @@ private fun UsageAppsScreen(usage: List<AppUsage>, granted: Boolean, range: Usag
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            PermissionInfoCard("Unlock app usage", "Allow Usage access in Android settings. Your device decides when you can revoke it.", onUsageSettings)
+            PermissionInfoCard(
+                "Unlock app usage",
+                limitationCopy ?: "Allow Usage access in Android settings.",
+                onUsageSettings
+            )
         }
         return
     }
@@ -529,7 +555,7 @@ private fun ReelsCounterScreen(
         item {
             InfoBanner(
                 icon = Icons.Rounded.Info,
-                text = "Counts Instagram scroll events each day, not verified Reels plays. To show the floating counter, Android also needs Display over other apps permission.",
+                text = REELS_PERMISSION_LIMITATION_COPY,
                 tint = MaterialTheme.colorScheme.primary
             )
         }
@@ -548,7 +574,7 @@ private fun ReelsCounterScreen(
 }
 
 @Composable
-private fun PermissionInfoCard(title: String, description: String, onClick: () -> Unit) {
+internal fun PermissionInfoCard(title: String, description: String, onClick: () -> Unit) {
     PremiumCard(contentPadding = PaddingValues(MomentumTokens.cardPadding)) {
         IconBubble(Icons.Rounded.Security, MaterialTheme.colorScheme.primary, 44.dp)
         Spacer(Modifier.height(10.dp))

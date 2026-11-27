@@ -28,7 +28,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.faheem.habits.core.data.ALL_DAYS
 import com.faheem.habits.core.data.AppDatabase
 import com.faheem.habits.core.data.CustomNotification
@@ -54,6 +54,7 @@ import com.faheem.habits.core.ui.PremiumCard
 import com.faheem.habits.core.ui.PrimaryButton
 import com.faheem.habits.core.ui.SectionHeader
 import kotlinx.coroutines.launch
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.util.Calendar
 
@@ -65,8 +66,8 @@ private val customModes = listOf(
 )
 
 private val customDays = listOf(
-    Calendar.MONDAY to "M", Calendar.TUESDAY to "T", Calendar.WEDNESDAY to "W",
-    Calendar.THURSDAY to "T", Calendar.FRIDAY to "F", Calendar.SATURDAY to "S", Calendar.SUNDAY to "S"
+    DayOfWeek.MONDAY to "M", DayOfWeek.TUESDAY to "T", DayOfWeek.WEDNESDAY to "W",
+    DayOfWeek.THURSDAY to "T", DayOfWeek.FRIDAY to "F", DayOfWeek.SATURDAY to "S", DayOfWeek.SUNDAY to "S"
 )
 
 /** User-created notifications: a compact list with an inline editor. */
@@ -75,7 +76,7 @@ fun CustomNotificationsSection(onChanged: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val dao = remember { AppDatabase.get(context).customNotificationDao() }
-    val notifications by dao.getAll().collectAsState(initial = emptyList())
+    val notifications by dao.getAll().collectAsStateWithLifecycle(initialValue = emptyList())
     var creating by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<CustomNotification?>(null) }
 
@@ -261,7 +262,7 @@ private fun CustomNotificationEditorSheet(
                 SectionHeader("On")
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     customDays.forEach { (day, label) ->
-                        val bit = 1 shl (day - 1)
+                        val bit = CustomNotificationTimeCalculator.bitFor(day)
                         MomentumChip(
                             selected = (daysMask and bit) != 0,
                             onClick = { daysMask = daysMask xor bit },
@@ -335,7 +336,7 @@ private fun customScheduleSummary(context: Context, notification: CustomNotifica
     return when (notification.repeatMode) {
         CustomNotificationTimeCalculator.DAILY -> "Daily · $time"
         CustomNotificationTimeCalculator.WEEKLY -> {
-            val days = customDays.filter { (it.first - 1).let { bit -> (notification.daysMask shr bit) and 1 == 1 } }
+            val days = customDays.filter { (notification.daysMask and CustomNotificationTimeCalculator.bitFor(it.first)) != 0 }
                 .joinToString(", ") { it.second }
             "Weekly · ${days.ifBlank { "No days" }} · $time"
         }

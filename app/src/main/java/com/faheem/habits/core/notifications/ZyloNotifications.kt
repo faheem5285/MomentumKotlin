@@ -2,6 +2,7 @@
 
 package com.faheem.habits.core.notifications
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationChannelGroup
@@ -30,6 +31,7 @@ object ZyloNotifications {
     const val CHANNEL_CUSTOM = "custom_notifications"
     const val CHANNEL_CUSTOM_SILENT = "custom_notifications_silent"
     const val CHANNEL_STATUS = "reminder_status"
+    const val CHANNEL_USAGE_LIMITS = "usage_limits_v2"
     const val CHANNEL_BATTERY_ANIMATION = "charging_animation"
     const val CHANNEL_BATTERY_LISTENER = "background_charging_listener"
     const val CHANNEL_NETWORK = "persistent_network_indicator"
@@ -38,11 +40,13 @@ object ZyloNotifications {
     const val GROUP_TODOS = "zylo.todos"
     const val GROUP_CUSTOM = "zylo.custom"
     const val GROUP_STATUS = "zylo.status"
+    const val GROUP_USAGE = "zylo.usage"
 
     const val SUMMARY_HABITS = 58_001
     const val SUMMARY_TODOS = 58_002
     const val SUMMARY_CUSTOM = 58_003
     const val SUMMARY_STATUS = 58_004
+    const val SUMMARY_USAGE = 58_005
 
     const val EXTRA_TARGET_MODULE = "com.faheem.habits.extra.TARGET_MODULE"
     const val EXTRA_TARGET_ITEM_ID = "com.faheem.habits.extra.TARGET_ITEM_ID"
@@ -93,6 +97,14 @@ object ZyloNotifications {
             manager, CHANNEL_STATUS, "Reminder status", NotificationManager.IMPORTANCE_LOW,
             CHANNEL_GROUP_REMINDERS, "Test reminders and delivery checks."
         )
+        create(
+            manager, CHANNEL_USAGE_LIMITS, "Usage limit alerts", NotificationManager.IMPORTANCE_LOW,
+            CHANNEL_GROUP_REMINDERS, "Silent screen-time and data-limit alerts."
+        ) { channel ->
+            channel.setSound(null, null)
+            channel.enableVibration(false)
+            channel.enableLights(false)
+        }
         create(
             manager, CHANNEL_BATTERY_ANIMATION, "Charging animation",
             NotificationManager.IMPORTANCE_DEFAULT, CHANNEL_GROUP_BACKGROUND,
@@ -156,7 +168,7 @@ object ZyloNotifications {
                     Intent.FLAG_ACTIVITY_SINGLE_TOP
             )
         if (targetModule != null) intent.putExtra(EXTRA_TARGET_MODULE, targetModule)
-            if (targetItemId != null) intent.putExtra(EXTRA_TARGET_ITEM_ID, targetItemId)
+        if (targetItemId != null) intent.putExtra(EXTRA_TARGET_ITEM_ID, targetItemId)
         return PendingIntent.getActivity(
             context,
             requestCode,
@@ -165,7 +177,9 @@ object ZyloNotifications {
         )
     }
 
+    @SuppressLint("MissingPermission")
     fun post(context: Context, id: Int, notification: Notification) {
+        // notificationsAllowed checks POST_NOTIFICATIONS on Android 13+ before posting.
         if (!MomentumNotificationSettings.notificationsAllowed(context)) return
         runCatching { NotificationManagerCompat.from(context).notify(id, notification) }
     }
@@ -183,6 +197,7 @@ object ZyloNotifications {
         syncSummary(context, group, channelId, summaryId, summaryTitle)
     }
 
+    @SuppressLint("MissingPermission")
     fun syncSummary(
         context: Context,
         group: String,
@@ -190,6 +205,7 @@ object ZyloNotifications {
         summaryId: Int,
         summaryTitle: String
     ) {
+        if (!MomentumNotificationSettings.notificationsAllowed(context)) return
         val manager = NotificationManagerCompat.from(context)
         val active = runCatching {
             manager.activeNotifications.count { item ->
@@ -211,6 +227,41 @@ object ZyloNotifications {
         } else {
             manager.cancel(summaryId)
         }
+    }
+
+    /** Silent, grouped alerts for screen-time and data limits. */
+    fun postUsageLimit(context: Context, id: Int, title: String, body: String, targetModule: String) {
+        ensureChannels(context)
+        val notification = base(context, CHANNEL_USAGE_LIMITS)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(openApp(context, id, targetModule))
+            .setGroup(GROUP_USAGE)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
+            .build()
+        postGrouped(
+            context, GROUP_USAGE, CHANNEL_USAGE_LIMITS, id, notification,
+            SUMMARY_USAGE, "Usage alerts"
+        )
+    }
+
+    /** Low-priority status notes, for example when Android blocks a monitor restart. */
+    fun postStatus(context: Context, id: Int, title: String, body: String) {
+        ensureChannels(context)
+        val notification = base(context, CHANNEL_STATUS)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(openApp(context, id))
+            .setGroup(GROUP_STATUS)
+            .setOnlyAlertOnce(true)
+            .build()
+        postGrouped(
+            context, GROUP_STATUS, CHANNEL_STATUS, id, notification,
+            SUMMARY_STATUS, "Zylo status"
+        )
     }
 
     fun cancel(context: Context, id: Int) {

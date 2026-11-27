@@ -16,12 +16,17 @@ import java.math.RoundingMode
 
 /** Versioned JSON backup for non-vault data. Vault plaintext is never read or written here. */
 object MomentumBackup {
-    private const val VERSION = 3
-    private const val CURRENT_SCHEMA = 20
-    private const val PREVIOUS_VERSION = 2
-    private val LEGACY_SCHEMA_VERSIONS = setOf(11, 13)
+    private const val VERSION = BackupFormatPolicy.VERSION
+    private const val CURRENT_SCHEMA = BackupFormatPolicy.CURRENT_SCHEMA
+    private const val FORMAT_VERSION_3 = BackupFormatPolicy.FORMAT_VERSION_3
+    private const val SCHEMA_VERSION_20 = BackupFormatPolicy.SCHEMA_VERSION_20
+    private const val PREVIOUS_VERSION = BackupFormatPolicy.PREVIOUS_VERSION
+    private val LEGACY_SCHEMA_VERSIONS = BackupFormatPolicy.LEGACY_SCHEMAS
     private const val MAX_BYTES = 10 * 1024 * 1024
+    /** Authenticated envelopes add a fixed header and tag to the JSON payload. */
+    private const val MAX_IMPORT_BYTES = MAX_BYTES + 1_024
     private const val MAX_ROWS = 10_000
+    private val BACKUP_TABLE_KEYS = BackupFormatPolicy.TABLE_KEYS
 
     data class Preview(
         val habits: Int,
@@ -32,17 +37,29 @@ object MomentumBackup {
         val rules: Int = 0,
         val notifications: Int = 0,
         val contacts: Int = 0,
-        val recordCount: Int = 0
+        val vocabulary: Int = 0,
+        val grammar: Int = 0,
+        val translations: Int = 0,
+        val recordCount: Int = 0,
+        val encrypted: Boolean = false
     )
 
-    suspend fun export(context: Context, destination: Uri) = withContext(Dispatchers.IO) {
-        val bytes = exportBytes(context)
-        require(bytes.size <= MAX_BYTES) { "Backup is larger than the 10 MB safety limit." }
+    suspend fun export(
+        context: Context,
+        destination: Uri,
+        passphrase: CharArray? = null
+    ) = withContext(Dispatchers.IO) {
+        val bytes = exportBytes(context, passphrase = passphrase)
+        require(bytes.size <= MAX_IMPORT_BYTES) { "Backup is larger than the 10 MB safety limit." }
         val output = context.contentResolver.openOutputStream(destination, "w") ?: error("Could not open the selected backup destination.")
         output.use { it.write(bytes) }
     }
 
-    suspend fun exportBytes(context: Context, db: AppDatabase = AppDatabase.get(context)): ByteArray = withContext(Dispatchers.IO) {
+    suspend fun exportBytes(
+        context: Context,
+        db: AppDatabase = AppDatabase.get(context),
+        passphrase: CharArray? = null
+    ): ByteArray = withContext(Dispatchers.IO) {
         val (settingsBackup, budgetBackup) = MomentumSettingsBackup(context).exportPreferences()
         val root = db.withTransaction {
             val result = JSONObject()
@@ -165,6 +182,38 @@ object MomentumBackup {
                         .put("lastDeliveredEpochMillis", n.lastDeliveredEpochMillis)
                 )
             }
+            val vocabularyWords = JSONArray()
+            db.vocabularyDao().allForExport().forEach { word ->
+                vocabularyWords.put(JSONObject()
+                    .put("id", word.id).put("word", word.word).put("meaning", word.meaning)
+                    .put("partOfSpeech", word.partOfSpeech).put("example", word.example)
+                    .put("language", word.language).put("tags", word.tags)
+                    .put("difficulty", word.difficulty).put("mastered", word.mastered)
+                    .put("createdAt", word.createdAt).put("updatedAt", word.updatedAt))
+            }
+            val grammarNotes = JSONArray()
+            db.grammarNoteDao().allForExport().forEach { note ->
+                grammarNotes.put(JSONObject()
+                    .put("id", note.id).put("title", note.title).put("category", note.category)
+                    .put("explanation", note.explanation).put("correctExample", note.correctExample)
+                    .put("incorrectExample", note.incorrectExample).put("commonMistake", note.commonMistake)
+                    .put("pinned", note.pinned).put("tags", note.tags).put("updatedAt", note.updatedAt))
+            }
+            val reviewStates = JSONArray()
+            db.reviewStateDao().allForExport().forEach { state ->
+                reviewStates.put(JSONObject()
+                    .put("wordId", state.wordId).put("box", state.box)
+                    .put("nextReviewAt", state.nextReviewAt).put("lastReviewedAt", state.lastReviewedAt)
+                    .put("correctCount", state.correctCount).put("reviewCount", state.reviewCount))
+            }
+            val translationHistory = JSONArray()
+            db.translationHistoryDao().allForExport().forEach { item ->
+                translationHistory.put(JSONObject()
+                    .put("id", item.id).put("sourceLanguage", item.sourceLanguage)
+                    .put("targetLanguage", item.targetLanguage).put("sourceText", item.sourceText)
+                    .put("translatedText", item.translatedText).put("createdAt", item.createdAt)
+                    .put("favorite", item.favorite))
+            }
             result.put("habits",habits).put("completions",completions).put("habitSkips",habitSkips)
                 .put("reminders",reminders)
                 .put("expenses",expenses).put("loans",loans).put("files",files).put("todos",todos)
@@ -173,22 +222,26 @@ object MomentumBackup {
                 .put("categoryBudgets", categoryBudgets)
                 .put("lifeRules", lifeRules).put("lifeRuleFiles", lifeRuleFiles)
                 .put("customNotifications", customNotifications)
+                .put("vocabularyWords", vocabularyWords).put("grammarNotes", grammarNotes)
+                .put("reviewStates", reviewStates).put("translationHistory", translationHistory)
                 .put("budgets", budgetBackup)
                 .put("settings", settingsBackup)
             result
         }
         val bytes = root.toString(2).toByteArray(Charsets.UTF_8)
         require(bytes.size <= MAX_BYTES) { "Backup is larger than the 10 MB safety limit." }
-        bytes
+        val secret = passphrase?.takeIf { it.isNotEmpty() }
+        if (secret == null) bytes else PortableBackupCrypto.encrypt(bytes, secret)
     }
 
-    suspend fun preview(context: Context, source: Uri): Preview = withContext(Dispatchers.IO) {
-        val root = readRoot(context, source)
-        val keys = listOf(
-            "habits", "completions", "habitSkips", "reminders", "expenses", "categoryBudgets",
-            "contacts", "loanPeople", "loans", "loanAttachments", "loanPayments", "files",
-            "todos", "lifeRules", "lifeRuleFiles", "customNotifications"
-        )
+    suspend fun preview(
+        context: Context,
+        source: Uri,
+        passphrase: CharArray? = null
+    ): Preview = withContext(Dispatchers.IO) {
+        val packed = readBytes(context, source)
+        val root = parseRoot(decodeBytes(packed, passphrase))
+        val keys = BACKUP_TABLE_KEYS
         Preview(
             habits = root.getJSONArray("habits").length(),
             expenses = root.getJSONArray("expenses").length(),
@@ -198,16 +251,32 @@ object MomentumBackup {
             rules = root.optJSONArray("lifeRules")?.length() ?: 0,
             notifications = root.optJSONArray("customNotifications")?.length() ?: 0,
             contacts = root.optJSONArray("contacts")?.length() ?: 0,
-            recordCount = keys.sumOf { root.optJSONArray(it)?.length() ?: 0 }
+            vocabulary = root.optJSONArray("vocabularyWords")?.length() ?: 0,
+            grammar = root.optJSONArray("grammarNotes")?.length() ?: 0,
+            translations = root.optJSONArray("translationHistory")?.length() ?: 0,
+            recordCount = keys.sumOf { root.optJSONArray(it)?.length() ?: 0 },
+            encrypted = PortableBackupCrypto.isEncrypted(packed)
         )
     }
 
-    suspend fun restore(context: Context, source: Uri, replace: Boolean): String = withContext(Dispatchers.IO) {
-        restoreRoot(context, readRoot(context, source), replace, AppDatabase.get(context))
+    suspend fun restore(
+        context: Context,
+        source: Uri,
+        replace: Boolean,
+        passphrase: CharArray? = null
+    ): String = withContext(Dispatchers.IO) {
+        restoreRoot(context, parseRoot(decodeBytes(readBytes(context, source), passphrase)),
+            replace, AppDatabase.get(context))
     }
 
-    internal suspend fun restoreBytes(context: Context, bytes: ByteArray, replace: Boolean, db: AppDatabase = AppDatabase.get(context)): String = withContext(Dispatchers.IO) {
-        restoreRoot(context, parseRoot(bytes), replace, db)
+    internal suspend fun restoreBytes(
+        context: Context,
+        bytes: ByteArray,
+        replace: Boolean,
+        db: AppDatabase = AppDatabase.get(context),
+        passphrase: CharArray? = null
+    ): String = withContext(Dispatchers.IO) {
+        restoreRoot(context, parseRoot(decodeBytes(bytes, passphrase)), replace, db)
     }
 
     private suspend fun restoreRoot(context: Context, root: JSONObject, replace: Boolean, db: AppDatabase): String {
@@ -218,6 +287,9 @@ object MomentumBackup {
                 db.loanDao().deleteAllPeople(); db.contactDao().deleteAll()
                 db.expenseDao().deleteAllBudgets(); db.lifeRuleDao().deleteAll()
                 db.customNotificationDao().deleteAll()
+                db.vocabularyDao().deleteAll(); db.grammarNoteDao().deleteAll()
+                db.reviewStateDao().deleteAll(); db.translationHistoryDao().clear()
+                db.syncStateDao().deleteAll()
                 db.habitDao().deleteAllReminders(); db.habitDao().deleteAllCompletions(); db.habitDao().deleteAllHabits()
             }
             val habitIds = mutableMapOf<String, Int>()
@@ -432,13 +504,125 @@ object MomentumBackup {
                     added++
                 }
             }
+            fun wordKey(language: String, word: String) =
+                "${language.trim().lowercase()}\u0000${word.trim().lowercase()}"
+
+            fun noteKey(category: String, title: String) =
+                "${category.trim().lowercase()}\u0000${title.trim().lowercase()}"
+
+            fun translationKey(sourceLanguage: String, targetLanguage: String, sourceText: String) =
+                "${sourceLanguage.trim().lowercase()}\u0000${targetLanguage.trim().lowercase()}\u0000$sourceText"
+
+            val importedWordIds = mutableMapOf<Long, Long>()
+            val existingWordIds: MutableMap<String, Long> = if (replace) mutableMapOf()
+            else db.vocabularyDao().allForExport()
+                .associateBy { wordKey(it.language, it.word) }
+                .mapValues { (_, word) -> word.id }
+                .toMutableMap()
+            root.optJSONArray("vocabularyWords")?.let { words ->
+                for (i in 0 until words.length()) {
+                    val o = words.getJSONObject(i)
+                    val word = o.getString("word")
+                    require(word.isNotBlank() && word.length <= 300) { "Invalid vocabulary word." }
+                    val language = o.optString("language", "en")
+                    val key = wordKey(language, word)
+                    val backupId = o.optLong("id", 0L)
+                    val existingId = existingWordIds[key]
+                        ?: backupId.takeIf { replace && it > 0 }
+                    val row = VocabularyWord(
+                        id = existingId ?: 0L,
+                        word = word, meaning = o.optString("meaning"),
+                        partOfSpeech = o.optString("partOfSpeech"), example = o.optString("example"),
+                        language = language, tags = o.optString("tags"),
+                        difficulty = o.optInt("difficulty", 1).coerceIn(1, 5),
+                        mastered = o.optBoolean("mastered"),
+                        createdAt = o.optLong("createdAt", System.currentTimeMillis()),
+                        updatedAt = o.optLong("updatedAt", System.currentTimeMillis())
+                    )
+                    val id = db.vocabularyDao().upsert(row)
+                    if (existingId == null) added++
+                    existingWordIds[key] = id
+                    importedWordIds[backupId] = id
+                }
+            }
+            val existingNoteIds: MutableMap<String, Long> = if (replace) mutableMapOf()
+            else db.grammarNoteDao().allForExport()
+                .associateBy { noteKey(it.category, it.title) }
+                .mapValues { (_, note) -> note.id }
+                .toMutableMap()
+            root.optJSONArray("grammarNotes")?.let { notes ->
+                for (i in 0 until notes.length()) {
+                    val o = notes.getJSONObject(i)
+                    val title = o.getString("title")
+                    require(title.isNotBlank() && title.length <= 300) { "Invalid grammar note." }
+                    val category = o.optString("category", "Other")
+                    val key = noteKey(category, title)
+                    val backupId = o.optLong("id", 0L)
+                    val existingId = existingNoteIds[key]
+                        ?: backupId.takeIf { replace && it > 0 }
+                    val savedId = db.grammarNoteDao().upsert(GrammarNote(
+                        id = existingId ?: 0L,
+                        title = title, category = category,
+                        explanation = o.optString("explanation"), correctExample = o.optString("correctExample"),
+                        incorrectExample = o.optString("incorrectExample"),
+                        commonMistake = o.optBoolean("commonMistake"), pinned = o.optBoolean("pinned"),
+                        tags = o.optString("tags"), updatedAt = o.optLong("updatedAt", System.currentTimeMillis())
+                    ))
+                    if (existingId == null) added++
+                    existingNoteIds[key] = savedId
+                }
+            }
+            root.optJSONArray("reviewStates")?.let { states ->
+                for (i in 0 until states.length()) {
+                    val o = states.getJSONObject(i)
+                    val backupWordId = o.getLong("wordId")
+                    val wordId = importedWordIds[backupWordId]
+                        ?: backupWordId.takeIf { db.vocabularyDao().get(it) != null }
+                        ?: error("Review state refers to a missing word.")
+                    val hadReview = db.reviewStateDao().get(wordId) != null
+                    db.reviewStateDao().upsert(ReviewState(
+                        wordId = wordId, box = o.optInt("box").coerceIn(0, 10),
+                        nextReviewAt = o.optLong("nextReviewAt"), lastReviewedAt = o.optLong("lastReviewedAt"),
+                        correctCount = o.optInt("correctCount").coerceAtLeast(0),
+                        reviewCount = o.optInt("reviewCount").coerceAtLeast(0)
+                    ))
+                    if (!hadReview) added++
+                }
+            }
+            val existingTranslationIds: MutableMap<String, Long> = if (replace) mutableMapOf()
+            else db.translationHistoryDao().allForExport().associateBy {
+                translationKey(it.sourceLanguage, it.targetLanguage, it.sourceText)
+            }.mapValues { (_, item) -> item.id }.toMutableMap()
+            root.optJSONArray("translationHistory")?.let { history ->
+                for (i in 0 until history.length()) {
+                    val o = history.getJSONObject(i)
+                    val source = o.getString("sourceText")
+                    require(source.length <= 4_000) { "Invalid translation record." }
+                    val sourceLanguage = o.optString("sourceLanguage", "en")
+                    val targetLanguage = o.optString("targetLanguage", "en")
+                    val key = translationKey(sourceLanguage, targetLanguage, source)
+                    val backupId = o.optLong("id", 0L)
+                    val existingId = existingTranslationIds[key]
+                        ?: backupId.takeIf { replace && it > 0 }
+                    val savedId = db.translationHistoryDao().insert(TranslationHistory(
+                        id = existingId ?: 0L,
+                        sourceLanguage = sourceLanguage,
+                        targetLanguage = targetLanguage,
+                        sourceText = source, translatedText = o.optString("translatedText"),
+                        createdAt = o.optLong("createdAt", System.currentTimeMillis()),
+                        favorite = o.optBoolean("favorite")
+                    ))
+                    if (existingId == null) added++
+                    existingTranslationIds[key] = savedId
+                }
+            }
             MomentumSettingsBackup(context).importPreferences(
                 root.optJSONObject("settings"),
                 root.optJSONObject("budgets"),
                 replace
             )
         }
-        return "${if(replace) "Replaced with" else "Added"} $added records. Vault entries are kept separately and were not imported."
+        return "${if(replace) "Replaced with" else "Added"} $added records, including language study data. Vault entries are kept separately and were not imported."
     }
 
     private suspend fun lifeRulesJson(db: AppDatabase): JSONArray {
@@ -458,11 +642,32 @@ object MomentumBackup {
     private fun validUuid(obj: JSONObject, key: String = "uuid"): String {
         val value=obj.optString(key); require(value.length in 1..64 && runCatching { UUID.fromString(value); true }.getOrDefault(false)) { "Missing or invalid UUID." }; return value
     }
-    private fun readRoot(context: Context, source: Uri): JSONObject {
-        val input=context.contentResolver.openInputStream(source) ?: error("Could not open the selected backup file.")
-        val bytes=input.use { stream -> val out=ByteArrayOutputStream(); val buffer=ByteArray(8192); var total=0; while(true) { val n=stream.read(buffer); if(n<0) break; total+=n; require(total<=MAX_BYTES) { "Backup exceeds the 10 MB safety limit." }; out.write(buffer,0,n) }; out.toByteArray() }
-        return parseRoot(bytes)
+    private fun readBytes(context: Context, source: Uri): ByteArray {
+        val input = context.contentResolver.openInputStream(source)
+            ?: error("Could not open the selected backup file.")
+        return input.use { stream ->
+            val out = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            var total = 0
+            while (true) {
+                val count = stream.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= MAX_IMPORT_BYTES) { "Backup exceeds the 10 MB safety limit." }
+                out.write(buffer, 0, count)
+            }
+            out.toByteArray()
+        }
     }
+
+    private fun decodeBytes(bytes: ByteArray, passphrase: CharArray?): ByteArray =
+        if (PortableBackupCrypto.isEncrypted(bytes)) {
+            val secret = passphrase?.takeIf { it.isNotEmpty() }
+                ?: error("This backup is encrypted. Enter its backup password.")
+            PortableBackupCrypto.decrypt(bytes, secret)
+        } else {
+            bytes
+        }
 
     private fun parseRoot(bytes: ByteArray): JSONObject {
         val root=JSONObject(bytes.toString(Charsets.UTF_8)); require(root.optString("format")=="momentum-backup") { "This is not a Momentum backup." }
@@ -473,6 +678,13 @@ object MomentumBackup {
                     "This backup version is not supported."
                 }
                 upgradeV2(root)
+                upgradeV3(root)
+            }
+            FORMAT_VERSION_3 -> {
+                require(root.optInt("schemaVersion",-1)==SCHEMA_VERSION_20) {
+                    "This backup version is not supported."
+                }
+                upgradeV3(root)
             }
             VERSION -> require(root.optInt("schemaVersion",-1)==CURRENT_SCHEMA) {
                 "This backup version is not supported."
@@ -480,11 +692,7 @@ object MomentumBackup {
             else -> error("This backup version is not supported.")
         }
         require(root.optLong("exportedAt",0)>0) { "Backup timestamp is missing." }
-        listOf(
-            "habits","completions","habitSkips","reminders","expenses","categoryBudgets",
-            "contacts","loanPeople","loans","loanAttachments","loanPayments","files",
-            "todos","lifeRules","lifeRuleFiles","customNotifications"
-        ).forEach { key ->
+        BACKUP_TABLE_KEYS.forEach { key ->
             val rows=root.optJSONArray(key) ?: error("Backup is missing '$key' data.")
             require(rows.length()<=MAX_ROWS) { "Too many records in '$key'." }
         }
@@ -520,6 +728,13 @@ object MomentumBackup {
         if (!root.has("customNotifications")) root.put("customNotifications",JSONArray())
         if (!root.has("budgets")) root.put("budgets",JSONObject())
         if (!root.has("settings")) root.put("settings",JSONObject())
-        root.put("formatVersion",VERSION).put("schemaVersion",CURRENT_SCHEMA)
+        root.put("formatVersion",FORMAT_VERSION_3).put("schemaVersion",SCHEMA_VERSION_20)
+    }
+
+    /** v4 adds language study tables while preserving all earlier JSON payloads. */
+    private fun upgradeV3(root: JSONObject) {
+        listOf("vocabularyWords", "grammarNotes", "reviewStates", "translationHistory")
+            .forEach { key -> if (!root.has(key)) root.put(key, JSONArray()) }
+        root.put("formatVersion", VERSION).put("schemaVersion", CURRENT_SCHEMA)
     }
 }

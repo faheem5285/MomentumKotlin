@@ -60,16 +60,22 @@ fun needsVaultAttention(item: VaultListItem, allItems: List<VaultListItem>): Boo
 
 val vaultCategories = listOf("All", "Google", "Social", "Banking", "Work", "Shopping", "Other")
 
+private val GOOGLE_KEYWORDS = listOf("google", "gmail", "youtube", "android")
+private val SOCIAL_KEYWORDS = listOf("facebook", "instagram", "twitter", "x.com", "tiktok", "linkedin", "snapchat")
+private val BANKING_KEYWORDS = listOf("bank", "paypal", "stripe", "finance", "wallet", "credit")
+private val WORK_KEYWORDS = listOf("office", "slack", "teams", "work", "notion", "jira", "github")
+private val SHOPPING_KEYWORDS = listOf("amazon", "ebay", "shop", "store", "walmart")
+
 fun inferredVaultCategory(secret: VaultSecret): String {
     if (secret.type == "note") return "Other"
     if (secret.category != "Other") return secret.category
     val text = "${secret.title} ${secret.website}".lowercase()
     return when {
-        listOf("google", "gmail", "youtube", "android").any(text::contains) -> "Google"
-        listOf("facebook", "instagram", "twitter", "x.com", "tiktok", "linkedin", "snapchat").any(text::contains) -> "Social"
-        listOf("bank", "paypal", "stripe", "finance", "wallet", "credit").any(text::contains) -> "Banking"
-        listOf("office", "slack", "teams", "work", "notion", "jira", "github").any(text::contains) -> "Work"
-        listOf("amazon", "ebay", "shop", "store", "walmart").any(text::contains) -> "Shopping"
+        GOOGLE_KEYWORDS.any(text::contains) -> "Google"
+        SOCIAL_KEYWORDS.any(text::contains) -> "Social"
+        BANKING_KEYWORDS.any(text::contains) -> "Banking"
+        WORK_KEYWORDS.any(text::contains) -> "Work"
+        SHOPPING_KEYWORDS.any(text::contains) -> "Shopping"
         else -> "Other"
     }
 }

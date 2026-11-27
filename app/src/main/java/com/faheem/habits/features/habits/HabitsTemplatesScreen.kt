@@ -33,12 +33,19 @@ fun TemplatesScreen(vm: HabitViewModel) {
     val ctx = LocalContext.current
     var query by remember { mutableStateOf("") }
     var cat by remember { mutableStateOf("All") }
+    var showAdded by remember { mutableStateOf(false) }
 
-    val existing = all.filter { !it.habit.archived }.map { it.habit.name.lowercase() }.toSet()
-    val shown = HabitTemplates.filter {
+    val existing = all
+        .filter { !it.habit.archived }
+        .map { it.habit.name.trim().lowercase() }
+        .toSet()
+    val matching = HabitTemplates.filter {
         (cat == "All" || it.category == cat) &&
             (query.isBlank() || it.name.contains(query, ignoreCase = true) || it.what.contains(query, ignoreCase = true))
     }
+    val available = filterHabitTemplatesByAddedState(matching, existing, showAdded = false)
+    val added = filterHabitTemplatesByAddedState(matching, existing, showAdded = true)
+    val shown = if (showAdded) added else available
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -47,7 +54,7 @@ fun TemplatesScreen(vm: HabitViewModel) {
     ) {
         item {
             HeroCard(contentPadding = 18.dp) {
-                Text("Habit library", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
+                HeroCaption("Habit library")
                 Text("${HabitTemplates.size} ready-made habits", fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -66,19 +73,56 @@ fun TemplatesScreen(vm: HabitViewModel) {
             )
         }
         item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MomentumChip(
+                    selected = !showAdded,
+                    onClick = { showAdded = false },
+                    label = "Available ${available.size}"
+                )
+                MomentumChip(
+                    selected = showAdded,
+                    onClick = { showAdded = true },
+                    label = "Added ${added.size}"
+                )
+            }
+        }
+        item {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 (listOf("All") + TemplateCategories).forEach { c ->
                     MomentumChip(selected = cat == c, onClick = { cat = c }, label = c)
                 }
             }
         }
-        item { SectionHeader(if (cat == "All") "All habits" else cat, subtitle = "${shown.size} to explore") }
+        item {
+            SectionHeader(
+                if (showAdded) "Added habits" else "Available habits",
+                subtitle = "${shown.size} ${if (showAdded) "added" else "to explore"}"
+            )
+        }
         if (shown.isEmpty()) {
-            item { EmptyState(Icons.Rounded.Search, "No match", "Try another word or category") }
+            if (matching.isEmpty()) {
+                item { EmptyState(Icons.Rounded.Search, "No match", "Try another word or category") }
+            } else if (showAdded) {
+                item {
+                    EmptyState(
+                        Icons.Rounded.Add,
+                        "No added habits here",
+                        "Add a habit from Available or change your search or category"
+                    )
+                }
+            } else {
+                item {
+                    EmptyState(
+                        Icons.Rounded.CheckCircle,
+                        "All matching habits are in Today",
+                        "Choose another category or search for a different habit"
+                    )
+                }
+            }
         }
         items(shown, key = { it.name }) { tpl ->
             val color = habitColor(categoryColorIndex(tpl.category))
-            val added = tpl.name.lowercase() in existing
+            val isAdded = tpl.name.trim().lowercase() in existing
             PremiumCard(
                 modifier = Modifier.animateItem(),
                 accent = color,
@@ -95,7 +139,7 @@ fun TemplatesScreen(vm: HabitViewModel) {
                             fontSize = 14.sp
                         )
                         Spacer(Modifier.width(8.dp))
-                        if (added) {
+                        if (isAdded) {
                             MomentumChip(
                                 selected = true,
                                 onClick = {},

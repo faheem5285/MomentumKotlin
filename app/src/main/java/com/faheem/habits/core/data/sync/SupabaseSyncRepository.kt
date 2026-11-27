@@ -13,14 +13,18 @@ package com.faheem.habits.core.data.sync
 import android.content.Context
 import androidx.room.withTransaction
 import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.faheem.habits.core.data.*
+import com.faheem.habits.core.data.backup.LocalBackupCrypto
 import com.faheem.habits.core.data.backup.MomentumBackup
 import com.faheem.habits.core.data.supabase.SupabaseRestClient
 import com.faheem.habits.core.data.supabase.SupabaseAuthApi
+import com.faheem.habits.core.data.supabase.HttpErrorSanitizer
 import com.faheem.habits.features.vault.VaultCrypto
 import com.faheem.habits.core.ui.AppModule
 import java.io.File
@@ -28,6 +32,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeParseException
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -38,6 +43,7 @@ private const val SYNC_EPOCH = "1970-01-01T00:00:00Z"
 private const val PULL_PAGE = 200
 private const val PUSH_BATCH = 100
 private const val SYNC_WORK_NAME = "momentum-sync"
+private const val SYNC_PERIODIC_WORK_NAME = "momentum-sync-periodic"
 private val syncRunMutex = Mutex()
 private suspend fun <T> withSyncLock(block: suspend () -> T): T =
     syncRunMutex.withLock { withContext(Dispatchers.IO) { block() } }
@@ -101,7 +107,7 @@ class SupabaseSyncRepository(
             )
             pushed + pulled
         } catch (failure: Exception) {
-            stateDao.upsert(old.copy(lastError = failure.message?.take(300)))
+            stateDao.upsert(old.copy(lastError = HttpErrorSanitizer.forDisplay(failure.message)))
             throw failure
         }
     }
@@ -133,7 +139,7 @@ class SupabaseSyncRepository(
                 if (table != null) {
                     val stateDao = db.syncStateDao()
                     val state = stateDao.get(table) ?: SyncState(table)
-                    stateDao.upsert(state.copy(lastError = failure.message?.take(300)))
+                    stateDao.upsert(state.copy(lastError = HttpErrorSanitizer.forDisplay(failure.message)))
                 }
             }
         }
@@ -167,7 +173,7 @@ class SupabaseSyncRepository(
             conflicts += tableConflicts
             pulled += tablePulled
             stateDao.upsert(old.copy(cursor = cursor, pendingCount = dirtyCount(table),
-                conflictCount = old.conflictCount + tableConflicts, lastSyncEpochMillis = System.currentTimeMillis(),
+                conflictCount = tableConflicts, lastSyncEpochMillis = System.currentTimeMillis(),
                 lastError = null))
         }
 
@@ -295,13 +301,12 @@ class SupabaseSyncRepository(
             }
         }
         if (SyncModuleSettings.isEnabled(context, SyncModule.Files)) attempt { fileStorage.restoreMissingFiles() }
-        failures.firstOrNull()?.let {
-            throw it
-        }
+        failures.firstOrNull()?.let { throw it }
+        if (SyncModuleSettings.isEnabled(context, SyncModule.Files)) fileStorage.deleteTombstonedObjects()
         val statusDao = db.syncStateDao()
         val status = statusDao.get(SYNC_STATUS_TABLE) ?: SyncState(SYNC_STATUS_TABLE)
         statusDao.upsert(status.copy(lastSyncEpochMillis = System.currentTimeMillis(), lastError = null))
-        SyncRunResult(pushed, pulled, conflicts, pending = 0)
+        SyncRunResult(pushed, pulled, conflicts, pending = SupabaseSyncScheduler.pendingCount(db))
     }
 
     suspend fun setPaused(paused: Boolean) {
@@ -348,14 +353,11 @@ class SupabaseSyncRepository(
         val appModule = if (module == SyncModule.Reminders) AppModule.Settings else AppModule.valueOf(module.name)
         val tables = moduleTables(appModule)
         require(tables.isNotEmpty()) { "${module.label} has no synced data." }
-        val userId = SupabaseAuthApi.currentUserId(context)
-            ?: error("Sign in before deleting synced module data.")
-        val preferences = context.getSharedPreferences(PENDING_DELETE_PREFS, Context.MODE_PRIVATE)
-        val key = pendingDeleteKey(userId)
-        val pending = preferences.getStringSet(key, emptySet()).orEmpty().toMutableSet()
-        pending += tables
-        if (module == SyncModule.Vault) pending += PENDING_VAULT_KEYS
-        preferences.edit().putStringSet(key, pending).commit()
+        require(!SupabaseAuthApi.currentUserId(context).isNullOrBlank()) {
+            "Sign in before deleting synced module data."
+        }
+        val store = PendingCloudDeleteStore(context)
+        store.enqueue(if (module == SyncModule.Vault) tables + PENDING_VAULT_KEYS else tables)
 
         val database = db.openHelper.writableDatabase
         database.beginTransaction()
@@ -370,14 +372,10 @@ class SupabaseSyncRepository(
     }
 
     private suspend fun runPendingModuleDeletes() {
-        val userId = SupabaseAuthApi.currentUserId(context) ?: return
-        val preferences = context.getSharedPreferences(PENDING_DELETE_PREFS, Context.MODE_PRIVATE)
-        val key = pendingDeleteKey(userId)
-        val pending = preferences.getStringSet(key, emptySet()).orEmpty().toMutableSet()
-        for (table in pending.toList()) {
+        val store = runCatching { PendingCloudDeleteStore(context) }.getOrNull() ?: return
+        for (table in store.pending().toList()) {
             if (table == PENDING_VAULT_KEYS) client.deleteAllVaultKeys() else client.deleteAll(table)
-            pending.remove(table)
-            preferences.edit().putStringSet(key, pending).commit()
+            store.complete(table)
         }
     }
 
@@ -413,95 +411,112 @@ class SupabaseSyncRepository(
 
     private suspend fun applyHabit(r: JsonObject): Int {
         val old = db.habitDao().getHabitByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
         db.habitDao().upsertHabit(r.habit(old?.id ?: 0)); return 0
     }
     private suspend fun applyCompletion(r: JsonObject): Int {
         val habit = db.habitDao().getHabitByUuid(r.string("habit_id")) ?: return 0
         val old = db.habitDao().getCompletionByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
         db.habitDao().upsertCompletion(r.completion(habit.id, old?.let { it.habitId to it.epochDay }?.second ?: r.long("epoch_day"))); return 0
     }
     private suspend fun applySkip(r: JsonObject): Int {
         val habit = db.habitDao().getHabitByUuid(r.string("habit_id")) ?: return 0
         val old = db.habitDao().getSkipByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to it.deviceId }, r)) return if (old?.dirty == true) 1 else 0
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to it.deviceId }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
         db.habitDao().upsertSkipForSync(r.skip(habit.id)); return 0
     }
     private suspend fun applyReminder(r: JsonObject): Int {
         val habit = db.habitDao().getHabitByUuid(r.string("habit_id")) ?: return 0
         val old = db.habitDao().getReminderByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
         db.habitDao().upsertReminderForSync(r.reminder(habit.id, old?.id ?: 0)); return 0
     }
     private suspend fun applyExpense(r: JsonObject): Int {
         val old = db.expenseDao().getByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
         db.expenseDao().upsertExpense(r.expense(old?.id ?: 0)); return 0
     }
     private suspend fun applyContact(r: JsonObject): Int {
         val old = db.contactDao().getByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
         db.contactDao().upsertForSync(r.contact(old?.id ?: 0)); return 0
     }
     private suspend fun applyLoanPerson(r: JsonObject): Int {
         val old = db.loanDao().getPersonByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
         db.loanDao().upsertPersonForSync(r.loanPerson(old?.id ?: 0)); return 0
     }
     private suspend fun applyBudget(r: JsonObject): Int {
         val old = db.expenseDao().getBudgetByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to it.deviceId }, r)) return if (old?.dirty == true) 1 else 0
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to it.deviceId }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
         db.expenseDao().upsertBudget(r.budget()); return 0
     }
     private suspend fun applyLoan(r: JsonObject): Int {
         val old = db.loanDao().getByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
         val personId = r.string("person_id").takeIf { it.isNotBlank() }?.let { db.loanDao().getPersonByUuid(it)?.id }
         db.loanDao().upsertLoan(r.loan(old?.id ?: 0, personId)); return 0
     }
     private suspend fun applyLoanAttachment(r: JsonObject): Int {
         val old = db.loanDao().getAttachmentByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
         val loan = db.loanDao().getByUuid(r.string("loan_id")) ?: return 0
         db.loanDao().upsertAttachmentForSync(r.loanAttachment(loan.id, old?.id ?: 0)); return 0
     }
     private suspend fun applyPayment(r: JsonObject): Int {
         val loan = db.loanDao().getByUuid(r.string("loan_id")) ?: return 0
         val old = db.loanDao().getPaymentByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to it.deviceId }, r)) return if (old?.dirty == true) 1 else 0
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to it.deviceId }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
         db.loanDao().upsertPayment(r.payment(loan.id, old?.id ?: 0)); return 0
     }
     private suspend fun applyFile(r: JsonObject): Int {
         val old = db.fileDao().getByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
         db.fileDao().upsertForSync(r.file(old?.id ?: 0)); return 0
     }
     private suspend fun applyTodo(r: JsonObject): Int {
         val old = db.toDoDao().getByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
-        val parent = r["parent_id"]?.jsonPrimitive?.contentOrNull?.let { db.toDoDao().getByUuid(it)?.id }
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
+        val parent = r["parent_id"].primitiveContentOrNull()?.let { db.toDoDao().getByUuid(it)?.id }
         db.toDoDao().upsertForSync(r.todo(old?.id ?: 0, parent)); return 0
     }
     private suspend fun applyLifeRule(r: JsonObject): Int {
         val old = db.lifeRuleDao().getByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
         db.lifeRuleDao().upsertForSync(r.lifeRule(old?.id ?: 0)); return 0
     }
     private suspend fun applyLifeRuleFile(r: JsonObject): Int {
         val old = db.lifeRuleDao().getFileByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
         val rule = db.lifeRuleDao().getByUuid(r.string("rule_id")) ?: return 0
         db.lifeRuleDao().upsertFileForSync(r.lifeRuleFile(rule.id, old?.id ?: 0)); return 0
     }
     private suspend fun applyCustomNotification(r: JsonObject): Int {
         val old = db.customNotificationDao().getByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, r)) return if (old?.dirty == true) 1 else 0
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to "" }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
         db.customNotificationDao().upsertForSync(r.customNotification(old?.id ?: 0)); return 0
     }
     private suspend fun applyVault(r: JsonObject): Int {
         val old = db.vaultDao().getByUuid(r.string("id"))
-        if (!accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to it.deviceId }, r)) return if (old?.dirty == true) 1 else 0
+        val decision = accept(old?.updatedAt, old?.dirty == true, old?.let { it.updatedAt to it.deviceId }, old?.deleted == true, r)
+        if (!decision.applyRemote) return decision.conflictCount()
         db.vaultDao().upsert(r.vault(old?.id ?: 0)); return 0
     }
 
@@ -513,19 +528,47 @@ class SupabaseSyncRepository(
             false
         }
 
-    private fun accept(localTime: Long?, dirty: Boolean, local: Pair<Long, String>?, r: JsonObject): Boolean {
-        if (localTime == null) return true
-        val localCandidate = local ?: return true
-        val remote = SyncCandidate(r.string("id"), r.instantMillis("updated_at"), r.string("device_id"), r.deleted())
-        val candidate = SyncCandidate(
-            r.string("id"), localCandidate.first,
-            localCandidate.second.ifBlank { DeviceIdentity.get(context) }, false
+    private fun accept(
+        localTime: Long?,
+        dirty: Boolean,
+        local: Pair<Long, String>?,
+        localDeleted: Boolean,
+        r: JsonObject
+    ): SyncDecision {
+        if (localTime == null || local == null) return SyncDecision(applyRemote = true)
+        val localCandidate = SyncCandidate(
+            r.string("id"),
+            local.first,
+            local.second.ifBlank { DeviceIdentity.get(context) },
+            localDeleted,
+            dirty
         )
-        return remote.winsOver(candidate)
+        val remote = SyncCandidate(
+            r.string("id"),
+            r.instantMillis("updated_at"),
+            r.string("device_id"),
+            r.deleted()
+        )
+        return decideRemote(localCandidate, remote)
     }
-    private suspend fun createFirstSyncBackup() {
-        val marker = File(context.filesDir, "sync-first-local-backup.json")
-        if (!marker.exists()) marker.outputStream().use { it.write(MomentumBackup.exportBytes(context)) }
+
+    private fun SyncDecision.conflictCount(): Int = if (conflict) 1 else 0
+    /**
+     * One bounded, encrypted snapshot per account before its first sync. The
+     * old plaintext marker is removed on sight. Account ids are hashed in the
+     * filename so no email or UUID is written to disk in plain text.
+     */
+    private suspend fun createFirstSyncBackup() = withContext(Dispatchers.IO) {
+        val legacy = File(context.filesDir, FirstSyncBackup.LEGACY_PLAINTEXT_FILE)
+        if (legacy.exists()) legacy.delete()
+        val marker = File(context.filesDir, FirstSyncBackup.fileNameForAccount(AppDatabase.activeUserId(context)))
+        if (marker.exists()) return@withContext
+        val bytes = MomentumBackup.exportBytes(context)
+        require(bytes.size <= FirstSyncBackup.MAX_BYTES) { "Backup is larger than the 10 MB safety limit." }
+        val encrypted = LocalBackupCrypto.encrypt(context, bytes)
+        val temporary = File(marker.parentFile, "${marker.name}.swap")
+        temporary.outputStream().use { it.write(encrypted) }
+        check(temporary.renameTo(marker)) { "Could not save the first-sync backup." }
     }
 
     private suspend fun pushAndMarkClean(
@@ -599,42 +642,65 @@ class SupabaseSyncRepository(
     }
 }
 
-private const val PENDING_DELETE_PREFS = "momentum_pending_cloud_deletes"
-private const val PENDING_VAULT_KEYS = "__momentum_vault_keys__"
-private fun pendingDeleteKey(userId: String) = "pending_${userId}"
-
 object SupabaseSyncScheduler {
-    private val dirtyLocalTables = listOf(
+    internal val dirtyLocalTables = listOf(
         "habits", "completions", "habit_skips", "habit_reminders", "expenses", "category_budgets",
         "loan_people", "loans", "loan_attachments", "loan_payments", "contacts", "library_files",
         "todo_items", "life_rules", "life_rule_files", "custom_notifications", "vault_entries"
     )
 
-    fun hasDirtyChanges(context: Context): Boolean {
-        val database = AppDatabase.get(context.applicationContext)
-        val sqlDb = database.openHelper.readableDatabase
-        return dirtyLocalTables.any { table ->
-            sqlDb.query("SELECT 1 FROM `$table` WHERE dirty = 1 LIMIT 1")
-                .use { it.moveToFirst() }
+    fun hasDirtyChanges(context: Context): Boolean = pendingCount(AppDatabase.get(context.applicationContext)) > 0
+
+    /** Accurate count of local records still waiting to be pushed after a sync run. */
+    fun pendingCount(db: AppDatabase): Int {
+        val sqlDb = db.openHelper.readableDatabase
+        return dirtyLocalTables.sumOf { table ->
+            sqlDb.query("SELECT COUNT(*) FROM `$table` WHERE dirty = 1").use { cursor ->
+                if (cursor.moveToFirst()) cursor.getInt(0) else 0
+            }
         }
     }
 
+    private fun syncConstraints(): Constraints = Constraints.Builder()
+        .setRequiredNetworkType(NetworkType.CONNECTED)
+        .setRequiresBatteryNotLow(true)
+        .build()
+
+    /** Periodic reconciliation is opt-in through sign-in and deferred on low battery. */
+    fun configurePeriodic(context: Context) {
+        val app = context.applicationContext
+        if (SupabaseAuthApi.currentUserId(app).isNullOrBlank()) return
+        val request = PeriodicWorkRequestBuilder<SupabaseSyncWorker>(15, TimeUnit.MINUTES)
+            .setConstraints(syncConstraints())
+            .setBackoffCriteria(
+                androidx.work.BackoffPolicy.EXPONENTIAL,
+                java.time.Duration.ofSeconds(15)
+            )
+            .build()
+        WorkManager.getInstance(app).enqueueUniquePeriodicWork(
+            SYNC_PERIODIC_WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request
+        )
+    }
+
     fun enqueue(context: Context, force: Boolean = false) {
+        // Cloud sync is opt-in through sign-in. A local-only user may have
+        // dirty records; they stay on this device until an account is linked.
+        val app = context.applicationContext
+        if (SupabaseAuthApi.currentUserId(app).isNullOrBlank()) return
+        configurePeriodic(app)
         val request = OneTimeWorkRequestBuilder<SupabaseSyncWorker>()
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setConstraints(syncConstraints())
             .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, java.time.Duration.ofSeconds(15)).build()
         // Keep a follow-up run if records change during an active sync.
         val policy = if (force) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.APPEND_OR_REPLACE
-        WorkManager.getInstance(context.applicationContext)
-            .enqueueUniqueWork(SYNC_WORK_NAME, policy, request)
+        WorkManager.getInstance(app).enqueueUniqueWork(SYNC_WORK_NAME, policy, request)
     }
 
     suspend fun cancel(context: Context) {
         withContext(Dispatchers.IO) {
-            WorkManager.getInstance(context.applicationContext)
-                .cancelUniqueWork(SYNC_WORK_NAME)
-                .result
-                .get()
+            val manager = WorkManager.getInstance(context.applicationContext)
+            manager.cancelUniqueWork(SYNC_WORK_NAME).result.get()
+            manager.cancelUniqueWork(SYNC_PERIODIC_WORK_NAME).result.get()
         }
     }
 }
@@ -659,9 +725,9 @@ private fun Completion.toCloud(d: String, habitUuid: String) = base(uuid, update
 private fun HabitSkip.toCloud(d: String, habitUuid: String) = base(uuid, updatedAt, d.ifBlank { deviceId }, deleted).merge(buildJsonObject { put("habit_id", habitUuid); put("epoch_day", epochDay); put("reason", reason) })
 private fun HabitReminder.toCloud(d: String, habitUuid: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("habit_id", habitUuid); put("hour", hour); put("minute", minute); put("days_mask", daysMask); put("enabled", enabled); put("date_epoch_day", dateEpochDay) })
 private fun Expense.toCloud(d: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("title", title); put("amount_minor_units", amountMinorUnits); put("category", category); put("epoch_day", epochDay); put("account", account); put("recurring_rule", recurringRule); put("category_icon", categoryIcon); put("category_color", categoryColor) })
-private fun Contact.toCloud(d: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("name", name); put("phone", phone); put("email", email); put("address", address); put("notes", notes); put("profile_image_path", if (profileImageUri.isBlank()) "" else "contacts/$uuid/profile") })
+private fun Contact.toCloud(d: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("name", name); put("phone", phone); put("email", email); put("address", address); put("notes", notes); put("profile_image_path", if (shouldUploadProfileImage(profileImageUri)) "contacts/$uuid/profile" else "") })
 private fun CategoryBudget.toCloud(d: String) = base(uuid, updatedAt, d.ifBlank { deviceId }, deleted).merge(buildJsonObject { put("category", category); put("month_key", monthKey); put("limit_minor_units", limitMinorUnits) })
-private fun LoanPerson.toCloud(d: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("name", name); put("phone", phone); put("address", address); put("profile_image_path", if (profileImageUri.isBlank()) "" else "loan-people/$uuid/profile"); put("notes", notes); put("archived", archived) })
+private fun LoanPerson.toCloud(d: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("name", name); put("phone", phone); put("address", address); put("profile_image_path", if (shouldUploadProfileImage(profileImageUri)) "loan-people/$uuid/profile" else ""); put("notes", notes); put("archived", archived) })
 private fun Loan.toCloud(d: String, personUuid: String?) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("person", person); put("person_id", personUuid); put("amount_minor_units", amountMinorUnits); put("lent", lent); put("note", note); put("epoch_day", epochDay); put("settled", settled); put("due_epoch_day", dueEpochDay); put("title", title); put("status", status) })
 private fun LoanAttachment.toCloud(d: String, loanUuid: String) = base(uuid, updatedAt, d, deleted).merge(buildJsonObject { put("loan_id", loanUuid); put("name", name); put("object_path", "loan-attachments/$uuid"); put("mime", mime); put("added_at", Instant.ofEpochMilli(addedAt).toString()) })
 private fun LoanPayment.toCloud(d: String, loanUuid: String) = base(uuid, updatedAt, d.ifBlank { deviceId }, deleted).merge(buildJsonObject { put("loan_id", loanUuid); put("amount_minor_units", amountMinorUnits); put("epoch_day", epochDay); put("note", note) })
@@ -687,10 +753,10 @@ private fun JsonObject.completion(habitId: Int, epoch: Long) = Completion(habitI
 private fun JsonObject.skip(habitId: Int) = HabitSkip(habitId, long("epoch_day"), string("reason"), string("id"), instantMillis("updated_at"), deleted(), false, string("device_id"))
 private fun JsonObject.reminder(habitId: Int, id: Int) = HabitReminder(id, habitId, int("hour"), int("minute"), int("days_mask"), bool("enabled"), nullableLong("date_epoch_day"), string("id"), instantMillis("updated_at"), deleted(), false)
 private fun JsonObject.expense(id: Int) = Expense(id, string("title"), long("amount_minor_units"), string("category"), long("epoch_day"), string("id"), instantMillis("updated_at"), deleted(), false, string("account"), string("recurring_rule"), string("category_icon"), int("category_color"))
-private fun JsonObject.contact(id: Int) = Contact(id, string("name"), string("phone"), string("email"), string("address"), string("notes"), string("profile_image_path"), string("id"), instantMillis("updated_at"), deleted(), false)
+private fun JsonObject.contact(id: Int) = Contact(id, string("name"), string("phone"), string("email"), string("address"), string("notes"), profilePathToStoredUri(string("profile_image_path")), string("id"), instantMillis("updated_at"), deleted(), false)
 private fun JsonObject.budget() = CategoryBudget(string("category"), string("month_key"), long("limit_minor_units"), string("id"), instantMillis("updated_at"), deleted(), false, string("device_id"))
 private fun JsonObject.loan(id: Int, personId: Int?) = Loan(id, string("person"), long("amount_minor_units"), bool("lent"), string("note"), long("epoch_day"), bool("settled"), string("id"), instantMillis("updated_at"), deleted(), false, nullableLong("due_epoch_day"), string("title"), string("status").ifBlank { "pending" }, personId)
-private fun JsonObject.loanPerson(id: Int) = LoanPerson(id, string("name"), string("phone"), string("address"), string("profile_image_path"), string("notes"), bool("archived"), string("id"), instantMillis("updated_at"), deleted(), false)
+private fun JsonObject.loanPerson(id: Int) = LoanPerson(id, string("name"), string("phone"), string("address"), profilePathToStoredUri(string("profile_image_path")), string("notes"), bool("archived"), string("id"), instantMillis("updated_at"), deleted(), false)
 private fun JsonObject.loanAttachment(loanId: Int, id: Int) = LoanAttachment(id, loanId, string("name"), string("object_path"), string("mime"), instantMillis("added_at"), string("id"), instantMillis("updated_at"), deleted(), false)
 private fun JsonObject.payment(loanId: Int, id: Int) = LoanPayment(id, loanId, long("amount_minor_units"), long("epoch_day"), string("note"), string("id"), instantMillis("updated_at"), deleted(), false, string("device_id"))
 private fun JsonObject.file(id: Int) = FileItem(id, string("name"), string("uri"), string("mime"), long("added_epoch_day"), string("id"), instantMillis("updated_at"), deleted(), false, string("tags"), string("folder"), long("last_accessed_epoch_day"), bool("missing"))
@@ -699,14 +765,3 @@ private fun JsonObject.lifeRule(id: Int) = LifeRule(id, string("title"), string(
 private fun JsonObject.lifeRuleFile(ruleId: Int, id: Int) = LifeRuleFile(id, ruleId, string("name"), string("object_path"), string("mime"), string("folder_path"), instantMillis("added_at"), string("id"), instantMillis("updated_at"), deleted(), false)
 private fun JsonObject.customNotification(id: Int) = CustomNotification(id, string("title"), string("message"), string("repeat_mode").ifBlank { "once" }, int("hour", 9), int("minute"), nullableLong("date_epoch_day"), int("days_mask", ALL_DAYS), int("day_of_month", 1), bool("enabled"), long("last_delivered_epoch_millis"), string("id"), instantMillis("updated_at"), deleted(), false)
 private fun JsonObject.vault(id: Int) = VaultRecord(id, getBytea("nonce"), getBytea("ciphertext"), instantMillis("updated_at"), string("id"), deleted(), false, string("device_id"))
-
-private fun JsonObject.string(n: String) = this[n]?.jsonPrimitive?.contentOrNull.orEmpty()
-private fun JsonObject.int(n: String, default: Int = 0) = string(n).toIntOrNull() ?: default
-private fun JsonObject.long(n: String) = string(n).toLongOrNull() ?: 0L
-private fun JsonObject.nullableLong(n: String) = this[n]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
-private fun JsonObject.nullableInt(n: String) = this[n]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
-private fun JsonObject.bool(n: String) = this[n]?.jsonPrimitive?.booleanOrNull ?: false
-private fun JsonObject.deleted() = this["deleted_at"]?.jsonPrimitive?.contentOrNull != null
-private fun JsonObject.instantMillis(n: String) = try { Instant.parse(string(n)).toEpochMilli() } catch (_: DateTimeParseException) { 0L }
-private fun JsonObject.getBytea(n: String) = string(n).removePrefix("\\x").chunked(2).mapNotNull { it.toIntOrNull(16)?.toByte() }.toByteArray()
-private fun ByteArray.hex() = joinToString("") { "%02x".format(it) }

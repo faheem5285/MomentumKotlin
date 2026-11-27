@@ -118,6 +118,12 @@ fun ReminderSettingsScreen(onBack: () -> Unit) {
                             }
                             StatusPill("No alerts", MaterialTheme.colorScheme.secondary)
                         }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            QUIET_HOURS_COPY,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         Spacer(Modifier.height(10.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             SecondaryButton(

@@ -1,10 +1,24 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+const baseCorsHeaders = {
   "Access-Control-Allow-Headers": "authorization, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
+  Vary: "Origin",
 };
+
+// ADMIN_WIPE_ALLOWED_ORIGIN accepts exact origins (comma-separated). Native
+// clients send no Origin and are left alone; browsers never get a wildcard.
+function corsHeadersFor(origin: string | null): Record<string, string> {
+  const headers: Record<string, string> = { ...baseCorsHeaders };
+  const allowed = (Deno.env.get("ADMIN_WIPE_ALLOWED_ORIGIN") ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  if (origin && allowed.includes(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+  return headers;
+}
 
 const tables = [
   "profiles",
@@ -29,11 +43,20 @@ const tables = [
 ];
 const STALE_WIPE_LOCK_MS = 10 * 60 * 1000;
 
-const json = (status: number, body: Record<string, unknown>) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+// Client responses are intentionally generic: Supabase error bodies can contain
+// project/account details. Operators should use server logs for diagnostics.
+function publicError(message: string): string {
+  if (message.includes("momentum_wipe_state is missing")) {
+    return "Apply the updated docs/supabase-schema.sql first, then retry.";
+  }
+  if (message.includes("Could not start the project wipe")) {
+    return "Another project wipe may be running. Wait, then retry.";
+  }
+  if (message.includes("reset marker could not be completed")) {
+    return "Cloud data was deleted, but the reset marker did not finish. Retry the wipe.";
+  }
+  return "Cloud wipe failed. Review the function logs for details.";
+}
 
 function configuredKey(jsonVariable: string): string | undefined {
   const raw = Deno.env.get(jsonVariable);
@@ -47,6 +70,19 @@ function configuredKey(jsonVariable: string): string | undefined {
 }
 
 Deno.serve(async (request) => {
+  const origin = request.headers.get("Origin");
+  const corsHeaders = corsHeadersFor(origin);
+  const json = (status: number, body: Record<string, unknown>) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+
+  // Requests carrying an unknown Origin are rejected before authentication.
+  // Requests without Origin (native/mobile clients) are handled normally.
+  if (origin && !corsHeaders["Access-Control-Allow-Origin"]) {
+    return json(403, { error: "Origin is not allowed." });
+  }
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (request.method !== "POST") return json(405, { error: "POST required." });
 
@@ -171,7 +207,7 @@ Deno.serve(async (request) => {
       wipeGeneration: completed.generation,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Cloud wipe failed.";
+    const message = publicError(error instanceof Error ? error.message : "Cloud wipe failed.");
     if (lockTimestamp) {
       // Keep writes blocked after a partial delete. Mark the completed failed
       // attempt as stale so an admin can safely claim and retry immediately.

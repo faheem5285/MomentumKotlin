@@ -5,6 +5,8 @@ import com.faheem.habits.core.data.Completion
 import com.faheem.habits.core.data.Habit
 import com.faheem.habits.core.data.Loan
 import com.faheem.habits.core.data.LoanPayment
+import com.faheem.habits.core.data.saturatingSubtract
+import com.faheem.habits.core.data.sumMinorUnits
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -26,8 +28,11 @@ fun isHabitDue(habit: Habit, epochDay: Long, completedDays: Set<Long> = emptySet
     }
 }
 
+fun ratePercent(completed: Int, scheduled: Int): Int =
+    if (scheduled <= 0) 0 else (completed * 100 / scheduled).coerceIn(0, 100)
+
 fun completionRate(completions: List<Completion>, scheduledDays: Int): Int =
-    if (scheduledDays <= 0) 0 else (completions.size * 100 / scheduledDays).coerceIn(0, 100)
+    ratePercent(completions.size, scheduledDays)
 
 fun bestCompletionDay(completions: List<Completion>): DayOfWeek? =
     completions.groupingBy { LocalDate.ofEpochDay(it.epochDay).dayOfWeek }
@@ -48,10 +53,17 @@ data class QuickTask(
     val dueEpochMillis: Long? = null
 )
 
+private val QUICK_TIME = Regex("""\b([01]?\d|2[0-3]):([0-5]\d)\b""")
+private val QUICK_DAY = Regex("""\btomorrow\b|\btoday\b""", RegexOption.IGNORE_CASE)
+
+/** True only when quick-add words are present, so manual dates are never overwritten. */
+fun hasQuickTaskCue(input: String): Boolean =
+    QUICK_DAY.containsMatchIn(input) || QUICK_TIME.containsMatchIn(input)
+
 fun parseQuickTask(input: String, today: LocalDate = LocalDate.now()): QuickTask {
     val text = input.trim()
     require(text.isNotBlank()) { "Task title cannot be empty" }
-    val timeMatch = Regex("""\b([01]?\d|2[0-3]):([0-5]\d)\b""").find(text)
+    val timeMatch = QUICK_TIME.find(text)
     val lower = text.lowercase()
     val date = when {
         "tomorrow" in lower -> today.plusDays(1)
@@ -59,7 +71,7 @@ fun parseQuickTask(input: String, today: LocalDate = LocalDate.now()): QuickTask
         else -> today
     }
     val cleanTitle = text
-        .replace(Regex("""\btomorrow\b|\btoday\b""", RegexOption.IGNORE_CASE), "")
+        .replace(QUICK_DAY, "")
         .replace(timeMatch?.value.orEmpty(), "")
         .replace(Regex("\\s+"), " ")
         .trim()
@@ -82,12 +94,17 @@ fun budgetStatus(expensesMinorUnits: Long, budget: CategoryBudget?): BudgetStatu
         BudgetStatus(
             expensesMinorUnits,
             budget.limitMinorUnits,
-            ((expensesMinorUnits * 100) / budget.limitMinorUnits).coerceAtLeast(0).toInt()
+            ((expensesMinorUnits.toDouble() / budget.limitMinorUnits) * 100)
+                .toInt()
+                .coerceAtLeast(0)
         )
     }
 
 fun loanRemaining(loan: Loan, payments: List<LoanPayment>): Long =
-    (loan.amountMinorUnits - payments.filter { it.loanId == loan.id }.sumOf { it.amountMinorUnits }).coerceAtLeast(0)
+    saturatingSubtract(
+        loan.amountMinorUnits,
+        payments.filter { !it.deleted && it.loanId == loan.id }.sumMinorUnits { it.amountMinorUnits }
+    ).coerceAtLeast(0L)
 
 fun loanReminderText(loan: Loan, remainingMinorUnits: Long): String {
     val action = if (loan.lent) "repay" else "return"

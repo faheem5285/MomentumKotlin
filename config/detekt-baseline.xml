@@ -2,69 +2,67 @@
 <SmellBaseline>
   <ManuallySuppressedIssues></ManuallySuppressedIssues>
   <CurrentIssues>
-    <ID>ComplexCondition:NotificationSystem.kt$HabitReminderScheduler$!MomentumNotificationSettings.masterEnabled(context) || !MomentumNotificationSettings.isEnabled(context, "habits") || !reminder.enabled || (reminder.daysMask == 0 &amp;&amp; reminder.dateEpochDay == null)</ID>
-    <ID>ComplexCondition:NotificationSystem.kt$HabitReminderScheduler$!habit.archived &amp;&amp; reminder.enabled &amp;&amp; MomentumNotificationSettings.masterEnabled(context) &amp;&amp; MomentumNotificationSettings.isEnabled(context, "habits") &amp;&amp; MomentumNotificationSettings.notificationsAllowed(context)</ID>
-    <ID>ComplexCondition:NotificationSystem.kt$ToDoReminderScheduler$item.completed || item.reminderHour == null || item.reminderMinute == null || !MomentumNotificationSettings.masterEnabled(context) || !MomentumNotificationSettings.notificationsAllowed(context)</ID>
-    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$SupabaseAuthApi.AuthResponse$val access_token: String? = null</ID>
-    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$SupabaseAuthApi.AuthResponse$val expires_in: Long? = null</ID>
-    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$SupabaseAuthApi.AuthResponse$val refresh_token: String? = null</ID>
-    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$SupabaseAuthApi.AuthResponse$val token_type: String? = null</ID>
+    <ID>ComplexCondition:BatteryScreen.kt$reading.health != "Unknown" || reading.temperatureC != null || reading.voltageMv != null || reading.technology != "Unknown"</ID>
+    <ID>ComplexCondition:FilesScreen.kt$result == FileAddResult.TOO_LARGE || result == FileAddResult.ACCESS_DENIED || result == FileAddResult.INVALID_FILE || result == FileAddResult.FAILED</ID>
+    <ID>ComplexCondition:ProfileViewModel.kt$ProfileViewModel$!ProfileValidation.isValidEmail(email) || !ProfileValidation.isValidPassword(form.password) || (form.createAccount &amp;&amp; form.name.isBlank())</ID>
+    <ID>ComplexCondition:ProfileViewModel.kt$ProfileViewModel$current.profile.displayName.isBlank() || current.profile.displayName.length &gt; 80 || current.profile.phone.length &gt; 30 || current.profile.bio.length &gt; 240</ID>
+    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$AuthResponse$val access_token: String? = null</ID>
+    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$AuthResponse$val expires_in: Long? = null</ID>
+    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$AuthResponse$val refresh_token: String? = null</ID>
+    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$AuthResponse$val token_type: String? = null</ID>
+    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$AuthUser$val app_metadata: JsonObject? = null</ID>
+    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$AuthUser$val created_at: String? = null</ID>
+    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$AuthUser$val user_metadata: JsonObject? = null</ID>
+    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$SupabaseAuthApi.IdTokenCredentials$val id_token: String</ID>
     <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$SupabaseAuthApi.RefreshCredentials$val refresh_token: String</ID>
-    <ID>CyclomaticComplexMethod:AppSettingsScreen.kt$@Composable fun AppSettingsScreen()</ID>
-    <ID>CyclomaticComplexMethod:BatteryScreen.kt$@Composable fun BatteryOrb(percent: Float, charging: Boolean, style: String, modifier: Modifier = Modifier, animate: Boolean = charging)</ID>
-    <ID>CyclomaticComplexMethod:BatteryScreen.kt$@Composable private fun LazyBatteryContent( reading: BatteryReading, style: String, styles: List&lt;String&gt;, autoShow: Boolean, backgroundListener: Boolean, overlayAllowed: Boolean, notificationsAllowed: Boolean, diagnostic: BatteryDiagnostic, onRefreshDiagnostics: () -&gt; Unit, onCopyDiagnostics: () -&gt; Unit, onStyle: (String) -&gt; Unit, onAutoShow: (Boolean) -&gt; Unit, onBackgroundListener: (Boolean) -&gt; Unit, onOverlayPermission: () -&gt; Unit, onNotificationPermission: () -&gt; Unit, onPreview: () -&gt; Unit, onPopupPreview: () -&gt; Unit )</ID>
-    <ID>CyclomaticComplexMethod:BatteryScreen.kt$private fun batteryStyleDescription(style: String): String</ID>
-    <ID>CyclomaticComplexMethod:ExpensesScreen.kt$@Composable fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel())</ID>
-    <ID>CyclomaticComplexMethod:ExpensesScreen.kt$@Composable private fun OverviewScreen( month: YearMonth, expenses: List&lt;Expense&gt;, spent: Double, previousMonthSpent: Double, budget: Double, fraction: Float, byCategory: Map&lt;String, Double&gt;, vm: ExpenseViewModel, onBudget: () -&gt; Unit, onDelete: (Expense) -&gt; Unit, onAll: () -&gt; Unit )</ID>
+    <ID>ConstructorParameterNaming:SupabaseAuthApi.kt$SupabaseAuthApi.SignupMetadata$val display_name: String</ID>
+    <ID>CyclomaticComplexMethod:ContactImport.kt$private fun parseCsv(text: String): List&lt;List&lt;String&gt;&gt;</ID>
+    <ID>CyclomaticComplexMethod:ContactImport.kt$private fun parseVCard(text: String): List&lt;ImportedContact&gt;</ID>
+    <ID>CyclomaticComplexMethod:ContactImport.kt$private fun parseXlsx(input: InputStream): List&lt;List&lt;String&gt;&gt;</ID>
+    <ID>CyclomaticComplexMethod:ContactsScreen.kt$@Composable fun ContactsScreen(vm: ContactsViewModel = viewModel())</ID>
+    <ID>CyclomaticComplexMethod:ContactsScreen.kt$@Composable private fun ContactEditor(initial: Contact?, onDismiss: () -&gt; Unit, onSave: (Contact) -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:FileStorageSync.kt$FileStorageSync$suspend fun restoreMissingFiles()</ID>
+    <ID>CyclomaticComplexMethod:FileStorageSync.kt$FileStorageSync$suspend fun uploadPending()</ID>
     <ID>CyclomaticComplexMethod:FilesScreen.kt$@Composable fun FilesScreen(vm: FileViewModel = hiltViewModel())</ID>
     <ID>CyclomaticComplexMethod:FilesScreen.kt$@Composable private fun TextFilePreview(file: FileItem, onSaveCopy: (String) -&gt; Unit)</ID>
     <ID>CyclomaticComplexMethod:HabitEditor.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun HabitEditorSheet( initial: Habit?, onDismiss: () -&gt; Unit, onSave: (Habit, List&lt;HabitReminderDraft&gt;) -&gt; Unit, initialReminders: List&lt;HabitReminder&gt; = emptyList() )</ID>
-    <ID>CyclomaticComplexMethod:HabitLogic.kt$fun computeStreaks(days: Set&lt;Long&gt;, mask: Int, today: Long): StreakInfo</ID>
     <ID>CyclomaticComplexMethod:HabitReminderManager.kt$@Composable fun HabitReminderManagerSheet( habit: Habit, reminders: List&lt;HabitReminder&gt;, onDismiss: () -&gt; Unit, onAdd: (Int, Int, Int) -&gt; Unit, onUpdate: (HabitReminder) -&gt; Unit, onDelete: (HabitReminder) -&gt; Unit )</ID>
-    <ID>CyclomaticComplexMethod:HabitsInsightsScreen.kt$@Composable fun InsightsScreen(vm: HabitViewModel)</ID>
+    <ID>CyclomaticComplexMethod:HabitScheduleLogic.kt$fun computeStreaks(days: Set&lt;Long&gt;, mask: Int, today: Long): StreakInfo</ID>
     <ID>CyclomaticComplexMethod:HabitsManageScreen.kt$@Composable fun ManageScreen(vm: HabitViewModel)</ID>
-    <ID>CyclomaticComplexMethod:HabitsToday.kt$@Composable fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -&gt; Unit)</ID>
-    <ID>CyclomaticComplexMethod:HomeScreen.kt$@Composable fun HomeScreen(onOpen: (AppModule) -&gt; Unit, vm: HomeViewModel = hiltViewModel())</ID>
-    <ID>CyclomaticComplexMethod:LoansScreen.kt$@Composable fun LoansScreen(vm: LoanViewModel = viewModel())</ID>
+    <ID>CyclomaticComplexMethod:HomeScreen.kt$@Composable fun HomeScreen( onOpen: (AppModule) -&gt; Unit, vm: HomeViewModel = hiltViewModel(), settingsViewModel: SettingsViewModel = hiltViewModel(), cloudSignedIn: Boolean = true, onOpenPermissions: () -&gt; Unit = {}, onOpenSearch: () -&gt; Unit = {} )</ID>
+    <ID>CyclomaticComplexMethod:HomeScreen.kt$private fun moduleWatermarkIcon(module: AppModule?)</ID>
+    <ID>CyclomaticComplexMethod:LanguageScreen.kt$@Composable fun LanguageScreen(vm: LanguageViewModel = viewModel())</ID>
+    <ID>CyclomaticComplexMethod:LanguageScreen.kt$@Composable private fun GrammarSection( notes: List&lt;GrammarNote&gt;, query: String, onQueryChange: (String) -&gt; Unit, onAdd: () -&gt; Unit, onEdit: (GrammarNote) -&gt; Unit, onDelete: (Long) -&gt; Unit, onTogglePin: (GrammarNote) -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:LanguageScreen.kt$@Composable private fun TranslateSection( source: String, target: String, text: String, state: TranslationUiState, proofreadingState: ProofreadingUiState, onSourceChange: (String) -&gt; Unit, onTargetChange: (String) -&gt; Unit, onTextChange: (String) -&gt; Unit, onSwap: () -&gt; Unit, onTranslate: () -&gt; Unit, onProofread: () -&gt; Unit, onUseCorrection: (String) -&gt; Unit, onClearText: () -&gt; Unit, onSaveAsWord: (text: String, meaning: String, srcLang: String) -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:LanguageScreen.kt$@Composable private fun VocabularySection( words: List&lt;VocabularyWord&gt;, reviewMap: Map&lt;Long, ReviewState&gt;, query: String, onQueryChange: (String) -&gt; Unit, onAdd: () -&gt; Unit, onEdit: (VocabularyWord) -&gt; Unit, onDelete: (Long) -&gt; Unit, onToggleMastered: (VocabularyWord) -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:LanguageTranslator.kt$LanguageTranslator$private fun parseGtxResponse(jsonStr: String, requestedSource: String): TranslationResult?</ID>
+    <ID>CyclomaticComplexMethod:LoansScreen.kt$@Composable private fun LoanDetailSheet( loan: Loan, outstandingMinorUnits: Long, payments: List&lt;LoanPayment&gt;, personProfile: LoanPerson?, attachments: List&lt;LoanAttachment&gt;, onDismiss: () -&gt; Unit, onSettle: () -&gt; Unit, onEdit: () -&gt; Unit, onDelete: () -&gt; Unit, onAttach: (Int, String) -&gt; Unit, onAddPayment: (Long, String) -&gt; Unit, onDeletePayment: (LoanPayment) -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:LoansScreen.kt$@Composable private fun LoanEditorSheet( initial: Loan?, people: List&lt;LoanPerson&gt;, onDismiss: () -&gt; Unit, presetPerson: LoanPerson? = null, onSave: (Int?, String, Long, Boolean, String, String, Long?, String, List&lt;String&gt;) -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:MainActivity.kt$@Composable fun MomentumApp( settingsViewModel: com.faheem.habits.features.settings.SettingsViewModel = hiltViewModel(), notificationTarget: NotificationTarget? = null )</ID>
     <ID>CyclomaticComplexMethod:MomentumBackup.kt$MomentumBackup$private suspend fun restoreRoot(context: Context, root: JSONObject, replace: Boolean, db: AppDatabase): String</ID>
+    <ID>CyclomaticComplexMethod:MomentumBackup.kt$MomentumBackup$suspend fun exportBytes( context: Context, db: AppDatabase = AppDatabase.get(context), passphrase: CharArray? = null ): ByteArray</ID>
+    <ID>CyclomaticComplexMethod:MomentumSettingsRepository.kt$MomentumSettingsRepository$suspend fun legacyBudgetsForRoom(): LegacyMoneyBudgets?</ID>
     <ID>CyclomaticComplexMethod:NetworkScreen.kt$@Composable fun NetworkScreen()</ID>
     <ID>CyclomaticComplexMethod:PermissionsSetupScreen.kt$@Composable fun PermissionsSetupScreen(onBack: () -&gt; Unit, modifier: Modifier = Modifier)</ID>
-    <ID>CyclomaticComplexMethod:ScreenTimeScreen.kt$@Composable private fun ScreenOverview( usage: List&lt;AppUsage&gt;, granted: Boolean, screenLimit: Int, reelCount: Int, accessibilityOn: Boolean, onUsageSettings: () -&gt; Unit, onSetLimit: () -&gt; Unit, onOpenReels: () -&gt; Unit, onRefresh: () -&gt; Unit )</ID>
-    <ID>CyclomaticComplexMethod:ToDoScreen.kt$@Composable fun ToDoScreen(vm: ToDoViewModel = hiltViewModel())</ID>
+    <ID>CyclomaticComplexMethod:ProfileScreen.kt$@Composable fun ProfileScreen(onContinueWithoutAccount: () -&gt; Unit, passwordResetRequestToken: Long? = null)</ID>
+    <ID>CyclomaticComplexMethod:ProfileScreen.kt$@Composable private fun SignedInProfile( state: ProfileUiState.SignedIn, message: String?, onEdit: () -&gt; Unit, onChange: (ProfileCache) -&gt; Unit, onPhoto: () -&gt; Unit, onSave: () -&gt; Unit, onCancel: () -&gt; Unit, onSignOut: () -&gt; Unit, onChangePassword: () -&gt; Unit, onDelete: () -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:ProfileScreen.kt$@Composable private fun SignedOutProfile( state: ProfileUiState.SignedOut, message: String?, onEmail: (String) -&gt; Unit, onPassword: (String) -&gt; Unit, onName: (String) -&gt; Unit, onToggleCreate: () -&gt; Unit, onSubmit: () -&gt; Unit, onReset: () -&gt; Unit, onResend: () -&gt; Unit, onGoogle: () -&gt; Unit, onContinue: () -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:RecoveryLink.kt$RecoveryLinkParser$fun parse(link: String?, nowMillis: Long): RecoveryLinkResult</ID>
     <ID>CyclomaticComplexMethod:ToDoScreen.kt$@Composable private fun ToDoCard(task: ToDoItem, onClick: () -&gt; Unit, onToggle: () -&gt; Unit, onDelete: () -&gt; Unit)</ID>
     <ID>CyclomaticComplexMethod:ToDoScreen.kt$@Composable private fun ToDoEditorSheet(initial: ToDoItem?, onDismiss: () -&gt; Unit, onSave: (ToDoItem) -&gt; Unit)</ID>
-    <ID>CyclomaticComplexMethod:VaultScreen.kt$@Composable fun VaultScreen(vm: VaultViewModel = viewModel())</ID>
-    <ID>CyclomaticComplexMethod:VaultScreen.kt$@Composable private fun VaultEntryEditor(initial: VaultListItem?, onDismiss: () -&gt; Unit, onSave: (VaultSecret) -&gt; Unit)</ID>
-    <ID>CyclomaticComplexMethod:VaultScreen.kt$@Composable private fun VaultGate(configured: Boolean, busy: Boolean, error: String?, onSubmit: (String) -&gt; Unit)</ID>
-    <ID>EmptyElseBlock:MomentumBackup.kt$MomentumBackup$if(n&lt;0) break</ID>
     <ID>ForEachOnRange:HabitsToday.kt$t - 13..t</ID>
     <ID>ForEachOnRange:HabitsToday.kt$todayDay - 6..todayDay</ID>
     <ID>ForEachOnRange:ToDoScreen.kt$0 until totalCells step 7</ID>
     <ID>ForEachOnRange:ToDoScreen.kt$rowStart until rowStart + 7</ID>
-    <ID>FunctionNaming:AppSettingsScreen.kt$@Composable fun AppSettingsScreen()</ID>
-    <ID>FunctionNaming:AuthScreen.kt$@Composable fun AuthScreen(initialMessage: String? = null, onAuthenticated: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:BatteryChargingActivity.kt$@Composable private fun BatteryChargingAnimationScreen(preview: Boolean, onClose: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:BatteryScreen.kt$@Composable fun BatteryOrb(percent: Float, charging: Boolean, style: String, modifier: Modifier = Modifier, animate: Boolean = charging)</ID>
-    <ID>FunctionNaming:BatteryScreen.kt$@Composable fun BatteryScreen()</ID>
-    <ID>FunctionNaming:BatteryScreen.kt$@Composable internal fun AnimatedBatteryPercent( percent: Float, modifier: Modifier = Modifier, fontSize: androidx.compose.ui.unit.TextUnit = 54.sp, fontWeight: FontWeight = FontWeight.Bold, color: Color = Color.White )</ID>
-    <ID>FunctionNaming:BatteryScreen.kt$@Composable private fun LazyBatteryContent( reading: BatteryReading, style: String, styles: List&lt;String&gt;, autoShow: Boolean, backgroundListener: Boolean, overlayAllowed: Boolean, notificationsAllowed: Boolean, diagnostic: BatteryDiagnostic, onRefreshDiagnostics: () -&gt; Unit, onCopyDiagnostics: () -&gt; Unit, onStyle: (String) -&gt; Unit, onAutoShow: (Boolean) -&gt; Unit, onBackgroundListener: (Boolean) -&gt; Unit, onOverlayPermission: () -&gt; Unit, onNotificationPermission: () -&gt; Unit, onPreview: () -&gt; Unit, onPopupPreview: () -&gt; Unit )</ID>
-    <ID>FunctionNaming:ExpensesScreen.kt$@Composable fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel())</ID>
-    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun ActivityScreen( expenses: List&lt;Expense&gt;, query: String, onQuery: (String) -&gt; Unit, category: String, onCategory: (String) -&gt; Unit, onDelete: (Expense) -&gt; Unit )</ID>
-    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun AddExpenseSheet(onDismiss: () -&gt; Unit, onSave: (String, Double, String) -&gt; Unit)</ID>
-    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun BudgetScreen(spent: Double, budget: Double, fraction: Float, byCategory: Map&lt;String, Double&gt;, vm: ExpenseViewModel, onBudget: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun BudgetSheet(value: Double, onDismiss: () -&gt; Unit, onSave: (Double) -&gt; Unit)</ID>
-    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun CategoryBudgetCard(name: String, spent: Double, limit: Double, onSave: (Double) -&gt; Unit)</ID>
-    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun CategorySpendRow(name: String, total: Double, limit: Double)</ID>
-    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun ExpenseRow(expense: Expense, onDelete: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun MoneyMetric(label: String, value: String, modifier: Modifier)</ID>
-    <ID>FunctionNaming:ExpensesScreen.kt$@Composable private fun OverviewScreen( month: YearMonth, expenses: List&lt;Expense&gt;, spent: Double, previousMonthSpent: Double, budget: Double, fraction: Float, byCategory: Map&lt;String, Double&gt;, vm: ExpenseViewModel, onBudget: () -&gt; Unit, onDelete: (Expense) -&gt; Unit, onAll: () -&gt; Unit )</ID>
     <ID>FunctionNaming:FilesScreen.kt$@Composable fun FilesScreen(vm: FileViewModel = hiltViewModel())</ID>
+    <ID>FunctionNaming:FilesScreen.kt$@Composable internal fun FileAddStatusCard(result: FileAddResult, onDismiss: () -&gt; Unit)</ID>
     <ID>FunctionNaming:FilesScreen.kt$@Composable private fun ImageFilePreview(file: FileItem)</ID>
     <ID>FunctionNaming:FilesScreen.kt$@Composable private fun PdfFilePreview(file: FileItem)</ID>
     <ID>FunctionNaming:FilesScreen.kt$@Composable private fun PreviewMessage(title: String, message: String)</ID>
     <ID>FunctionNaming:FilesScreen.kt$@Composable private fun TextFilePreview(file: FileItem, onSaveCopy: (String) -&gt; Unit)</ID>
     <ID>FunctionNaming:FilesScreen.kt$@Composable private fun UnsupportedFilePreview(file: FileItem)</ID>
-    <ID>FunctionNaming:FilesScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun FilePreviewSheet(file: FileItem, onDismiss: () -&gt; Unit, onSaveCopy: (String) -&gt; Unit)</ID>
+    <ID>FunctionNaming:FilesScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable private fun FilePreviewSheet( file: FileItem, onDismiss: () -&gt; Unit, onSaveCopy: (String) -&gt; Unit, onReconnect: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:GlobalSearchScreen.kt$@Composable fun GlobalSearchScreen( onBack: () -&gt; Unit, onOpenResult: (AppModule, Int) -&gt; Unit, vm: GlobalSearchViewModel = hiltViewModel() )</ID>
     <ID>FunctionNaming:HabitEditor.kt$@Composable private fun DayToggle(letter: String, selected: Boolean, onClick: () -&gt; Unit)</ID>
     <ID>FunctionNaming:HabitEditor.kt$@Composable private fun EditorLabel(text: String)</ID>
     <ID>FunctionNaming:HabitEditor.kt$@Composable private fun HabitReminderDraftCard( index: Int, reminder: HabitReminderDraft, onChange: (HabitReminderDraft) -&gt; Unit, onDelete: () -&gt; Unit )</ID>
@@ -76,133 +74,170 @@
     <ID>FunctionNaming:HabitsInsightsScreen.kt$@Composable private fun StatCard(icon: ImageVector, color: Color, value: String, label: String, modifier: Modifier)</ID>
     <ID>FunctionNaming:HabitsManageScreen.kt$@Composable fun ManageScreen(vm: HabitViewModel)</ID>
     <ID>FunctionNaming:HabitsManageScreen.kt$@Composable private fun ManageCard(ui: HabitUi, modifier: Modifier, actions: @Composable RowScope.() -&gt; Unit)</ID>
-    <ID>FunctionNaming:HabitsScreen.kt$@Composable fun HabitScreen(vm: HabitViewModel = hiltViewModel())</ID>
     <ID>FunctionNaming:HabitsTemplatesScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun TemplatesScreen(vm: HabitViewModel)</ID>
-    <ID>FunctionNaming:HabitsToday.kt$@Composable fun HabitDetailSheet(ui: HabitUi, onDismiss: () -&gt; Unit, onEdit: () -&gt; Unit, onArchive: () -&gt; Unit, onManageReminders: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:HabitsToday.kt$@Composable fun StreakChip(count: Int)</ID>
-    <ID>FunctionNaming:HabitsToday.kt$@Composable fun TodayScreen(vm: HabitViewModel, onBrowseTemplates: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:HabitsToday.kt$@Composable private fun DayChip(day: Long, selected: Boolean, complete: Boolean, modifier: Modifier, onClick: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:HabitsToday.kt$@Composable private fun HabitRow( ui: HabitUi, done: Boolean, onToggle: () -&gt; Unit, onOpen: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
-    <ID>FunctionNaming:HabitsToday.kt$@Composable private fun MiniStat(label: String, value: String, modifier: Modifier)</ID>
-    <ID>FunctionNaming:HomeScreen.kt$@Composable fun HomeScreen(onOpen: (AppModule) -&gt; Unit, vm: HomeViewModel = hiltViewModel())</ID>
-    <ID>FunctionNaming:HomeScreen.kt$@Composable private fun ModuleTile(spec: TileSpec, modifier: Modifier, onClick: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:HomeScreen.kt$@Composable private fun TodaySummaryCard(title: String, value: String, detail: String, icon: ImageVector, tint: Color, modifier: Modifier = Modifier)</ID>
-    <ID>FunctionNaming:LoansScreen.kt$@Composable fun LoansScreen(vm: LoanViewModel = viewModel())</ID>
-    <ID>FunctionNaming:LoansScreen.kt$@Composable private fun BalancePill(label: String, value: String, color: Color, modifier: Modifier)</ID>
-    <ID>FunctionNaming:LoansScreen.kt$@Composable private fun LoanDetailLine(label: String, value: String)</ID>
-    <ID>FunctionNaming:LoansScreen.kt$@Composable private fun LoanDetailSheet(loan: Loan, onDismiss: () -&gt; Unit, onSettle: () -&gt; Unit, onEdit: () -&gt; Unit, onDelete: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:LoansScreen.kt$@Composable private fun LoanEditorSheet(initial: Loan?, onDismiss: () -&gt; Unit, onSave: (String, Double, Boolean, String) -&gt; Unit)</ID>
-    <ID>FunctionNaming:LoansScreen.kt$@Composable private fun LoanLedger( loans: List&lt;Loan&gt;, query: String, onQuery: (String) -&gt; Unit, direction: Int, onDirection: (Int) -&gt; Unit, settled: Boolean, onSelect: (Loan) -&gt; Unit, onEmptyAdd: () -&gt; Unit )</ID>
-    <ID>FunctionNaming:LoansScreen.kt$@Composable private fun LoanMetric(label: String, value: String, modifier: Modifier)</ID>
-    <ID>FunctionNaming:LoansScreen.kt$@Composable private fun LoanOverview( openLoans: List&lt;Loan&gt;, settledCount: Int, toReceive: Long, toPay: Long, net: Long, onOpenLedger: () -&gt; Unit, onSelect: (Loan) -&gt; Unit )</ID>
-    <ID>FunctionNaming:LoansScreen.kt$@Composable private fun LoanRow(loan: Loan, onClick: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:MainActivity.kt$@Composable fun MomentumApp(settingsViewModel: com.faheem.habits.features.settings.SettingsViewModel = hiltViewModel())</ID>
-    <ID>FunctionNaming:Navigation.kt$@Composable fun MomentumNavigationHost( destination: MomentumDestination, onOpenModule: (AppModule) -&gt; Unit, onBack: () -&gt; Unit, modifier: Modifier = Modifier )</ID>
-    <ID>FunctionNaming:Navigation.kt$@Composable private fun ModuleScreen(module: AppModule, onBack: () -&gt; Unit)</ID>
     <ID>FunctionNaming:NetworkScreen.kt$@Composable fun NetworkScreen()</ID>
-    <ID>FunctionNaming:NetworkScreen.kt$@Composable private fun NetworkMetricCard(title: String, value: String, detail: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier = Modifier)</ID>
     <ID>FunctionNaming:NetworkScreen.kt$@Composable private fun NetworkPill(text: String)</ID>
     <ID>FunctionNaming:PermissionsSetupScreen.kt$@Composable fun PermissionsSetupScreen(onBack: () -&gt; Unit, modifier: Modifier = Modifier)</ID>
     <ID>FunctionNaming:PermissionsSetupScreen.kt$@Composable private fun PermissionSetupCard(item: SetupPermission)</ID>
-    <ID>FunctionNaming:ReminderSettingsScreen.kt$@Composable fun ReminderSettingsScreen(onBack: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:ReminderSettingsScreen.kt$@Composable private fun PermissionCard(text: String, button: String, onClick: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:ReminderSettingsScreen.kt$@Composable private fun ReminderCard(kind: ReminderKind, context: Context, enabled: Boolean, onChanged: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:ScreenTimeScreen.kt$@Composable fun ScreenTimeScreen()</ID>
-    <ID>FunctionNaming:ScreenTimeScreen.kt$@Composable private fun NumberLimitSheet(title: String, current: Int, helper: String, onSave: (Int) -&gt; Unit, onDismiss: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:ScreenTimeScreen.kt$@Composable private fun PermissionInfoCard(title: String, description: String, onClick: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:ScreenTimeScreen.kt$@Composable private fun ReelsCounterScreen(count: Int, limit: Int, enabled: Boolean, onSettings: () -&gt; Unit, onSetLimit: () -&gt; Unit, onRefresh: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:ScreenTimeScreen.kt$@Composable private fun ScreenOverview( usage: List&lt;AppUsage&gt;, granted: Boolean, screenLimit: Int, reelCount: Int, accessibilityOn: Boolean, onUsageSettings: () -&gt; Unit, onSetLimit: () -&gt; Unit, onOpenReels: () -&gt; Unit, onRefresh: () -&gt; Unit )</ID>
-    <ID>FunctionNaming:ScreenTimeScreen.kt$@Composable private fun UsageAppsScreen(usage: List&lt;AppUsage&gt;, granted: Boolean, range: UsageRange, onRange: (UsageRange) -&gt; Unit, onUsageSettings: () -&gt; Unit, onRefresh: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:ScreenTimeScreen.kt$@Composable private fun UsageRow(app: AppUsage, maxMin: Long)</ID>
-    <ID>FunctionNaming:Theme.kt$@Composable fun MomentumTheme(content: @Composable () -&gt; Unit)</ID>
-    <ID>FunctionNaming:ToDoScreen.kt$@Composable fun ToDoScreen(vm: ToDoViewModel = hiltViewModel())</ID>
-    <ID>FunctionNaming:ToDoScreen.kt$@Composable private fun CalendarAgenda( month: YearMonth, selectedDate: LocalDate, tasks: List&lt;ToDoItem&gt;, onPrevious: () -&gt; Unit, onNext: () -&gt; Unit, onSelect: (LocalDate) -&gt; Unit, onEdit: (ToDoItem) -&gt; Unit, onToggle: (ToDoItem) -&gt; Unit, onDelete: (ToDoItem) -&gt; Unit )</ID>
-    <ID>FunctionNaming:ToDoScreen.kt$@Composable private fun TaskList(tasks: List&lt;ToDoItem&gt;, onEdit: (ToDoItem) -&gt; Unit, onToggle: (ToDoItem) -&gt; Unit, onDelete: (ToDoItem) -&gt; Unit)</ID>
-    <ID>FunctionNaming:ToDoScreen.kt$@Composable private fun ToDoCard(task: ToDoItem, onClick: () -&gt; Unit, onToggle: () -&gt; Unit, onDelete: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:ToDoScreen.kt$@Composable private fun ToDoEditorSheet(initial: ToDoItem?, onDismiss: () -&gt; Unit, onSave: (ToDoItem) -&gt; Unit)</ID>
-    <ID>FunctionNaming:Ui.kt$@Composable fun BigButton(text: String, onClick: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:Ui.kt$@Composable fun EmptyState(icon: ImageVector, title: String, subtitle: String)</ID>
-    <ID>FunctionNaming:Ui.kt$@Composable fun HeroCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -&gt; Unit)</ID>
-    <ID>FunctionNaming:Ui.kt$@Composable fun HeroRefreshButton(onClick: () -&gt; Unit, description: String = "Refresh")</ID>
-    <ID>FunctionNaming:Ui.kt$@Composable fun IconBubble(icon: ImageVector, color: Color, size: Dp = 44.dp)</ID>
-    <ID>FunctionNaming:Ui.kt$@Composable fun ProgressBar( fraction: Float, color: Color, track: Color, modifier: Modifier = Modifier, height: Dp = 8.dp )</ID>
-    <ID>FunctionNaming:Ui.kt$@Composable fun ProgressRing(progress: Float, label: String, modifier: Modifier = Modifier)</ID>
-    <ID>FunctionNaming:Ui.kt$@Composable fun SectionLabel(text: String)</ID>
-    <ID>FunctionNaming:Ui.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun FormSheet(title: String, onDismiss: () -&gt; Unit, content: @Composable ColumnScope.() -&gt; Unit)</ID>
-    <ID>FunctionNaming:VaultScreen.kt$@Composable fun VaultScreen(vm: VaultViewModel = viewModel())</ID>
-    <ID>FunctionNaming:VaultScreen.kt$@Composable private fun VaultDetailSheet(item: VaultListItem, onDismiss: () -&gt; Unit, onEdit: () -&gt; Unit, onDelete: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:VaultScreen.kt$@Composable private fun VaultEntryEditor(initial: VaultListItem?, onDismiss: () -&gt; Unit, onSave: (VaultSecret) -&gt; Unit)</ID>
-    <ID>FunctionNaming:VaultScreen.kt$@Composable private fun VaultGate(configured: Boolean, busy: Boolean, error: String?, onSubmit: (String) -&gt; Unit)</ID>
-    <ID>FunctionNaming:VaultScreen.kt$@Composable private fun VaultHome(items: List&lt;VaultListItem&gt;, unreadable: Int, onLock: () -&gt; Unit, onAdd: () -&gt; Unit, onSelect: (VaultListItem) -&gt; Unit, onExport: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:VaultScreen.kt$@Composable private fun VaultItemCard(item: VaultListItem, onClick: () -&gt; Unit)</ID>
-    <ID>FunctionNaming:VaultScreen.kt$@Composable private fun VaultValue(label: String, value: String, onCopy: () -&gt; Unit)</ID>
     <ID>FunctionOnlyReturningConstant:NetworkIndicatorService.kt$NetworkIndicatorService.Companion$fun currentSpeed(context: Context): String</ID>
+    <ID>ImplicitDefaultLocale:ToDoScreen.kt$String.format("%02d:%02d", quickTime.hour, quickTime.minute)</ID>
     <ID>ImplicitDefaultLocale:ToDoScreen.kt$String.format("%02d:%02d", reminderHour, reminderMinute)</ID>
     <ID>InvalidPackageDeclaration:ReminderTimeCalculatorTest.kt$package com.faheem.habits</ID>
-    <ID>LongParameterList:BatteryScreen.kt$( reading: BatteryReading, style: String, styles: List&lt;String&gt;, autoShow: Boolean, backgroundListener: Boolean, overlayAllowed: Boolean, notificationsAllowed: Boolean, diagnostic: BatteryDiagnostic, onRefreshDiagnostics: () -&gt; Unit, onCopyDiagnostics: () -&gt; Unit, onStyle: (String) -&gt; Unit, onAutoShow: (Boolean) -&gt; Unit, onBackgroundListener: (Boolean) -&gt; Unit, onOverlayPermission: () -&gt; Unit, onNotificationPermission: () -&gt; Unit, onPreview: () -&gt; Unit, onPopupPreview: () -&gt; Unit )</ID>
-    <ID>LongParameterList:ExpensesScreen.kt$( expenses: List&lt;Expense&gt;, query: String, onQuery: (String) -&gt; Unit, category: String, onCategory: (String) -&gt; Unit, onDelete: (Expense) -&gt; Unit )</ID>
-    <ID>LongParameterList:ExpensesScreen.kt$( month: YearMonth, expenses: List&lt;Expense&gt;, spent: Double, previousMonthSpent: Double, budget: Double, fraction: Float, byCategory: Map&lt;String, Double&gt;, vm: ExpenseViewModel, onBudget: () -&gt; Unit, onDelete: (Expense) -&gt; Unit, onAll: () -&gt; Unit )</ID>
-    <ID>LongParameterList:ExpensesScreen.kt$(spent: Double, budget: Double, fraction: Float, byCategory: Map&lt;String, Double&gt;, vm: ExpenseViewModel, onBudget: () -&gt; Unit)</ID>
+    <ID>LongParameterList:DesignComponents.kt$( title: String, supportingText: String? = null, icon: ImageVector? = null, value: String? = null, checked: Boolean? = null, onCheckedChange: ((Boolean) -&gt; Unit)? = null, onClick: (() -&gt; Unit)? = null, modifier: Modifier = Modifier )</ID>
+    <ID>LongParameterList:DesignComponents.kt$( values: List&lt;Float&gt;, labels: List&lt;String&gt;, selectedIndex: Int, onSelect: (Int) -&gt; Unit, modifier: Modifier = Modifier, valueDescription: (Int, Float) -&gt; String = { index, value -&gt; "${labels.getOrElse(index) { "Day ${index + 1}" }}: ${value.toInt()}" } )</ID>
+    <ID>LongParameterList:DeviceMonitorBootReceiver.kt$DeviceMonitorBootReceiver$( context: Context, label: String, notificationId: Int, enabled: Boolean, pendingResume: Boolean, bootOrUpdate: Boolean, canStartForeground: Boolean, start: () -&gt; Boolean, markPending: () -&gt; Unit )</ID>
     <ID>LongParameterList:HabitReminderManager.kt$( habit: Habit, reminders: List&lt;HabitReminder&gt;, onDismiss: () -&gt; Unit, onAdd: (Int, Int, Int) -&gt; Unit, onUpdate: (HabitReminder) -&gt; Unit, onDelete: (HabitReminder) -&gt; Unit )</ID>
     <ID>LongParameterList:HabitTemplates.kt$(category: String, name: String, what: String, icon: String, time: Int, days: Int)</ID>
-    <ID>LongParameterList:HomeScreen.kt$(title: String, value: String, detail: String, icon: ImageVector, tint: Color, modifier: Modifier = Modifier)</ID>
-    <ID>LongParameterList:LoansScreen.kt$( loans: List&lt;Loan&gt;, query: String, onQuery: (String) -&gt; Unit, direction: Int, onDirection: (Int) -&gt; Unit, settled: Boolean, onSelect: (Loan) -&gt; Unit, onEmptyAdd: () -&gt; Unit )</ID>
-    <ID>LongParameterList:LoansScreen.kt$( openLoans: List&lt;Loan&gt;, settledCount: Int, toReceive: Long, toPay: Long, net: Long, onOpenLedger: () -&gt; Unit, onSelect: (Loan) -&gt; Unit )</ID>
-    <ID>LongParameterList:ScreenTimeScreen.kt$( usage: List&lt;AppUsage&gt;, granted: Boolean, screenLimit: Int, reelCount: Int, accessibilityOn: Boolean, onUsageSettings: () -&gt; Unit, onSetLimit: () -&gt; Unit, onOpenReels: () -&gt; Unit, onRefresh: () -&gt; Unit )</ID>
-    <ID>LongParameterList:ScreenTimeScreen.kt$(count: Int, limit: Int, enabled: Boolean, onSettings: () -&gt; Unit, onSetLimit: () -&gt; Unit, onRefresh: () -&gt; Unit)</ID>
-    <ID>LongParameterList:ScreenTimeScreen.kt$(usage: List&lt;AppUsage&gt;, granted: Boolean, range: UsageRange, onRange: (UsageRange) -&gt; Unit, onUsageSettings: () -&gt; Unit, onRefresh: () -&gt; Unit)</ID>
+    <ID>LongParameterList:LanguageScreen.kt$( history: List&lt;TranslationHistory&gt;, onFavorite: (TranslationHistory) -&gt; Unit, onDelete: (TranslationHistory) -&gt; Unit, onClearAll: () -&gt; Unit, onReuse: (TranslationHistory) -&gt; Unit, onSaveAsWord: (TranslationHistory) -&gt; Unit )</ID>
+    <ID>LongParameterList:LanguageScreen.kt$( notes: List&lt;GrammarNote&gt;, query: String, onQueryChange: (String) -&gt; Unit, onAdd: () -&gt; Unit, onEdit: (GrammarNote) -&gt; Unit, onDelete: (Long) -&gt; Unit, onTogglePin: (GrammarNote) -&gt; Unit )</ID>
+    <ID>LongParameterList:LanguageScreen.kt$( source: String, target: String, text: String, state: TranslationUiState, proofreadingState: ProofreadingUiState, onSourceChange: (String) -&gt; Unit, onTargetChange: (String) -&gt; Unit, onTextChange: (String) -&gt; Unit, onSwap: () -&gt; Unit, onTranslate: () -&gt; Unit, onProofread: () -&gt; Unit, onUseCorrection: (String) -&gt; Unit, onClearText: () -&gt; Unit, onSaveAsWord: (text: String, meaning: String, srcLang: String) -&gt; Unit )</ID>
+    <ID>LongParameterList:LanguageScreen.kt$( title: String, value: String, subtitle: String, color: Color, modifier: Modifier = Modifier, onClick: (() -&gt; Unit)? = null )</ID>
+    <ID>LongParameterList:LanguageScreen.kt$( words: List&lt;VocabularyWord&gt;, reviewMap: Map&lt;Long, ReviewState&gt;, query: String, onQueryChange: (String) -&gt; Unit, onAdd: () -&gt; Unit, onEdit: (VocabularyWord) -&gt; Unit, onDelete: (Long) -&gt; Unit, onToggleMastered: (VocabularyWord) -&gt; Unit )</ID>
+    <ID>LongParameterList:LoansScreen.kt$( loan: Loan, outstandingMinorUnits: Long, payments: List&lt;LoanPayment&gt;, personProfile: LoanPerson?, attachments: List&lt;LoanAttachment&gt;, onDismiss: () -&gt; Unit, onSettle: () -&gt; Unit, onEdit: () -&gt; Unit, onDelete: () -&gt; Unit, onAttach: (Int, String) -&gt; Unit, onAddPayment: (Long, String) -&gt; Unit, onDeletePayment: (LoanPayment) -&gt; Unit )</ID>
+    <ID>LongParameterList:LoansScreen.kt$( loans: List&lt;Loan&gt;, people: List&lt;LoanPerson&gt;, outstandingBalances: Map&lt;Int, Long&gt;, query: String, onQuery: (String) -&gt; Unit, direction: Int, onDirection: (Int) -&gt; Unit, settled: Boolean, dateRange: LoanDateRange, onDateRange: (LoanDateRange) -&gt; Unit, onSelect: (Loan) -&gt; Unit, onEmptyAdd: () -&gt; Unit )</ID>
+    <ID>LongParameterList:LoansScreen.kt$( openLoans: List&lt;Loan&gt;, people: List&lt;LoanPerson&gt;, outstandingBalances: Map&lt;Int, Long&gt;, settledCount: Int, toReceive: Long, toPay: Long, net: Long, dateRange: LoanDateRange, onDateRange: (LoanDateRange) -&gt; Unit, accountBalanceMinorUnits: Long?, onEditAccountBalance: () -&gt; Unit, onOpenLedger: () -&gt; Unit, onSelect: (Loan) -&gt; Unit )</ID>
+    <ID>LongParameterList:LoansScreen.kt$( people: List&lt;LoanPerson&gt;, loans: List&lt;Loan&gt;, outstandingBalances: Map&lt;Int, Long&gt;, onAdd: () -&gt; Unit, onOpen: (LoanPerson) -&gt; Unit, onEdit: (LoanPerson) -&gt; Unit, onDelete: (LoanPerson) -&gt; Unit )</ID>
+    <ID>LongParameterList:LoansScreen.kt$( person: LoanPerson, loans: List&lt;Loan&gt;, outstandingBalances: Map&lt;Int, Long&gt;, onDismiss: () -&gt; Unit, onAddLoan: () -&gt; Unit, onEdit: () -&gt; Unit, onSelectLoan: (Loan) -&gt; Unit )</ID>
+    <ID>LongParameterList:LoansScreen.kt$LoanViewModel$(person: String, personId: Int?, amountMinorUnits: Long, lent: Boolean, note: String, title: String = "", dueEpochDay: Long? = null, status: String = "pending", proofUris: List&lt;String&gt; = emptyList())</ID>
+    <ID>LongParameterList:Navigation.kt$( destination: MomentumDestination, onOpenModule: (AppModule) -&gt; Unit, onBack: () -&gt; Unit, modifier: Modifier = Modifier, isModuleVisible: (AppModule) -&gt; Boolean = { true }, entrySource: ModuleEntrySource = ModuleEntrySource.NORMAL, cloudSignedIn: Boolean = true, requiresAccountAttention: Boolean = false, offlineNotice: Boolean = false, onOpenPermissions: () -&gt; Unit = {}, onOpenSearch: () -&gt; Unit = {}, onOpenSearchResult: (AppModule, Int) -&gt; Unit = { _, _ -&gt; } )</ID>
+    <ID>LongParameterList:Navigation.kt$( module: AppModule, itemId: Int?, requestToken: Long?, onOpenModule: (AppModule) -&gt; Unit, onBack: () -&gt; Unit, cloudSignedIn: Boolean = true, requiresAccountAttention: Boolean = false, offlineNotice: Boolean = false, onOpenSearch: () -&gt; Unit = {} )</ID>
+    <ID>LongParameterList:NetworkIndicatorService.kt$NetworkIndicatorService$( prefs: android.content.SharedPreferences, key: String, label: String, bytes: Long?, limitMb: Long, period: NetworkLimitPeriod )</ID>
+    <ID>LongParameterList:OnboardingCards.kt$( progress: OnboardingProgress, signals: OnboardingSignals, onOpenModule: (AppModule) -&gt; Unit, onOpenPermissions: () -&gt; Unit, onDone: (OnboardingTask) -&gt; Unit, onDismiss: (OnboardingTask) -&gt; Unit, onSnooze: (OnboardingTask) -&gt; Unit, onFinish: () -&gt; Unit, modifier: Modifier = Modifier, nowMillis: Long = System.currentTimeMillis() )</ID>
+    <ID>LongParameterList:ProfileScreen.kt$( state: ProfileUiState.SignedIn, message: String?, onEdit: () -&gt; Unit, onChange: (ProfileCache) -&gt; Unit, onPhoto: () -&gt; Unit, onSave: () -&gt; Unit, onCancel: () -&gt; Unit, onSignOut: () -&gt; Unit, onChangePassword: () -&gt; Unit, onDelete: () -&gt; Unit )</ID>
+    <ID>LongParameterList:ProfileScreen.kt$( state: ProfileUiState.SignedOut, message: String?, onEmail: (String) -&gt; Unit, onPassword: (String) -&gt; Unit, onName: (String) -&gt; Unit, onToggleCreate: () -&gt; Unit, onSubmit: () -&gt; Unit, onReset: () -&gt; Unit, onResend: () -&gt; Unit, onGoogle: () -&gt; Unit, onContinue: () -&gt; Unit )</ID>
+    <ID>LongParameterList:ScreenTimeEventPolicy.kt$( kind: ScreenTimeAccessibilityEventKind, packageName: String?, targetPackage: String, eventTimeMs: Long, lastCountedEventMs: Long, debounceMs: Long = INSTAGRAM_SCROLL_DEBOUNCE_MS )</ID>
+    <ID>LongParameterList:SupabaseAuthApi.kt$SupabaseAuthApi$( context: Context, idToken: String, nonce: String, profilePictureUrl: String? = null, profileDisplayName: String? = null, beforeActivate: suspend (String) -&gt; Unit = {} )</ID>
+    <ID>LongParameterList:SupabaseScreen.kt$( module: SyncModule, records: List&lt;CloudRecord&gt;, enabled: Boolean, homeModule: AppModule?, homeVisible: Boolean?, online: Boolean, signedIn: Boolean, workState: WorkInfo.State?, error: String?, onBack: () -&gt; Unit, onRefresh: () -&gt; Unit, onEnabledChange: (Boolean) -&gt; Unit, onHomeVisibleChange: (Boolean) -&gt; Unit, onSync: () -&gt; Unit, onDeleteModuleData: () -&gt; Unit )</ID>
     <ID>LongParameterList:ToDoScreen.kt$( month: YearMonth, selectedDate: LocalDate, tasks: List&lt;ToDoItem&gt;, onPrevious: () -&gt; Unit, onNext: () -&gt; Unit, onSelect: (LocalDate) -&gt; Unit, onEdit: (ToDoItem) -&gt; Unit, onToggle: (ToDoItem) -&gt; Unit, onDelete: (ToDoItem) -&gt; Unit )</ID>
-    <ID>LongParameterList:VaultScreen.kt$(items: List&lt;VaultListItem&gt;, unreadable: Int, onLock: () -&gt; Unit, onAdd: () -&gt; Unit, onSelect: (VaultListItem) -&gt; Unit, onExport: () -&gt; Unit)</ID>
-    <ID>LoopWithTooManyJumpStatements:MomentumBackup.kt$MomentumBackup$for</ID>
+    <ID>LongParameterList:Ui.kt$( icon: ImageVector, title: String, actionLabel: String, onAction: () -&gt; Unit, modifier: Modifier = Modifier, subtitle: String? = null )</ID>
+    <ID>LongParameterList:Ui.kt$( progress: Float, label: String, modifier: Modifier = Modifier, caption: String = "today", progressColor: Color = Color.White, trackColor: Color = Color.White.copy(alpha = 0.22f), labelColor: Color = Color.White, captionColor: Color = Color.White.copy(alpha = 0.75f) )</ID>
+    <ID>LongParameterList:UsageLimitNotifications.kt$UsageLimitNotifications$( context: Context, label: String, bytes: Long, alertNumber: Int, thresholdBytes: Long, period: String, collapsedOlderAlerts: Int = 0 )</ID>
+    <ID>LongParameterList:ZyloNotifications.kt$ZyloNotifications$( context: Context, group: String, channelId: String, childId: Int, notification: Notification, summaryId: Int, summaryTitle: String )</ID>
+    <ID>LongParameterList:ZyloNotifications.kt$ZyloNotifications$( manager: NotificationManager, id: String, name: String, importance: Int, group: String, description: String, configure: (NotificationChannel) -&gt; Unit = {} )</ID>
+    <ID>LoopWithTooManyJumpStatements:GlobalSearchPolicy.kt$GlobalSearchPolicy$for</ID>
+    <ID>LoopWithTooManyJumpStatements:NetworkAlertPolicy.kt$while</ID>
+    <ID>LoopWithTooManyJumpStatements:SupabaseRestClient.kt$SupabaseRestClient$while</ID>
     <ID>LoopWithTooManyJumpStatements:WeeklyBackupWorker.kt$WeeklyBackupWorker$while</ID>
+    <ID>MatchingDeclarationName:DeviceMonitorRecoveryPolicy.kt$DeviceMonitorRecoveryAction</ID>
     <ID>MatchingDeclarationName:ExpensesScreen.kt$ExpenseViewModel : ViewModel</ID>
-    <ID>MatchingDeclarationName:FilesScreen.kt$FileViewModel : ViewModel</ID>
     <ID>MatchingDeclarationName:HabitTemplates.kt$HabitTemplate</ID>
     <ID>MatchingDeclarationName:LoansScreen.kt$LoanViewModel : ViewModel</ID>
     <ID>MatchingDeclarationName:Navigation.kt$MomentumDestination</ID>
     <ID>MatchingDeclarationName:ScreenTimeScreen.kt$AppUsage</ID>
-    <ID>MatchingDeclarationName:VaultScreen.kt$VaultViewModel : AndroidViewModel</ID>
+    <ID>MatchingDeclarationName:StorageTombstones.kt$StorageTombstoneCandidate</ID>
+    <ID>MayBeConst:AppearancePolicy.kt$AppearanceBackupPolicy$/** Legacy SharedPreferences keys, kept only for first-frame migration. */ private val LEGACY_THEME_MODE = "theme_mode"</ID>
+    <ID>MayBeConst:AppearancePolicy.kt$AppearanceBackupPolicy$private val LEGACY_DYNAMIC_ACCENT = "dynamic_accent"</ID>
+    <ID>MayBeConst:AppearancePolicy.kt$AppearanceBackupPolicy$private val LEGACY_GLASS_INTENSITY = "glass_intensity"</ID>
+    <ID>MayBeConst:AppearancePolicy.kt$AppearanceBackupPolicy$private val LEGACY_REDUCE_MOTION = "reduce_motion"</ID>
+    <ID>NestedBlockDepth:ContactImport.kt$private fun parseSharedStrings(xml: ByteArray): List&lt;String&gt;</ID>
+    <ID>NestedBlockDepth:ContactImport.kt$private fun parseVCard(text: String): List&lt;ImportedContact&gt;</ID>
+    <ID>NestedBlockDepth:ContactImport.kt$private fun parseXlsx(input: InputStream): List&lt;List&lt;String&gt;&gt;</ID>
     <ID>NestedBlockDepth:Data.kt$AppDatabase.Companion.&lt;no name provided&gt;$override fun migrate(db: SupportSQLiteDatabase)</ID>
+    <ID>NestedBlockDepth:FilesScreen.kt$internal fun fileMetadata(context: android.content.Context, uri: Uri): FileMetadata</ID>
     <ID>NestedBlockDepth:FilesScreen.kt$private fun renderPdfPage(context: android.content.Context, uri: Uri, index: Int): PdfPage?</ID>
+    <ID>NestedBlockDepth:LanguageTranslator.kt$LanguageTranslator$private fun parseGtxResponse(jsonStr: String, requestedSource: String): TranslationResult?</ID>
+    <ID>NestedBlockDepth:VaultScreen.kt$VaultViewModel$private suspend fun applyImport(records: List&lt;VaultRecord&gt;, action: VaultImportAction, key: ByteArray): Int</ID>
     <ID>PackageNaming:InstagramScrollCounterService.kt$package com.faheem.habits.features.screen_time</ID>
+    <ID>PackageNaming:ScreenTimeEventPolicy.kt$package com.faheem.habits.features.screen_time</ID>
+    <ID>PackageNaming:ScreenTimeEventPolicyTest.kt$package com.faheem.habits.features.screen_time</ID>
+    <ID>PackageNaming:ScreenTimeLimits.kt$package com.faheem.habits.features.screen_time</ID>
+    <ID>PackageNaming:ScreenTimeRepository.kt$package com.faheem.habits.features.screen_time</ID>
     <ID>PackageNaming:ScreenTimeScreen.kt$package com.faheem.habits.features.screen_time</ID>
+    <ID>PackageNaming:ScreenTimeViewModel.kt$package com.faheem.habits.features.screen_time</ID>
+    <ID>PackageNaming:UsageLimitSchedule.kt$package com.faheem.habits.features.screen_time</ID>
+    <ID>PackageNaming:UsageLimitWorker.kt$package com.faheem.habits.features.screen_time</ID>
+    <ID>ReturnCount:AppSettingsScreen.kt$@Composable fun AppSettingsScreen( onOpenModule: (AppModule) -&gt; Unit = {}, onOpenSearch: () -&gt; Unit = {}, settingsViewModel: SettingsViewModel = hiltViewModel(), cloudSignedIn: Boolean = true, requiresAccountAttention: Boolean = false, offlineNotice: Boolean = false )</ID>
     <ID>ReturnCount:BatteryChargeOverlay.kt$private fun postChargingNotification(context: Context)</ID>
+    <ID>ReturnCount:BatteryScreen.kt$internal fun platformChargingEtaMinutes(context: Context, charging: Boolean): Int?</ID>
+    <ID>ReturnCount:BoundedImageLoader.kt$fun decodeBoundedStream( input: InputStream, maxBytes: Long = ImagePreviewPolicy.MAX_SOURCE_BYTES, maxDimension: Int = ImagePreviewPolicy.MAX_DECODE_DIMENSION ): Bitmap?</ID>
+    <ID>ReturnCount:BoundedInputStream.kt$BoundedInputStream$override fun read(b: ByteArray, off: Int, len: Int): Int</ID>
+    <ID>ReturnCount:BoundedInputStream.kt$BoundedInputStream$override fun skip(n: Long): Long</ID>
+    <ID>ReturnCount:ContactsScreen.kt$internal fun contactPhotoLinkState(context: Context, uriValue: String): ContactPhotoLinkState</ID>
+    <ID>ReturnCount:CustomNotificationScheduler.kt$CustomNotificationScheduler$suspend fun deliver(context: Context, id: Int)</ID>
+    <ID>ReturnCount:CustomNotificationTimeCalculator.kt$CustomNotificationTimeCalculator$fun next(notification: CustomNotification, now: ZonedDateTime): ZonedDateTime?</ID>
+    <ID>ReturnCount:FileRepository.kt$FileRepository$private fun validate(draft: FileLinkDraft): FileAddResult</ID>
+    <ID>ReturnCount:FileStorageSync.kt$FileStorageSync$private suspend fun restore(uri: String, path: String, name: String, folder: String): String?</ID>
     <ID>ReturnCount:FilesScreen.kt$private fun renderPdfPage(context: android.content.Context, uri: Uri, index: Int): PdfPage?</ID>
-    <ID>ReturnCount:HabitLogic.kt$fun computeStreaks(days: Set&lt;Long&gt;, mask: Int, today: Long): StreakInfo</ID>
-    <ID>ReturnCount:InstagramScrollCounterService.kt$InstagramScrollCounterService$override fun onAccessibilityEvent(event: AccessibilityEvent?)</ID>
+    <ID>ReturnCount:GlobalSearchPolicy.kt$GlobalSearchStateMapper$fun fromQuery(query: String, outcome: GlobalSearchOutcome?): GlobalSearchUiState</ID>
+    <ID>ReturnCount:HabitScheduleLogic.kt$fun computeStreaks(days: Set&lt;Long&gt;, mask: Int, today: Long): StreakInfo</ID>
+    <ID>ReturnCount:MomentumSettingsRepository.kt$MomentumSettingsRepository$suspend fun legacyBudgetsForRoom(): LegacyMoneyBudgets?</ID>
+    <ID>ReturnCount:NetworkAlertPolicy.kt$internal fun networkAlertThreshold(limitMb: Long, index: Int, multiplier: Double = NETWORK_ALERT_MULTIPLIER): Long?</ID>
+    <ID>ReturnCount:NetworkRepository.kt$NetworkRepository$private fun snapshot(): NetworkConnectionState</ID>
     <ID>ReturnCount:NetworkScreen.kt$private fun networkCountry(context: Context): Pair&lt;String, String&gt;</ID>
+    <ID>ReturnCount:NotificationSystem.kt$MomentumReminderScheduler$fun schedule(context: Context, id: String)</ID>
+    <ID>ReturnCount:PermissionStatusRepository.kt$PermissionStatusRepository$private fun usageAccessGranted(): Boolean</ID>
+    <ID>ReturnCount:ProfileScreen.kt$private fun consumeRecoveryLink(context: Context): RecoveryLinkResult</ID>
+    <ID>ReturnCount:RecoveryLink.kt$RecoveryLinkParser$fun parse(link: String?, nowMillis: Long): RecoveryLinkResult</ID>
     <ID>ReturnCount:ReminderTimeCalculator.kt$ReminderTimeCalculator$fun nextHabit(reminder: HabitReminder, now: ZonedDateTime): ZonedDateTime?</ID>
     <ID>ReturnCount:ReminderTimeCalculator.kt$ReminderTimeCalculator$fun nextTodo(item: ToDoItem, now: ZonedDateTime): ZonedDateTime?</ID>
+    <ID>ReturnCount:ScreenTimeEventPolicy.kt$internal fun scrollCountDecision( kind: ScreenTimeAccessibilityEventKind, packageName: String?, targetPackage: String, eventTimeMs: Long, lastCountedEventMs: Long, debounceMs: Long = INSTAGRAM_SCROLL_DEBOUNCE_MS ): ScrollCountDecision</ID>
+    <ID>ReturnCount:ScreenTimeLimits.kt$internal fun checkScreenTimeAlarm(context: Context)</ID>
+    <ID>ReturnCount:SecureTokenEnvelope.kt$SecureTokenEnvelope$fun decode(encoded: String): TokenEnvelope?</ID>
+    <ID>ReturnCount:SecureTokenStore.kt$SecureTokenStore$@Synchronized fun readRefreshToken(context: Context): String?</ID>
+    <ID>ReturnCount:SupabaseRestClient.kt$SupabaseRestClient$suspend fun isCurrentUserAdmin(): Boolean</ID>
+    <ID>ReturnCount:Util.kt$fun parseMinorUnits(input: String, allowZero: Boolean = false): Long?</ID>
     <ID>SpreadOperator:Data.kt$AppDatabase.Companion.&lt;no name provided&gt;$(UUID.randomUUID().toString(), now, *args)</ID>
+    <ID>SwallowedException:LifeRulesScreen.kt$error: ActivityNotFoundException</ID>
+    <ID>SwallowedException:LifeRulesScreen.kt$error: SecurityException</ID>
+    <ID>SwallowedException:LifeRulesScreen.kt$error: UnsupportedOperationException</ID>
+    <ID>ThrowingExceptionsWithoutMessageOrCause:SupabaseRestClient.kt$BoundedInputStream$IndexOutOfBoundsException()</ID>
+    <ID>ThrowsCount:ContactImport.kt$private fun parseXlsx(input: InputStream): List&lt;List&lt;String&gt;&gt;</ID>
     <ID>TooGenericExceptionCaught:AppSettingsScreen.kt$e: Exception</ID>
-    <ID>TooGenericExceptionCaught:AuthScreen.kt$e: Exception</ID>
     <ID>TooGenericExceptionCaught:BatteryChargeOverlay.kt$ChargeAnimationOverlay$error: Throwable</ID>
     <ID>TooGenericExceptionCaught:BatteryChargingMonitorService.kt$BatteryChargingMonitorService$error: Throwable</ID>
     <ID>TooGenericExceptionCaught:BatteryScreen.kt$error: Throwable</ID>
-    <ID>TooGenericExceptionCaught:FilesScreen.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:FileStorageSync.kt$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:LanguageScreen.kt$LanguageViewModel$error: Exception</ID>
+    <ID>TooGenericExceptionCaught:LanguageTranslator.kt$LanguageTranslator$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:MainActivity.kt$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:SupabaseSyncWorker.kt$SupabaseSyncWorker$cause: Exception</ID>
+    <ID>TooGenericExceptionCaught:VaultScreen.kt$VaultViewModel$failure: Exception</ID>
     <ID>TooGenericExceptionCaught:VaultScreen.kt$e: Exception</ID>
-    <ID>TooManyFunctions:Data.kt$HabitDao</ID>
+    <ID>TooManyFunctions:AuthRepository.kt$AuthRepository</ID>
+    <ID>TooManyFunctions:ContactImport.kt$com.faheem.habits.features.contacts.ContactImport.kt</ID>
+    <ID>TooManyFunctions:FilesScreen.kt$com.faheem.habits.features.files.FilesScreen.kt</ID>
+    <ID>TooManyFunctions:InstagramScrollCounterService.kt$InstagramScrollCounterService : AccessibilityService</ID>
+    <ID>TooManyFunctions:LanguageScreen.kt$LanguageViewModel : AndroidViewModel</ID>
+    <ID>TooManyFunctions:LanguageScreen.kt$com.faheem.habits.features.language.LanguageScreen.kt</ID>
+    <ID>TooManyFunctions:LoansScreen.kt$com.faheem.habits.features.loans.LoansScreen.kt</ID>
     <ID>TooManyFunctions:MomentumBackup.kt$MomentumBackup</ID>
+    <ID>TooManyFunctions:MomentumSettingsRepository.kt$MomentumSettingsRepository</ID>
+    <ID>TooManyFunctions:NetworkIndicatorService.kt$NetworkIndicatorService$Companion</ID>
     <ID>TooManyFunctions:NotificationSystem.kt$MomentumNotificationSettings</ID>
+    <ID>TooManyFunctions:NotificationSystem.kt$MomentumReminderScheduler</ID>
+    <ID>TooManyFunctions:Phase7Logic.kt$com.faheem.habits.features.phase7.Phase7Logic.kt</ID>
+    <ID>TooManyFunctions:ProfileViewModel.kt$ProfileViewModel : ViewModel</ID>
     <ID>TooManyFunctions:ScreenTimeScreen.kt$com.faheem.habits.features.screen_time.ScreenTimeScreen.kt</ID>
+    <ID>TooManyFunctions:SettingsViewModel.kt$SettingsViewModel : ViewModel</ID>
+    <ID>TooManyFunctions:SupabaseAuthApi.kt$SupabaseAuthApi</ID>
+    <ID>TooManyFunctions:SupabaseRestClient.kt$SupabaseRestClient</ID>
+    <ID>TooManyFunctions:SyncJsonAccessors.kt$com.faheem.habits.core.data.sync.SyncJsonAccessors.kt</ID>
+    <ID>TooManyFunctions:Ui.kt$com.faheem.habits.core.ui.Ui.kt</ID>
+    <ID>TooManyFunctions:Util.kt$com.faheem.habits.core.data.Util.kt</ID>
     <ID>UnusedParameter:BatteryChargeOverlay.kt$ChargeAnimationOverlay$context: Context</ID>
-    <ID>UnusedParameter:LoansScreen.kt$color: Color</ID>
+    <ID>UnusedParameter:LocalBackupCrypto.kt$LocalBackupCrypto$context: Context</ID>
+    <ID>UnusedParameter:NetworkAlertPolicy.kt$period: String</ID>
     <ID>UnusedParameter:NetworkIndicatorService.kt$NetworkIndicatorService.Companion$context: Context</ID>
+    <ID>UnusedParameter:ProfileScreen.kt$onEdit: () -&gt; Unit</ID>
+    <ID>UnusedParameter:VaultScreen.kt$onLinkExisting: () -&gt; Unit</ID>
+    <ID>UnusedPrivateMember:DesignSystemPreview.kt$@Preview(name = "Compact 360dp", widthDp = 360, showBackground = true) @Composable private fun DesignSystemCompactPreview()</ID>
+    <ID>UnusedPrivateMember:DesignSystemPreview.kt$@Preview(name = "Dark reduced motion", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES) @Composable private fun DesignSystemDarkReducedMotionPreview()</ID>
+    <ID>UnusedPrivateMember:DesignSystemPreview.kt$@Preview(name = "Dark", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES) @Composable private fun DesignSystemDarkPreview()</ID>
+    <ID>UnusedPrivateMember:DesignSystemPreview.kt$@Preview(name = "Dynamic accent", showBackground = true) @Composable private fun DesignSystemDynamicAccentPreview()</ID>
+    <ID>UnusedPrivateMember:DesignSystemPreview.kt$@Preview(name = "Glass intensity high", widthDp = 360, showBackground = true) @Composable private fun DesignSystemHighGlassPreview()</ID>
+    <ID>UnusedPrivateMember:DesignSystemPreview.kt$@Preview(name = "Glass intensity low", widthDp = 360, showBackground = true) @Composable private fun DesignSystemLowGlassPreview()</ID>
+    <ID>UnusedPrivateMember:DesignSystemPreview.kt$@Preview(name = "Large text 1.3x", showBackground = true, fontScale = 1.3f) @Composable private fun DesignSystemLargeTextPreview()</ID>
+    <ID>UnusedPrivateMember:DesignSystemPreview.kt$@Preview(name = "Large text 2x", widthDp = 360, fontScale = 2f, showBackground = true) @Composable private fun DesignSystemLargeText2xPreview()</ID>
+    <ID>UnusedPrivateMember:DesignSystemPreview.kt$@Preview(name = "Light", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_NO) @Composable private fun DesignSystemLightPreview()</ID>
+    <ID>UnusedPrivateProperty:HabitRepository.kt$HabitRepository$val savedId = database.withTransaction { val id = if (habit.id == 0) { dao.insertHabit(changed.copy(createdEpochDay = today())).toInt() } else { dao.updateHabit(changed) oldReminders.forEach { dao.deleteReminder(it.id, now) } changed.id } drafts.forEach { draft -&gt; insertedIds += dao.insertReminder( HabitReminder( habitId = id, hour = draft.hour, minute = draft.minute, daysMask = draft.daysMask, dateEpochDay = draft.dateEpochDay ) ).toInt() } id }</ID>
+    <ID>UnusedPrivateProperty:LoansScreen.kt$var showPeople by remember { mutableStateOf(false) }</ID>
     <ID>UseCheckOrError:FilesScreen.kt$throw IllegalStateException("No output stream")</ID>
     <ID>UseCheckOrError:FilesScreen.kt$throw IllegalStateException("This editor supports files up to 1 MB.")</ID>
-    <ID>WildcardImport:AppSettingsScreen.kt$import androidx.compose.foundation.layout.*</ID>
-    <ID>WildcardImport:AppSettingsScreen.kt$import androidx.compose.material.icons.rounded.*</ID>
-    <ID>WildcardImport:AppSettingsScreen.kt$import androidx.compose.material3.*</ID>
-    <ID>WildcardImport:AppSettingsScreen.kt$import androidx.compose.runtime.*</ID>
-    <ID>WildcardImport:AppSettingsScreen.kt$import com.faheem.habits.core.data.*</ID>
-    <ID>WildcardImport:AppSettingsScreen.kt$import com.faheem.habits.core.notifications.*</ID>
-    <ID>WildcardImport:AppSettingsScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>UseCheckOrError:PortableBackupCrypto.kt$PortableBackupCrypto$throw IllegalStateException("Backup encryption could not be completed.")</ID>
+    <ID>UseRequire:FileStorageSync.kt$throw IllegalArgumentException("$description$SIZE_LIMIT_MESSAGE")</ID>
     <ID>WildcardImport:BatteryChargeOverlay.kt$import com.faheem.habits.core.data.*</ID>
     <ID>WildcardImport:BatteryChargeOverlay.kt$import com.faheem.habits.core.notifications.*</ID>
     <ID>WildcardImport:BatteryChargeOverlay.kt$import com.faheem.habits.core.ui.*</ID>
-    <ID>WildcardImport:BatteryChargingActivity.kt$import com.faheem.habits.core.data.*</ID>
-    <ID>WildcardImport:BatteryChargingActivity.kt$import com.faheem.habits.core.notifications.*</ID>
-    <ID>WildcardImport:BatteryChargingActivity.kt$import com.faheem.habits.core.ui.*</ID>
     <ID>WildcardImport:BatteryChargingMonitorService.kt$import com.faheem.habits.core.data.*</ID>
     <ID>WildcardImport:BatteryChargingMonitorService.kt$import com.faheem.habits.core.notifications.*</ID>
     <ID>WildcardImport:BatteryChargingMonitorService.kt$import com.faheem.habits.core.ui.*</ID>
@@ -212,6 +247,10 @@
     <ID>WildcardImport:BatteryScreen.kt$import com.faheem.habits.core.data.*</ID>
     <ID>WildcardImport:BatteryScreen.kt$import com.faheem.habits.core.notifications.*</ID>
     <ID>WildcardImport:BatteryScreen.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:ContactsScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:ContactsScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:ContactsScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:ContactsScreen.kt$import com.faheem.habits.core.ui.*</ID>
     <ID>WildcardImport:Data.kt$import androidx.room.*</ID>
     <ID>WildcardImport:ExpensesScreen.kt$import androidx.compose.foundation.layout.*</ID>
     <ID>WildcardImport:ExpensesScreen.kt$import androidx.compose.material.icons.rounded.*</ID>
@@ -266,7 +305,6 @@
     <ID>WildcardImport:HabitsScreen.kt$import androidx.compose.material3.*</ID>
     <ID>WildcardImport:HabitsScreen.kt$import androidx.compose.runtime.*</ID>
     <ID>WildcardImport:HabitsScreen.kt$import com.faheem.habits.core.data.*</ID>
-    <ID>WildcardImport:HabitsScreen.kt$import com.faheem.habits.core.notifications.*</ID>
     <ID>WildcardImport:HabitsScreen.kt$import com.faheem.habits.core.ui.*</ID>
     <ID>WildcardImport:HabitsTemplatesScreen.kt$import androidx.compose.foundation.layout.*</ID>
     <ID>WildcardImport:HabitsTemplatesScreen.kt$import androidx.compose.material.icons.rounded.*</ID>
@@ -291,6 +329,10 @@
     <ID>WildcardImport:InstagramScrollCounterService.kt$import com.faheem.habits.core.data.*</ID>
     <ID>WildcardImport:InstagramScrollCounterService.kt$import com.faheem.habits.core.notifications.*</ID>
     <ID>WildcardImport:InstagramScrollCounterService.kt$import com.faheem.habits.core.ui.*</ID>
+    <ID>WildcardImport:LanguageScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:LanguageScreen.kt$import androidx.compose.material3.*</ID>
+    <ID>WildcardImport:LanguageScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:LanguageScreen.kt$import com.faheem.habits.core.ui.*</ID>
     <ID>WildcardImport:LoansScreen.kt$import androidx.compose.foundation.layout.*</ID>
     <ID>WildcardImport:LoansScreen.kt$import androidx.compose.material.icons.rounded.*</ID>
     <ID>WildcardImport:LoansScreen.kt$import androidx.compose.material3.*</ID>
@@ -300,7 +342,6 @@
     <ID>WildcardImport:LoansScreen.kt$import com.faheem.habits.core.ui.*</ID>
     <ID>WildcardImport:MomentumBackup.kt$import com.faheem.habits.core.data.*</ID>
     <ID>WildcardImport:Navigation.kt$import androidx.compose.foundation.layout.*</ID>
-    <ID>WildcardImport:Navigation.kt$import androidx.compose.material3.*</ID>
     <ID>WildcardImport:Navigation.kt$import com.faheem.habits.core.ui.*</ID>
     <ID>WildcardImport:NetworkIndicatorService.kt$import com.faheem.habits.core.data.*</ID>
     <ID>WildcardImport:NetworkIndicatorService.kt$import com.faheem.habits.core.notifications.*</ID>

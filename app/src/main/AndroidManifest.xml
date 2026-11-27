@@ -109,6 +109,15 @@
             </intent-filter>
         </receiver>
         <receiver
+            android:name=".core.notifications.DeviceMonitorBootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+        <receiver
             android:name=".features.battery.BatteryChargingReceiver"
             android:enabled="true"
             android:exported="false">

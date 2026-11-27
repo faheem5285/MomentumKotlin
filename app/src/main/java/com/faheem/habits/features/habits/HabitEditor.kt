@@ -20,6 +20,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
@@ -30,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,6 +68,50 @@ private fun DayToggle(letter: String, selected: Boolean, onClick: () -> Unit) {
             fontWeight = FontWeight.Bold,
             color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@Composable
+private fun HabitIconPicker(
+    title: String,
+    keys: List<String>,
+    selectedKey: String,
+    accent: Color,
+    onSelect: (String) -> Unit
+) {
+    EditorLabel(title)
+    keys.chunked(6).forEach { rowKeys ->
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+        ) {
+            rowKeys.forEach { key ->
+                val selected = key == selectedKey
+                Box(
+                    Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (selected) accent.copy(alpha = 0.18f)
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                        .then(if (selected) Modifier.border(2.dp, accent, CircleShape) else Modifier)
+                        .selectable(
+                            selected = selected,
+                            role = Role.RadioButton,
+                            onClick = { onSelect(key) }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        habitIcon(key),
+                        key.replaceFirstChar { it.uppercase() },
+                        modifier = Modifier.size(22.dp),
+                        tint = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -189,45 +235,20 @@ fun HabitEditorSheet(
             }) { Text("Allow precise reminder times") }
         }
 
-        EditorLabel("Islamic icons")
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            IslamicHabitIconKeys.forEach { key ->
-                val vector = habitIcon(key)
-                val sel = key == icon
-                Box(
-                    Modifier
-                        .size(46.dp)
-                        .clip(CircleShape)
-                        .background(if (sel) accent.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant)
-                        .then(if (sel) Modifier.border(2.dp, accent, CircleShape) else Modifier)
-                        .clickable { icon = key },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        vector, key.replaceFirstChar { it.uppercase() },
-                        tint = if (sel) accent else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-
-        EditorLabel("More icons")
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            HabitIcons.filterKeys { it !in IslamicHabitIconKeys }.forEach { (key, vector) ->
-                val sel = key == icon
-                Box(
-                    Modifier
-                        .size(46.dp)
-                        .clip(CircleShape)
-                        .background(if (sel) accent.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant)
-                        .then(if (sel) Modifier.border(2.dp, accent, CircleShape) else Modifier)
-                        .clickable { icon = key },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(vector, key.replaceFirstChar { it.uppercase() }, tint = if (sel) accent else MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
+        HabitIconPicker(
+            title = "Islamic icons",
+            keys = IslamicHabitIconKeys,
+            selectedKey = icon,
+            accent = accent,
+            onSelect = { icon = it }
+        )
+        HabitIconPicker(
+            title = "More icons",
+            keys = HabitIcons.keys.filterNot { it in IslamicHabitIconKeys },
+            selectedKey = icon,
+            accent = accent,
+            onSelect = { icon = it }
+        )
 
         EditorLabel("Colour")
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

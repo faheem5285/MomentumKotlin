@@ -542,7 +542,7 @@ private fun LazyBatteryContent(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Keep listener active in background", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text("Keeps the pop-up working after Zylo leaves Recents.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(BATTERY_LISTENER_COPY, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(checked = backgroundListener, onCheckedChange = onBackgroundListener)
                     }

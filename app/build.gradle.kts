@@ -143,7 +143,7 @@ dependencies {
     implementation(libs.google.id)
     implementation(libs.mlkit.translate)
     implementation(libs.mlkit.language.id)
-    debugImplementation(libs.leakcanary.android)
+    // LeakCanary intentionally not bundled by default: it adds a launcher icon and runtime overhead in debug installs.
     debugImplementation(libs.androidx.compose.ui.tooling)
     ksp(libs.androidx.room.compiler)
     ksp(libs.hilt.compiler)

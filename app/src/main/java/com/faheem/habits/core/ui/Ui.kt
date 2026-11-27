@@ -3,7 +3,6 @@
 package com.faheem.habits.core.ui
 
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,9 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -169,6 +166,23 @@ fun HeroRefreshButton(onClick: () -> Unit, description: String = "Refresh") {
     }
 }
 
+/** Standard supporting line used under module hero headings. */
+@Composable
+fun HeroCaption(
+    text: String,
+    modifier: Modifier = Modifier,
+    maxLines: Int = 2
+) {
+    Text(
+        text = text,
+        modifier = modifier,
+        fontSize = 13.sp,
+        color = Color.White.copy(alpha = 0.84f),
+        maxLines = maxLines
+    )
+}
+
+@Deprecated("Use SectionHeader directly.", ReplaceWith("SectionHeader(text)"))
 @Composable
 fun SectionLabel(text: String) {
     SectionHeader(text)
@@ -352,19 +366,15 @@ fun ProgressBar(
     modifier: Modifier = Modifier,
     height: Dp = 8.dp
 ) {
-    val f by animateFloatAsState(fraction.coerceIn(0f, 1f), tween(500), label = "bar")
+    val spec = rememberAnimationSpecFor<Float>(LocalReduceEffects.current, 500)
+    val f by animateFloatAsState(fraction.coerceIn(0f, 1f), spec, label = "bar")
     Box(
         modifier
             .fillMaxWidth()
             .height(height)
             .clip(RoundedCornerShape(height / 2))
             .background(track)
-            .semantics {
-                progressBarRangeInfo = ProgressBarRangeInfo(
-                    fraction.coerceIn(0f, 1f),
-                    0f..1f
-                )
-            }
+            .progressSemantics("Progress", fraction)
     ) {
         Box(
             Modifier
@@ -398,22 +408,12 @@ fun ProgressRing(
     labelColor: Color = Color.White,
     captionColor: Color = Color.White.copy(alpha = 0.75f)
 ) {
-    val reduceMotion = LocalReduceEffects.current
-    val anim by animateFloatAsState(
-        progress.coerceIn(0f, 1f),
-        tween(if (reduceMotion) 0 else MomentumTokens.motionMedium),
-        label = "ring"
-    )
+    val spec = rememberAnimationSpecFor<Float>(LocalReduceEffects.current)
+    val anim by animateFloatAsState(progress.coerceIn(0f, 1f), spec, label = "ring")
     Box(
         modifier
             .size(96.dp)
-            .semantics {
-                contentDescription = label
-                progressBarRangeInfo = ProgressBarRangeInfo(
-                    progress.coerceIn(0f, 1f),
-                    0f..1f
-                )
-            },
+            .progressSemantics(label, progress),
         contentAlignment = Alignment.Center
     ) {
         Canvas(Modifier.fillMaxSize()) {
@@ -447,12 +447,14 @@ fun ProgressRing(
     }
 }
 
+@Deprecated("Use GlassSheet directly.", ReplaceWith("GlassSheet(title, onDismiss, content)"))
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FormSheet(title: String, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     GlassSheet(title, onDismiss) { content() }
 }
 
+@Deprecated("Use PrimaryButton directly.", ReplaceWith("PrimaryButton(text, onClick)"))
 @Composable
 fun BigButton(text: String, onClick: () -> Unit) {
     PrimaryButton(text, onClick)

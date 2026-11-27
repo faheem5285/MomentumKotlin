@@ -2,8 +2,11 @@ package com.faheem.habits.features.home
 
 import android.content.Context
 import com.faheem.habits.core.data.AppDatabase
+import com.faheem.habits.core.data.saturatingSubtract
+import com.faheem.habits.core.data.sumMinorUnits
 import com.faheem.habits.core.data.today
 import com.faheem.habits.features.habits.isScheduled
+import com.faheem.habits.features.money.outstandingByLoan
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -38,13 +41,19 @@ class HomeRepository @Inject constructor(
         updates to readable
     }
 
+    private val loanData = combine(
+        database.loanDao().getAll(),
+        database.loanDao().getAllPayments()
+    ) { loans, payments -> loans to payments }
+
     private val overview = combine(
         database.habitDao().getHabits(),
         database.habitDao().getCompletions(),
         database.expenseDao().getAll(),
-        database.loanDao().getAll(),
+        loanData,
         database.fileDao().getAll()
-    ) { habits, completions, expenses, loans, files ->
+    ) { habits, completions, expenses, currentLoanData, files ->
+        val (loans, payments) = currentLoanData
         withContext(Dispatchers.Default) {
             val day = today()
             val active = habits.filter { !it.archived && isScheduled(it.daysMask, day) }
@@ -53,14 +62,16 @@ class HomeRepository @Inject constructor(
                 .map { it.habitId }
                 .toSet()
             val month = YearMonth.now()
-            val spent = expenses.asSequence()
-                .filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == month }
-                .sumOf { it.amountMinorUnits }
-            val spentByDay = expenses.asSequence()
-                .filter { it.epochDay in (day - 6)..day }
+            val spent = expenses.filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == month }
+                .sumMinorUnits { it.amountMinorUnits }
+            val spentByDay = expenses.filter { it.epochDay in (day - 6)..day }
                 .groupBy { it.epochDay }
-                .mapValues { entry -> entry.value.sumOf { it.amountMinorUnits }.toFloat() }
+                .mapValues { entry -> entry.value.sumMinorUnits { it.amountMinorUnits }.toFloat() }
             val open = loans.filter { !it.settled }
+            val outstanding = outstandingByLoan(open, payments)
+            fun outstandingFor(loanId: Int): Long = outstanding[loanId] ?: 0L
+            val loanLent = open.filter { it.lent }.sumMinorUnits { outstandingFor(it.id) }
+            val loanBorrowed = open.filter { !it.lent }.sumMinorUnits { outstandingFor(it.id) }
             val habitWeek = (6L downTo 0L).map { offset ->
                 val date = LocalDate.ofEpochDay(day).minusDays(offset).toEpochDay()
                 val scheduledToday = habits
@@ -76,8 +87,7 @@ class HomeRepository @Inject constructor(
                 habitsTotal = active.size,
                 habitsDone = active.count { it.id in doneIds },
                 monthSpent = spent,
-                loanNet = open.filter { it.lent }.sumOf { it.amountMinorUnits } -
-                    open.filter { !it.lent }.sumOf { it.amountMinorUnits },
+                loanNet = saturatingSubtract(loanLent, loanBorrowed),
                 openLoans = open.size,
                 fileCount = files.size,
                 habitWeek = habitWeek,
@@ -85,8 +95,8 @@ class HomeRepository @Inject constructor(
                 fileMix = files.groupBy { fileKind(it.mime) }
                     .map { (kind, items) -> kind to items.size.toFloat() }
                     .sortedByDescending { it.second },
-                loanLent = open.filter { it.lent }.sumOf { it.amountMinorUnits },
-                loanBorrowed = open.filter { !it.lent }.sumOf { it.amountMinorUnits }
+                loanLent = loanLent,
+                loanBorrowed = loanBorrowed
             )
         }
     }

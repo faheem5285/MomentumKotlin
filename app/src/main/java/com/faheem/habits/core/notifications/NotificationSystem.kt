@@ -66,6 +66,14 @@ private fun channelId(id: String) = "reminder_$id"
 private fun groupId(id: String) = "zylo.$id"
 private fun targetModule(module: AppModule) = module.name.lowercase()
 
+/** Retries a suppressed reminder when quiet hours end instead of consuming it. */
+private fun deferUntilQuietEnds(context: Context, intent: PendingIntent) {
+    val (start, end) = MomentumNotificationSettings.quietHours(context)
+    val triggerAtMillis = ReminderDeliveryPolicy.quietHoursEndMillis(start, end, ZonedDateTime.now())
+    val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    MomentumReminderScheduler.setAlarm(alarms, triggerAtMillis, intent)
+}
+
 private fun actionPendingIntent(
     context: Context,
     action: String,
@@ -338,10 +346,16 @@ object HabitReminderScheduler {
         val reminder = dao.getReminder(reminderId) ?: return
         val habit = dao.getHabit(reminder.habitId) ?: return
         val completedToday = dao.getCompletion(reminder.habitId, java.time.LocalDate.now().toEpochDay()) != null
-        if (!habit.archived && !completedToday && reminder.enabled && !MomentumNotificationSettings.isQuietHours(context) &&
-            MomentumNotificationSettings.masterEnabled(context) &&
-            MomentumNotificationSettings.isEnabled(context, "habits") && MomentumNotificationSettings.notificationsAllowed(context)
-        ) {
+        val decision = ReminderDeliveryPolicy.habit(
+            quietHours = MomentumNotificationSettings.isQuietHours(context),
+            postingAllowed = !habit.archived && reminder.enabled &&
+                MomentumNotificationSettings.masterEnabled(context) &&
+                MomentumNotificationSettings.isEnabled(context, "habits") &&
+                MomentumNotificationSettings.notificationsAllowed(context),
+            completedToday = completedToday,
+            oneTime = reminder.dateEpochDay != null
+        )
+        if (decision.post) {
             MomentumReminderScheduler.createChannels(context)
             val notification = ZyloNotifications.base(context, channelId("habits"))
                 .setContentTitle(habit.name)
@@ -371,11 +385,15 @@ object HabitReminderScheduler {
                 "Habit reminders"
             )
         }
-        if (reminder.dateEpochDay != null) {
-            val updatedAt = System.currentTimeMillis()
-            dao.updateReminder(reminder.copy(enabled = false, updatedAt = updatedAt, dirty = true))
-            cancel(context, reminder.id)
-        } else schedule(context, reminder)
+        when {
+            decision.consume -> {
+                val updatedAt = System.currentTimeMillis()
+                dao.updateReminder(reminder.copy(enabled = false, updatedAt = updatedAt, dirty = true))
+                cancel(context, reminder.id)
+            }
+            decision.defer -> deferUntilQuietEnds(context, pendingIntent(context, reminder.id))
+            decision.reschedule -> schedule(context, reminder)
+        }
     }
 
     private fun pendingIntent(context: Context, reminderId: Int) = PendingIntent.getBroadcast(
@@ -451,8 +469,14 @@ object ToDoReminderScheduler {
     suspend fun deliver(context: Context, id: Int) {
         val dao = AppDatabase.get(context).toDoDao()
         val item = dao.getById(id) ?: return
-        if (!item.completed && !MomentumNotificationSettings.isQuietHours(context) &&
-            MomentumNotificationSettings.masterEnabled(context) && MomentumNotificationSettings.notificationsAllowed(context)) {
+        if (item.reminderHour == null || item.reminderMinute == null) return
+        val decision = ReminderDeliveryPolicy.todo(
+            quietHours = MomentumNotificationSettings.isQuietHours(context),
+            postingAllowed = MomentumNotificationSettings.masterEnabled(context) &&
+                MomentumNotificationSettings.notificationsAllowed(context),
+            completed = item.completed
+        )
+        if (decision.post) {
             MomentumReminderScheduler.createChannels(context)
             val notification = ZyloNotifications.base(context, ZyloNotifications.CHANNEL_TODOS)
                 .setContentTitle(item.title)
@@ -482,15 +506,20 @@ object ToDoReminderScheduler {
                 "To-do reminders"
             )
         }
-        dao.update(
-            item.copy(
-                reminderHour = null,
-                reminderMinute = null,
-                updatedAt = System.currentTimeMillis(),
-                dirty = true
-            )
-        )
-        cancel(context, id)
+        when {
+            decision.consume -> {
+                dao.update(
+                    item.copy(
+                        reminderHour = null,
+                        reminderMinute = null,
+                        updatedAt = System.currentTimeMillis(),
+                        dirty = true
+                    )
+                )
+                cancel(context, id)
+            }
+            decision.defer -> deferUntilQuietEnds(context, pendingIntent(context, id))
+        }
     }
 
     fun snooze(context: Context, id: Int, minutes: Int) {

@@ -63,12 +63,16 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import android.content.Context
 import com.faheem.habits.features.todos.data.ToDoRepository
+import com.faheem.habits.features.phase7.hasQuickTaskCue
+import com.faheem.habits.features.phase7.parseQuickTask
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
 
@@ -94,8 +98,8 @@ class ToDoViewModel @Inject constructor(
     }
 
     fun delete(item: ToDoItem) = viewModelScope.launch {
-        ToDoReminderScheduler.cancel(context, item.id)
-        repository.delete(item)
+        runCatching { repository.delete(item) }
+            .onSuccess { ToDoReminderScheduler.cancel(context, item.id) }
     }
 }
 
@@ -150,7 +154,7 @@ fun ToDoScreen(
                 ) {
                     item {
                         HeroCard {
-                            Text("Make room for what matters", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
+                            HeroCaption("Make room for what matters")
                             Text(
                                 "${openTasks.size} open task${if (openTasks.size == 1) "" else "s"}",
                                 fontSize = 27.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp
@@ -540,9 +544,32 @@ private fun ToDoEditorSheet(initial: ToDoItem?, onDismiss: () -> Unit, onSave: (
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
         if (allowed) ToDoReminderScheduler.rescheduleAll(context)
     }
+    val quickTask = remember(title, initial?.id) {
+        if (initial == null && hasQuickTaskCue(title)) runCatching { parseQuickTask(title) }.getOrNull() else null
+    }
 
     FormSheet(if (initial == null) "New task" else "Edit task", onDismiss) {
         MomentumTextField(value = title, onValueChange = { title = it }, label = { Text("Task or appointment") }, singleLine = true)
+        if (quickTask != null) {
+            val quickTime = quickTask.dueEpochMillis?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()) }
+            Text(
+                buildString {
+                    append("Quick add: “").append(quickTask.title).append("” · ")
+                    append(LocalDate.ofEpochDay(quickTask.dueEpochDay).format(DateTimeFormatter.ofPattern("d MMM")))
+                    if (quickTime != null) append(" · ").append(String.format("%02d:%02d", quickTime.hour, quickTime.minute))
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            TextButton(onClick = {
+                title = quickTask.title
+                date = LocalDate.ofEpochDay(quickTask.dueEpochDay)
+                if (quickTime != null) {
+                    reminderHour = quickTime.hour
+                    reminderMinute = quickTime.minute
+                }
+            }) { Text("Apply quick date/time") }
+        }
         MomentumTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes, location, or details") }, minLines = 2, maxLines = 4)
         SectionHeader("Date")
         MomentumOutlinedButton(

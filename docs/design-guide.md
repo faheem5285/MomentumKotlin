@@ -34,6 +34,10 @@ feature screens consume the same tokens and components.
   MiniBarChart accepts up to seven values and routes taps through `onSelect`.
 - `SettingsGroup` contains related `SettingsRow`s. Use the supporting text to
   explain an effect or permission before offering a toggle.
+- Use `PrimaryButton` for the main action and `SecondaryButton` or
+  `MomentumOutlinedButton` for alternatives. Keep borders on the Material
+  button shape, use solid disabled surfaces, and set `loading = true` while a
+  primary action is in progress.
 - `PermissionCard` explains the benefit before invoking the platform settings
   route supplied by the caller.
 - `EmptyState`, `ErrorState`, `SkeletonLoader`, `ConfirmDialog`, and

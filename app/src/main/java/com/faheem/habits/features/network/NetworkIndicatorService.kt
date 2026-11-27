@@ -7,7 +7,6 @@ import com.faheem.habits.features.screen_time.hasUsageAccess
 
 
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
@@ -17,7 +16,9 @@ import android.net.ConnectivityManager
 import android.net.TrafficStats
 import android.os.Build
 import android.os.IBinder
+import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -29,8 +30,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.ZoneId
 import java.util.Locale
-import kotlin.math.ceil
-import kotlin.math.pow
 
 class NetworkIndicatorService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -51,8 +50,16 @@ class NetworkIndicatorService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        createChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        ZyloNotifications.ensureChannels(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        }
         if (monitor?.isActive != true) monitor = scope.launch { monitorLoop() }
         return START_STICKY
     }
@@ -117,50 +124,25 @@ class NetworkIndicatorService : Service() {
         val levelKey = "${key}_alert_level"
         val sameSchedule = prefs.getString(periodKey, "") == periodId &&
             prefs.getLong(limitKey, -1L) == limitMb
-        var lastAlertIndex = if (sameSchedule) prefs.getInt(levelKey, -1) else -1
-        var nextAlertIndex = lastAlertIndex + 1
-        var notificationsSent = 0
-        while (notificationsSent < MAX_ALERTS_PER_CHECK) {
-            val thresholdBytes = thresholdBytes(limitMb, nextAlertIndex) ?: break
-            if (bytes < thresholdBytes) break
+        val lastAlertIndex = if (sameSchedule) prefs.getInt(levelKey, -1) else -1
+        val plan = planNetworkAlerts(bytes, limitMb, lastAlertIndex)
+        plan.alerts.forEachIndexed { position, alert ->
             UsageLimitNotifications.notifyNetwork(
                 context = this,
                 label = label,
                 bytes = bytes,
-                alertNumber = nextAlertIndex + 1,
-                thresholdBytes = thresholdBytes,
-                period = period.label
+                alertNumber = alert.index + 1,
+                thresholdBytes = alert.thresholdBytes,
+                period = period.label,
+                collapsedOlderAlerts = if (position == plan.alerts.lastIndex) plan.collapsedOlderAlerts else 0
             )
-            lastAlertIndex = nextAlertIndex
-            nextAlertIndex++
-            notificationsSent++
         }
-        if (!sameSchedule || notificationsSent > 0) {
+        if (!sameSchedule || plan.lastAlertIndex != lastAlertIndex) {
             prefs.edit()
                 .putString(periodKey, periodId)
                 .putLong(limitKey, limitMb)
-                .putInt(levelKey, lastAlertIndex)
+                .putInt(levelKey, plan.lastAlertIndex)
                 .apply()
-        }
-    }
-
-    private fun thresholdBytes(limitMb: Long, alertIndex: Int): Long? {
-        val value = limitMb.toDouble() * BYTES_PER_MB * ALERT_MULTIPLIER.pow(alertIndex)
-        if (!value.isFinite() || value >= Long.MAX_VALUE.toDouble()) return null
-        return ceil(value).toLong()
-    }
-
-    private fun createChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Network speed and usage", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                    description = "Persistent live network speed and Wi-Fi and mobile data totals for the selected period."
-                    setShowBadge(false)
-                    setSound(null, null)
-                    enableVibration(false)
-                    enableLights(false)
-                }
-            )
         }
     }
 
@@ -173,7 +155,7 @@ class NetworkIndicatorService : Service() {
         val wifi = wifiToday?.let(::formatBytes) ?: "Usage access off"
         val mobile = mobileToday?.let(::formatBytes) ?: "Usage access off"
         val speed = "↓ $downloadText · ↑ $uploadText"
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        return NotificationCompat.Builder(this, ZyloNotifications.CHANNEL_NETWORK)
             .setSmallIcon(R.drawable.ic_stat_zylo)
         .setContentTitle("↓ $downloadText  ·  ↑ $uploadText")
             .setContentText("Wi-Fi $wifi · Mobile $mobile · ${usagePeriod.label} usage")
@@ -206,20 +188,53 @@ class NetworkIndicatorService : Service() {
         const val KEY_MOBILE_LIMIT_MB = "mobile_limit_mb"
         const val KEY_WIFI_LIMIT_MB = "wifi_limit_mb"
         const val KEY_LIMIT_PERIOD = "limit_period"
+        const val KEY_RESUME_PENDING = "resume_pending"
         const val ACTION_STOP = "com.faheem.habits.NETWORK_INDICATOR_STOP"
-        private const val CHANNEL_ID = "persistent_network_indicator"
         private const val NOTIFICATION_ID = 9020
         private const val SAMPLE_INTERVAL_MS = 3_000L
         private const val USAGE_REFRESH_MS = 15_000L
-        private const val BYTES_PER_MB = 1_000_000.0
-        private const val ALERT_MULTIPLIER = 1.5
-        private const val MAX_ALERTS_PER_CHECK = 64
 
         fun enabled(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ENABLED, false)
+
+        fun pendingResume(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_RESUME_PENDING, false)
+
+        fun markResumePending(context: Context) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putBoolean(KEY_RESUME_PENDING, true).apply()
+        }
+
+        fun setEnabled(context: Context, enabled: Boolean) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putBoolean(KEY_ENABLED, enabled).apply()
+            if (enabled) {
+                startIfEnabled(context)
+            } else {
+                context.stopService(Intent(context, NetworkIndicatorService::class.java))
+                resetAlarmProgress(context)
+            }
+        }
+
+        /** Starts only when persisted state asks for it; returns false if Android blocks the start. */
+        fun startIfEnabled(context: Context): Boolean {
+            if (!enabled(context)) return false
+            return try {
+                ContextCompat.startForegroundService(
+                    context, Intent(context, NetworkIndicatorService::class.java)
+                )
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putBoolean(KEY_RESUME_PENDING, false).apply()
+                true
+            } catch (_: Exception) {
+                markResumePending(context)
+                false
+            }
+        }
 
         fun currentSpeed(context: Context): String = "Live in notification"
 
         fun resetAlarmProgress(context: Context) {
+            UsageLimitNotifications.clearNetworkAlerts(context)
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .remove("mobile_alert_period_id").remove("mobile_alert_limit_mb").remove("mobile_alert_level")
                 .remove("wifi_alert_period_id").remove("wifi_alert_limit_mb").remove("wifi_alert_level")

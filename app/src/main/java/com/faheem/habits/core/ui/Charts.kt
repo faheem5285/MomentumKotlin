@@ -11,7 +11,6 @@
 package com.faheem.habits.core.ui
 
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -150,7 +149,11 @@ fun LineChart(
     val reduce = LocalReduceEffects.current
     var emerged by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { emerged = true }
-    val progress by animateFloatAsState(if (reduce || emerged) 1f else 0f, tween(700), label = "lineChart")
+    val progress by animateFloatAsState(
+        if (reduce || emerged) 1f else 0f,
+        animationSpecFor<Float>(reduce, 700),
+        label = "lineChart"
+    )
     val low = if (normalized) 0f else min(values.min(), 0f)
     val high = if (normalized) 1f else max(values.max(), 1f)
     val span = (high - low).takeIf { it > 0f } ?: 1f
@@ -281,10 +284,21 @@ fun BarChart(
     }
     val top = values.max().takeIf { it > 0f } ?: 1f
     val maxBar = (height - 30.dp).coerceAtLeast(20.dp)
-    Row(modifier.fillMaxWidth().height(height), verticalAlignment = Alignment.Bottom) {
+    val reduce = LocalReduceEffects.current
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(height)
+            .semantics { contentDescription = chartSummaryDescription("Bar chart", values) },
+        verticalAlignment = Alignment.Bottom
+    ) {
         values.forEachIndexed { index, value ->
             val fraction = (value / top).coerceIn(0f, 1f)
-            val animated by animateFloatAsState(fraction, tween(650), label = "bar$index")
+            val animated by animateFloatAsState(
+                fraction,
+                animationSpecFor<Float>(reduce, 650),
+                label = "bar$index"
+            )
             val color = colors[Math.floorMod(index, colors.size)]
             val selected = highlightIndex == index
             Column(
@@ -421,7 +435,11 @@ fun DonutChart(
     val reduce = LocalReduceEffects.current
     var emerged by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { emerged = true }
-    val animated by animateFloatAsState(if (reduce || emerged) 1f else 0f, tween(800), label = "donut")
+    val animated by animateFloatAsState(
+        if (reduce || emerged) 1f else 0f,
+        animationSpecFor<Float>(reduce, 800),
+        label = "donut"
+    )
     Box(modifier, contentAlignment = Alignment.Center) {
         androidx.compose.foundation.Canvas(
             Modifier

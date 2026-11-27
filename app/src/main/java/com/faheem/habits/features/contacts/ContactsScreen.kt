@@ -3,11 +3,10 @@
 package com.faheem.habits.features.contacts
 
 import android.app.Application
+import android.content.Context
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -37,25 +36,70 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.room.withTransaction
 import com.faheem.habits.core.data.AppDatabase
 import com.faheem.habits.core.data.Contact
+import com.faheem.habits.core.data.ImagePreviewPolicy
+import com.faheem.habits.core.data.decodeBoundedImage
 import com.faheem.habits.core.ui.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.first
 
-private fun phoneNumbers(value: String): List<String> =
-    value.split(Regex("[\\r\\n]+")).map(String::trim).filter(String::isNotBlank).distinct()
+enum class ContactImportPhase { IDLE, READING, SAVING, SUCCESS, FAILURE }
 
-private fun phoneKey(value: String): String = value.filter(Char::isDigit)
+data class ContactImportState(
+    val phase: ContactImportPhase = ContactImportPhase.IDLE,
+    val message: String? = null
+)
+
+internal enum class ContactPhotoLinkState { NONE, LINKED, TEMPORARY, UNAVAILABLE }
+
+private const val IMPORT_FAILURE_MESSAGE = "No contacts were added. Check the file and try again."
+private const val PHOTO_LINK_TEMPORARY_MESSAGE = "This photo is linked temporarily. Re-select it to keep access after a restart."
+private const val PHOTO_LINK_UNAVAILABLE_MESSAGE = "This photo link is no longer available. Re-select the photo."
+
+internal fun contactPhotoLinkState(context: Context, uriValue: String): ContactPhotoLinkState {
+    if (uriValue.isBlank()) return ContactPhotoLinkState.NONE
+    val uri = runCatching { Uri.parse(uriValue) }.getOrNull() ?: return ContactPhotoLinkState.UNAVAILABLE
+    val persisted = try {
+        uri.scheme != "content" || context.contentResolver.persistedUriPermissions
+            .any { it.uri == uri && it.isReadPermission }
+    } catch (_: Exception) {
+        false
+    }
+    if (!persisted) return ContactPhotoLinkState.TEMPORARY
+    val readable = try {
+        context.contentResolver.openInputStream(uri)?.use { true } ?: false
+    } catch (_: Exception) {
+        false
+    }
+    return if (readable) ContactPhotoLinkState.LINKED else ContactPhotoLinkState.UNAVAILABLE
+}
+
+internal fun contactImportSummary(counts: ContactImportCounts): String = buildString {
+    append("Imported ${counts.imported} contact${if (counts.imported == 1) "" else "s"}.")
+    if (counts.skippedContacts > 0) {
+        append(" Skipped ${counts.skippedContacts} duplicate contact${if (counts.skippedContacts == 1) "" else "s"}.")
+    }
+    if (counts.duplicateNumbers > 0) {
+        append(" ${counts.duplicateNumbers} duplicate number${if (counts.duplicateNumbers == 1) "" else "s"} detected.")
+    }
+}
 
 class ContactsViewModel(app: Application) : AndroidViewModel(app) {
-    private val dao = AppDatabase.get(app).contactDao()
+    private val db = AppDatabase.get(app)
+    private val dao = db.contactDao()
     val contacts = dao.getAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun save(contact: Contact) = viewModelScope.launch {
@@ -72,79 +116,51 @@ class ContactsViewModel(app: Application) : AndroidViewModel(app) {
         dao.update(contact.copy(deleted = false, dirty = true, updatedAt = System.currentTimeMillis()))
     }
 
-    internal fun importContacts(rows: List<ImportedContact>, onComplete: (Int, Int, Int) -> Unit) = viewModelScope.launch {
-        val existing = dao.getAll().first()
-        val existingPhoneKeys = existing.flatMap { phoneNumbers(it.phone) }
-            .map(::phoneKey).filter(String::isNotBlank).toMutableSet()
-        val emailKeys = existing.map { it.email.trim().lowercase() }
-            .filter(String::isNotBlank).toMutableSet()
-        var imported = 0
-        var skippedContacts = 0
-        var duplicateNumbers = 0
-        rows.forEach { row ->
-            val uniqueNumbers = row.phoneNumbers.filter { number ->
-                val key = phoneKey(number)
-                if (key.isBlank()) return@filter false
-                if (existingPhoneKeys.add(key)) true else {
-                    duplicateNumbers++
-                    false
+    private val _importState = MutableStateFlow(ContactImportState())
+    val importState: StateFlow<ContactImportState> = _importState.asStateFlow()
+
+    fun clearImportState() {
+        _importState.value = ContactImportState()
+    }
+
+    fun importContacts(uri: Uri) {
+        _importState.value = ContactImportState(ContactImportPhase.READING)
+        viewModelScope.launch {
+            try {
+                val counts = withContext(Dispatchers.IO) {
+                    val app = getApplication<Application>()
+                    val rows = app.contentResolver.openInputStream(uri)?.use { input ->
+                        parseContacts(input, documentName(app, uri))
+                    } ?: throw IllegalArgumentException("Could not open the selected file.")
+                    // Tombstones must block duplicate re-imports, so use the unfiltered DAO query.
+                    val existing = dao.getAllForBackup()
+                    val plan = planContactImport(existing, rows)
+                    _importState.value = ContactImportState(ContactImportPhase.SAVING)
+                    // Keep the batch atomic: a failed insert must not leave a partly imported address book.
+                    persistContactImportPlan(db, dao, plan)
+                    plan.counts
                 }
-            }
-            val emailKey = row.email.trim().lowercase()
-            val duplicateEmail = uniqueNumbers.isEmpty() && emailKey.isNotBlank() && !emailKeys.add(emailKey)
-            if ((row.phoneNumbers.isNotEmpty() && uniqueNumbers.isEmpty()) || duplicateEmail) {
-                skippedContacts++
-            } else {
-                if (emailKey.isNotBlank()) emailKeys.add(emailKey)
-                dao.insert(Contact(
-                    name = row.name,
-                    phone = uniqueNumbers.joinToString("\n"),
-                    email = row.email,
-                    address = row.address,
-                    notes = row.notes
-                ))
-                imported++
+                _importState.value = ContactImportState(ContactImportPhase.SUCCESS, contactImportSummary(counts))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _importState.value = ContactImportState(ContactImportPhase.FAILURE, IMPORT_FAILURE_MESSAGE)
             }
         }
-        onComplete(imported, skippedContacts, duplicateNumbers)
     }
 }
 
 @Composable
 fun ContactsScreen(vm: ContactsViewModel = viewModel()) {
-    val contacts by vm.contacts.collectAsState()
+    val contacts by vm.contacts.collectAsStateWithLifecycle()
+    val importState by vm.importState.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Contact?>(null) }
     var creating by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
-    val context = LocalContext.current
-    val importScope = rememberCoroutineScope()
     val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            importScope.launch {
-                runCatching {
-                    val fileName = documentName(context, uri)
-                    val imported = withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(uri)?.use { parseContacts(it, fileName) }
-                            ?: error("Could not open the selected file.")
-                    }
-                    vm.importContacts(imported) { added, skippedContacts, duplicateNumbers ->
-                        val details = buildList {
-                            if (skippedContacts > 0) add("skipped $skippedContacts duplicate contact${if (skippedContacts == 1) "" else "s"}")
-                            if (duplicateNumbers > 0) add("$duplicateNumbers duplicate number${if (duplicateNumbers == 1) "" else "s"} detected")
-                        }.joinToString(" · ")
-                        Toast.makeText(
-                            context,
-                            "Imported $added contact${if (added == 1) "" else "s"}${if (details.isNotBlank()) " · $details" else ""}.",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                }.onFailure { error ->
-                    Toast.makeText(context, error.message ?: "Could not import contacts.", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
+        if (uri != null) vm.importContacts(uri)
     }
     val filtered = remember(contacts, query) {
         contacts.filter { query.isBlank() || it.name.contains(query, true) || it.phone.contains(query, true) || it.email.contains(query, true) }
@@ -181,15 +197,46 @@ fun ContactsScreen(vm: ContactsViewModel = viewModel()) {
             }
             item {
                 SecondaryButton("Import VCF, CSV or Excel", onClick = {
+                    vm.clearImportState()
                     importPicker.launch(arrayOf(
                         "text/*",
                         "text/vcard",
                         "text/x-vcard",
                         "application/vcard",
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        "application/vnd.ms-excel"
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     ))
                 })
+                when (importState.phase) {
+                    ContactImportPhase.READING -> Text(
+                        "Reading the selected file…",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    ContactImportPhase.SAVING -> Text(
+                        "Checking for duplicates and saving…",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    ContactImportPhase.SUCCESS, ContactImportPhase.FAILURE -> {
+                        PremiumCard(contentPadding = PaddingValues(12.dp)) {
+                            Text(
+                                importState.message.orEmpty(),
+                                fontSize = 12.5.sp,
+                                color = if (importState.phase == ContactImportPhase.FAILURE) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                }
+                            )
+                            TextButton(onClick = { vm.clearImportState() }) { Text("Dismiss") }
+                        }
+                    }
+                    ContactImportPhase.IDLE -> Text(
+                        "Imports are limited to 5,000 contacts and 10 MB. Existing and deleted contacts are checked for duplicates.",
+                        fontSize = 11.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             if (filtered.isEmpty()) {
                 item { ContactsEmptyState(noContacts = contacts.isEmpty(), onAdd = { creating = true }) }
@@ -211,6 +258,7 @@ fun ContactsScreen(vm: ContactsViewModel = viewModel()) {
                             if (contact.phone.isNotBlank() && contact.email.isNotBlank()) {
                                 Text(contact.email, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
+                            ContactPhotoLinkWarning(contact.profileImageUri)
                         }
                         IconButton(onClick = {
                             vm.delete(contact) {
@@ -252,6 +300,22 @@ private fun ContactsEmptyState(noContacts: Boolean, onAdd: () -> Unit) {
     }
 }
 
+@Composable
+private fun ContactPhotoLinkWarning(uriValue: String) {
+    if (uriValue.isBlank()) return
+    val context = LocalContext.current
+    val state by produceState(ContactPhotoLinkState.NONE, uriValue) {
+        value = withContext(Dispatchers.IO) { contactPhotoLinkState(context, uriValue) }
+    }
+    if (state == ContactPhotoLinkState.TEMPORARY || state == ContactPhotoLinkState.UNAVAILABLE) {
+        Text(
+            if (state == ContactPhotoLinkState.UNAVAILABLE) "Photo link needs re-grant" else "Photo link is temporary",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.error
+        )
+    }
+}
+
 private fun documentName(context: android.content.Context, uri: Uri): String {
     context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
         if (cursor.moveToFirst()) {
@@ -268,9 +332,12 @@ private fun ContactAvatar(contact: Contact, size: androidx.compose.ui.unit.Dp, o
     val image by produceState<ImageBitmap?>(null, contact.profileImageUri) {
         value = withContext(Dispatchers.IO) {
             runCatching {
-                if (contact.profileImageUri.isBlank()) null else context.contentResolver.openInputStream(Uri.parse(contact.profileImageUri))?.use {
-                    BitmapFactory.decodeStream(it)?.asImageBitmap()
-                }
+                if (contact.profileImageUri.isBlank()) null else decodeBoundedImage(
+                    context,
+                    Uri.parse(contact.profileImageUri),
+                    ImagePreviewPolicy.AVATAR_SOURCE_BYTES,
+                    ImagePreviewPolicy.AVATAR_DECODE_DIMENSION
+                )?.asImageBitmap()
             }.getOrNull()
         }
     }
@@ -294,10 +361,28 @@ private fun ContactEditor(initial: Contact?, onDismiss: () -> Unit, onSave: (Con
     var notes by remember(initial) { mutableStateOf(initial?.notes.orEmpty()) }
     var imageUri by remember(initial) { mutableStateOf(initial?.profileImageUri.orEmpty()) }
     var preview by remember { mutableStateOf(false) }
+    var photoLinkState by remember(initial?.profileImageUri) {
+        mutableStateOf(ContactPhotoLinkState.NONE)
+    }
+    LaunchedEffect(initial?.profileImageUri) {
+        photoLinkState = withContext(Dispatchers.IO) {
+            contactPhotoLinkState(context, initial?.profileImageUri.orEmpty())
+        }
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            val persisted = try {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                context.contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
+            } catch (_: Exception) {
+                false
+            }
             imageUri = uri.toString()
+            photoLinkState = if (persisted || uri.scheme != "content") {
+                ContactPhotoLinkState.LINKED
+            } else {
+                ContactPhotoLinkState.TEMPORARY
+            }
         }
     }
     FormSheet(if (initial == null) "Add contact" else "Edit contact", onDismiss) {
@@ -311,7 +396,7 @@ private fun ContactEditor(initial: Contact?, onDismiss: () -> Unit, onSave: (Con
                 text = {
                     val image by produceState<ImageBitmap?>(null, imageUri) {
                         value = withContext(Dispatchers.IO) {
-                            runCatching { context.contentResolver.openInputStream(Uri.parse(imageUri))?.use { BitmapFactory.decodeStream(it)?.asImageBitmap() } }.getOrNull()
+                            runCatching { decodeBoundedImage(context, Uri.parse(imageUri))?.asImageBitmap() }.getOrNull()
                         }
                     }
                     if (image != null) Image(image!!, null, Modifier.fillMaxWidth().heightIn(max = 420.dp), contentScale = ContentScale.Fit)
@@ -333,6 +418,17 @@ private fun ContactEditor(initial: Contact?, onDismiss: () -> Unit, onSave: (Con
         MomentumTextField(address, { address = it }, label = { Text("Address") }, singleLine = true)
         MomentumTextField(notes, { notes = it }, label = { Text("Notes") }, singleLine = false)
         SecondaryButton(if (imageUri.isBlank()) "Add contact photo" else "Change contact photo", onClick = { picker.launch(arrayOf("image/*")) }, icon = Icons.Rounded.AddPhotoAlternate)
+        if (photoLinkState == ContactPhotoLinkState.TEMPORARY || photoLinkState == ContactPhotoLinkState.UNAVAILABLE) {
+            Text(
+                if (photoLinkState == ContactPhotoLinkState.UNAVAILABLE) {
+                    PHOTO_LINK_UNAVAILABLE_MESSAGE
+                } else {
+                    PHOTO_LINK_TEMPORARY_MESSAGE
+                },
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
         PrimaryButton("Save contact", onClick = {
             if (name.isNotBlank()) onSave(
                 (initial ?: Contact(name = name)).copy(

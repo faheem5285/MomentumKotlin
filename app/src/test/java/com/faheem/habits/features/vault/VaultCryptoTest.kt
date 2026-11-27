@@ -1,6 +1,7 @@
 package com.faheem.habits.features.vault
 
 import com.faheem.habits.core.data.VaultRecord
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -116,6 +117,40 @@ class VaultCryptoTest {
         assertEquals(secret, VaultCrypto.decrypt(migrated.first, migrated.second, vmk))
         assertThrows(AEADBadTagException::class.java) {
             VaultCrypto.decrypt(migrated.first, migrated.second, legacyKey)
+        }
+    }
+
+    @Test
+    fun v3EncryptedBackupRoundTripsWithItsPassword() {
+        val payload = """{"entries":[{"uuid":"entry-uuid"}]}""".toByteArray(Charsets.UTF_8)
+        val password = "a-long-backup-password".toCharArray()
+
+        val protected = VaultCrypto.protectBackup(payload, password)
+        val opened = VaultCrypto.openBackup(protected.first, protected.second, protected.third, password)
+
+        assertArrayEquals(payload, opened)
+    }
+
+    @Test
+    fun v3EncryptedBackupRejectsWrongPassword() {
+        val payload = "v3 backup payload".toByteArray(Charsets.UTF_8)
+        val protected = VaultCrypto.protectBackup(payload, "correct-backup-password".toCharArray())
+
+        assertThrows(AEADBadTagException::class.java) {
+            VaultCrypto.openBackup(protected.first, protected.second, protected.third, "wrong-password".toCharArray())
+        }
+    }
+
+    @Test
+    fun v3EncryptedBackupRejectsTamperedCiphertext() {
+        val payload = "v3 backup payload".toByteArray(Charsets.UTF_8)
+        val protected = VaultCrypto.protectBackup(payload, "correct-backup-password".toCharArray())
+        val tampered = protected.third.copyOf().also { bytes ->
+            bytes[bytes.lastIndex] = (bytes.last().toInt() xor 1).toByte()
+        }
+
+        assertThrows(AEADBadTagException::class.java) {
+            VaultCrypto.openBackup(protected.first, protected.second, tampered, "correct-backup-password".toCharArray())
         }
     }
 }

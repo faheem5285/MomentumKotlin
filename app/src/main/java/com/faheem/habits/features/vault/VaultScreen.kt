@@ -3,6 +3,7 @@
 package com.faheem.habits.features.vault
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.data.supabase.SupabaseRestClient
+import com.faheem.habits.core.data.supabase.HttpErrorSanitizer
 import com.faheem.habits.core.data.sync.SupabaseSyncRepository
 import com.faheem.habits.features.vault.data.VaultRepository
 import com.faheem.habits.core.notifications.*
@@ -18,8 +19,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.net.Uri
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
+import android.os.SystemClock
 import android.os.PersistableBundle
 import android.view.Window
 import android.view.WindowManager
@@ -31,6 +31,7 @@ import java.util.concurrent.TimeUnit
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -47,6 +48,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -66,6 +68,7 @@ import androidx.lifecycle.AndroidViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -305,6 +308,9 @@ class VaultViewModel @Inject constructor(
         migrateLegacy(key, salt)
     }
 
+    // Legacy password/biometric helpers are intentionally not exposed in the UI.
+    // Account unlock is the single supported path; these remain for restoring or
+    // migrating vaults created by earlier builds.
     suspend fun unlockWithBiometric(cipher: javax.crypto.Cipher): ByteArray? = withContext(Dispatchers.IO) {
         val wrapped = prefs.getString(biometricWrappedPref, null) ?: return@withContext null
         runCatching {
@@ -504,6 +510,7 @@ class VaultViewModel @Inject constructor(
     }
 
     suspend fun resetForQa() = withContext(Dispatchers.IO) {
+        VaultQaReset.requireEnabled()
         SupabaseSyncRepository(getApplication()).resetModule(AppModule.Vault)
         check(
             prefs.edit()
@@ -879,22 +886,56 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
     var recoveryPassword by remember { mutableStateOf("") }
     var legacyPassword by remember { mutableStateOf("") }
     var externalFilePickerOpen by remember { mutableStateOf(false) }
+    var lastInteractionAt by remember { mutableLongStateOf(0L) }
     val scope = rememberCoroutineScope()
+
+    fun noteInteraction() {
+        lastInteractionAt = SystemClock.elapsedRealtime()
+    }
+
+    fun lockVault() {
+        sessionEpoch++
+        sessionKey?.fill(0)
+        sessionKey = null
+        items = emptyList()
+        selected = null
+        editorOpen = false
+        editing = null
+        deleteTarget = null
+        pendingImport = null
+        pendingRecovery = null
+        pendingBackupExport = null
+        pendingLegacyMigration = false
+        pendingRecordMerge = false
+        confirmQaReset = false
+        backupPassword = ""
+        backupPasswordConfirm = ""
+        recoveryPassword = ""
+        legacyPassword = ""
+        exportMessage = null
+        error = null
+        lastInteractionAt = 0L
+    }
+
     LaunchedEffect(Unit) {
         busy = true
         try {
             sessionKey = vm.unlockWithAccount()
             configured = true
             sessionEpoch++
+            noteInteraction()
         } catch (e: Exception) {
-            error = e.message ?: "Could not open Vault with this account."
+            error = HttpErrorSanitizer.forDisplay(e.message)
         } finally {
             busy = false
         }
     }
     val vaultExportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         externalFilePickerOpen = false
-        if (uri != null && sessionKey != null) {
+        if (uri == null) {
+            lockVault()
+        } else if (sessionKey != null) {
+            noteInteraction()
             pendingBackupExport = uri
             backupPassword = ""
             backupPasswordConfirm = ""
@@ -902,13 +943,19 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
     }
     val vaultImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         externalFilePickerOpen = false
-        if (uri != null && sessionKey != null) {
+        if (uri == null) {
+            lockVault()
+        } else if (sessionKey != null) {
+            noteInteraction()
             pendingImport = uri to true
         }
     }
     val csvImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         externalFilePickerOpen = false
-        if (uri != null) {
+        if (uri == null) {
+            lockVault()
+        } else {
+            noteInteraction()
             pendingImport = uri to false
         }
     }
@@ -916,6 +963,7 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
         externalFilePickerOpen = false
         pendingRecovery = uri
         recoveryPassword = ""
+        if (uri == null) lockVault() else noteInteraction()
     }
     pendingBackupExport?.let { uri ->
         MomentumDialog(
@@ -959,7 +1007,7 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
                                 vm.exportEncrypted(uri, key, password)
                                 "Encrypted backup saved. Keep the file and password somewhere safe; neither can be recovered if lost."
                             } catch (e: Exception) {
-                                "Encrypted vault export failed: ${e.message ?: "unknown error"}"
+                                "Encrypted vault export failed: ${HttpErrorSanitizer.forDisplay(e.message)}"
                             } finally {
                                 key.fill(0)
                                 busy = false
@@ -999,7 +1047,7 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
                                     refresh++
                                     "${action.label}: imported $count vault record${if (count == 1) "" else "s"}."
                                 } catch (e: Exception) {
-                                    "Vault import failed: ${e.message ?: "unknown error"}"
+                                    "Vault import failed: ${HttpErrorSanitizer.forDisplay(e.message)}"
                                 } finally { busy = false }
                             }
                         }, modifier = Modifier.fillMaxWidth()) {
@@ -1053,7 +1101,7 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
                                 refresh++
                                 exportMessage = "Vault restored: ${restored.importedCount} record${if (restored.importedCount == 1) "" else "s"}."
                             } catch (e: Exception) {
-                                val message = "Vault restore failed: ${e.message ?: "unknown error"}"
+                                val message = "Vault restore failed: ${HttpErrorSanitizer.forDisplay(e.message)}"
                                 if (configured) exportMessage = message else error = message
                             } finally {
                                 busy = false
@@ -1108,7 +1156,7 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
                                 configured = true
                                 sessionEpoch++
                             } catch (e: Exception) {
-                                error = e.message ?: "Could not link the existing Vault."
+                                error = HttpErrorSanitizer.forDisplay(e.message)
                             } finally {
                                 busy = false
                             }
@@ -1162,7 +1210,7 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
                                     "No records could be opened with that password. Encrypted records were left unchanged."
                                 }
                             } catch (e: Exception) {
-                                exportMessage = e.message ?: "Could not unlock old Vault records."
+                                exportMessage = HttpErrorSanitizer.forDisplay(e.message)
                             } finally {
                                 busy = false
                             }
@@ -1178,7 +1226,7 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
             }
         )
     }
-    if (confirmQaReset) {
+    if (confirmQaReset && VaultQaReset.isEnabled()) {
         MomentumDialog(
             onDismissRequest = { if (!busy) confirmQaReset = false },
             title = { Text("Reset Vault QA data?") },
@@ -1210,7 +1258,7 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
                                 exportMessage = "Vault QA data was cleared for this account. Other modules were not changed."
                                 confirmQaReset = false
                             } catch (e: Exception) {
-                                error = e.message ?: "Could not reset Vault QA data."
+                                error = HttpErrorSanitizer.forDisplay(e.message)
                             } finally {
                                 busy = false
                             }
@@ -1224,16 +1272,29 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
         )
     }
 
+    DisposableEffect(sessionKey != null) {
+        val window = context.findActivity()?.window
+        if (sessionKey != null) {
+            window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+    }
+    LaunchedEffect(sessionKey, sessionEpoch) {
+        val unlockedKey = sessionKey ?: return@LaunchedEffect
+        val epoch = sessionEpoch
+        while (sessionKey === unlockedKey && sessionEpoch == epoch) {
+            delay(VaultSessionTimeout.CHECK_INTERVAL_MS)
+            if (VaultSessionTimeout.shouldLock(SystemClock.elapsedRealtime(), lastInteractionAt)) {
+                lockVault()
+                break
+            }
+        }
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         if (externalFilePickerOpen) return@LifecycleEventEffect
-        sessionEpoch++
-        sessionKey?.fill(0)
-        sessionKey = null
-        items = emptyList()
-        selected = null
-        editorOpen = false
-        editing = null
-        deleteTarget = null
+        lockVault()
     }
     LaunchedEffect(sessionKey, refresh, sessionEpoch) {
         val key = sessionKey
@@ -1256,8 +1317,9 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
                 sessionKey = vm.unlockWithAccount()
                 sessionEpoch++
                 configured = true
+                noteInteraction()
             } catch (e: Exception) {
-                error = e.message ?: "Could not open Vault with this account."
+                error = HttpErrorSanitizer.forDisplay(e.message)
             } finally { busy = false }
         }
     }
@@ -1277,29 +1339,29 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
             items = items,
             unreadable = unreadable,
             linkedEmail = vm.linkedEmail(),
-            legacyBackupAvailable = vm.isConfigured(),
-            onRecoverOldRecords = { legacyPassword = ""; pendingRecordMerge = true },
-            onLock = {
-                sessionEpoch++
-                key.fill(0); sessionKey = null; items = emptyList(); selected = null
-                editorOpen = false; editing = null; deleteTarget = null
-            },
-            onAdd = { editing = null; editorOpen = true },
-            onSelect = { selected = it },
+            onInteract = ::noteInteraction,
+            onRecoverOldRecords = { noteInteraction(); legacyPassword = ""; pendingRecordMerge = true },
+            onLock = ::lockVault,
+            onAdd = { noteInteraction(); editing = null; editorOpen = true },
+            onSelect = { noteInteraction(); selected = it },
             onExport = {
+                noteInteraction()
                 externalFilePickerOpen = true
                 vaultExportLauncher.launch("momentum-vault-encrypted.json")
             },
             onImport = {
+                noteInteraction()
                 externalFilePickerOpen = true
                 vaultImportLauncher.launch(arrayOf("application/json", "text/json", "text/plain"))
             },
             onImportCsv = {
+                noteInteraction()
                 externalFilePickerOpen = true
                 csvImportLauncher.launch(arrayOf("*/*"))
             },
-            onResetQaData = { confirmQaReset = true },
+            onResetQaData = { noteInteraction(); confirmQaReset = true },
             onRestoreBackup = {
+                noteInteraction()
                 externalFilePickerOpen = true
                 recoveryLauncher.launch(arrayOf("application/json", "text/json", "text/plain"))
             }
@@ -1317,7 +1379,7 @@ fun VaultScreen(vm: VaultViewModel = hiltViewModel()) {
                     editorOpen = false
                     editing = null
                     selected = null
-                } catch (e: Exception) { error = e.message ?: "Could not save this item." }
+                } catch (e: Exception) { error = HttpErrorSanitizer.forDisplay(e.message) }
                 finally { busy = false }
             }
         }
@@ -1395,12 +1457,13 @@ private fun VaultGate(
                     text = if (busy) "Opening…" else "Continue with account",
                     onClick = onSubmit,
                     enabled = !busy,
-                    icon = Icons.Rounded.LockOpen
+                    icon = Icons.Rounded.LockOpen,
+                    loading = busy
                 )
             }
             item {
                 Text(
-                    "Vault locks when Zylo goes into the background. Screenshots are blocked while it is open.",
+                    "Vault locks when Zylo goes into the background or after two minutes of inactivity. Screenshots are blocked while it is open.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1414,7 +1477,7 @@ private fun VaultHome(
     items: List<VaultListItem>,
     unreadable: Int,
     linkedEmail: String,
-    legacyBackupAvailable: Boolean,
+    onInteract: () -> Unit,
     onRecoverOldRecords: () -> Unit,
     onLock: () -> Unit,
     onAdd: () -> Unit,
@@ -1431,39 +1494,63 @@ private fun VaultHome(
     var favoritesOnly by remember { mutableStateOf(false) }
     var attentionOnly by remember { mutableStateOf(false) }
     var sort by remember { mutableStateOf("Recent") }
-    val filtered = items.filter { item ->
-        (type == "All" || (type == "Logins" && item.secret.type == "login") || (type == "Secure notes" && item.secret.type == "note")) &&
-            (category == "All" || inferredVaultCategory(item.secret) == category) &&
-            (!favoritesOnly || item.secret.favorite) &&
-            (!attentionOnly || needsVaultAttention(item, items)) &&
-            (query.isBlank() || listOf(item.secret.title, item.secret.username, item.secret.website, item.secret.notes).any { it.contains(query, true) })
-    }.let { matching ->
-        when (sort) {
-            "Name" -> matching.sortedBy { it.secret.title.lowercase() }
-            "Favorites" -> matching.sortedWith(compareByDescending<VaultListItem> { it.secret.favorite }.thenBy { it.secret.title.lowercase() })
-            else -> matching.sortedByDescending { it.updatedAt }
+    val attentionIds = remember(items) {
+        val passwords = items.map { it.secret.password }.filter(String::isNotBlank)
+        val counts = passwords.groupingBy { it }.eachCount()
+        items.filter { item ->
+            val p = item.secret.password
+            p.isNotBlank() && (p.length < 12 || p.none(Char::isUpperCase) || p.none(Char::isDigit) || (counts[p] ?: 0) > 1)
+        }.mapTo(hashSetOf()) { it.id }
+    }
+    val filtered = remember(items, query, type, category, favoritesOnly, attentionOnly, sort, attentionIds) {
+        items.filter { item ->
+            (type == "All" || (type == "Logins" && item.secret.type == "login") || (type == "Secure notes" && item.secret.type == "note")) &&
+                (category == "All" || inferredVaultCategory(item.secret) == category) &&
+                (!favoritesOnly || item.secret.favorite) &&
+                (!attentionOnly || item.id in attentionIds) &&
+                (query.isBlank() || listOf(item.secret.title, item.secret.username, item.secret.website, item.secret.notes).any { it.contains(query, true) })
+        }.let { matching ->
+            when (sort) {
+                "Name" -> matching.sortedBy { it.secret.title.lowercase() }
+                "Favorites" -> matching.sortedWith(compareByDescending<VaultListItem> { it.secret.favorite }.thenBy { it.secret.title.lowercase() })
+                else -> matching.sortedByDescending { it.updatedAt }
+            }
         }
     }
-    val health = vaultHealthReport(items)
-    val logins = items.count { it.secret.type != "note" }
-    val notes = items.size - logins
-    val typeSlices = buildList {
-        if (logins > 0) add(ChartSlice("Logins", logins.toFloat(), chartColor(0)))
-        if (notes > 0) add(ChartSlice("Secure notes", notes.toFloat(), chartColor(1)))
-    }
-    val healthSlices = if (logins > 0) {
-        val issues = health.weak + health.reused + health.duplicates
-        val strong = (logins - issues).coerceAtLeast(0)
+    val health = remember(items) { vaultHealthReport(items) }
+    val logins = remember(items) { items.count { it.secret.type != "note" } }
+    val notes = remember(items, logins) { items.size - logins }
+    val typeSlices = remember(logins, notes) {
         buildList {
-            if (strong > 0) add(ChartSlice("Healthy", strong.toFloat(), chartColor(3)))
-            if (health.weak > 0) add(ChartSlice("Weak", health.weak.toFloat(), chartColor(4)))
-            if (health.reused > 0) add(ChartSlice("Reused", health.reused.toFloat(), chartColor(2)))
-            if (health.duplicates > 0) add(ChartSlice("Duplicate", health.duplicates.toFloat(), chartColor(6)))
+            if (logins > 0) add(ChartSlice("Logins", logins.toFloat(), chartColor(0)))
+            if (notes > 0) add(ChartSlice("Secure notes", notes.toFloat(), chartColor(1)))
         }
-    } else {
-        emptyList()
     }
-    Box(Modifier.fillMaxSize()) {
+    val healthSlices = remember(logins, health) {
+        if (logins > 0) {
+            val issues = health.weak + health.reused + health.duplicates
+            val strong = (logins - issues).coerceAtLeast(0)
+            buildList {
+                if (strong > 0) add(ChartSlice("Healthy", strong.toFloat(), chartColor(3)))
+                if (health.weak > 0) add(ChartSlice("Weak", health.weak.toFloat(), chartColor(4)))
+                if (health.reused > 0) add(ChartSlice("Reused", health.reused.toFloat(), chartColor(2)))
+                if (health.duplicates > 0) add(ChartSlice("Duplicate", health.duplicates.toFloat(), chartColor(6)))
+            }
+        } else {
+            emptyList()
+        }
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onInteract() },
+                    onLongPress = { onInteract() },
+                    onDoubleTap = { onInteract() }
+                )
+            }
+    ) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
                 HeroCard(
@@ -1496,10 +1583,8 @@ private fun VaultHome(
                     text = "$unreadable older record${if (unreadable == 1) "" else "s"} were saved with a previous vault key and are safely preserved. Open them once with the old password, or restore the matching backup.",
                     tint = MaterialTheme.colorScheme.tertiary
                 )
-                if (legacyBackupAvailable) {
-                    // Older-key recovery is no longer offered in the account-only Vault flow.
-                } else {
-                    // Backup recovery is no longer offered in the account-only Vault flow.
+                TextButton(onClick = onRecoverOldRecords, modifier = Modifier.fillMaxWidth()) {
+                    Text("Recover old records")
                 }
             }
             item {
@@ -1605,27 +1690,33 @@ private fun VaultHome(
                 EmptyState(Icons.Rounded.Password, if (items.isEmpty()) "Your vault is empty" else "No matching items", if (items.isEmpty()) "Add a login or secure note to get started" else "Try another search or filter")
             }
             items(filtered, key = { it.id }) { entry -> VaultItemCard(entry) { onSelect(entry) } }
+            item { VaultThreatModelCard() }
             item {
                 Text("Credentials stay encrypted in the database. Copying a value clears the clipboard after 30 seconds when possible.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp))
             }
             item {
-                // Encrypted export is disabled; account sync is the Vault backup path.
+                SecondaryButton("Export encrypted backup", onClick = onExport, icon = Icons.Rounded.FileDownload)
                 Text(
-                    "The backup is protected with a password you choose. Keep both the file and password safe.",
+                    "Creates a version 3 file protected with a backup password you choose.",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             item {
-                // Backup recovery is no longer offered in the account-only Vault flow.
+                SecondaryButton("Import older encrypted records", onClick = onImport, icon = Icons.Rounded.FileUpload)
                 Text(
-                    "Restore a version 3 backup with its backup password. Older version 2 backups use the original Vault password.",
+                    "Version 1 and 2 files use the current vault key; they do not have a separate backup password.",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            if (legacyBackupAvailable) item {
-                // Encrypted-file import is no longer offered in the account-only Vault flow.
+            item {
+                SecondaryButton("Restore encrypted backup", onClick = onRestoreBackup, icon = Icons.Rounded.Restore)
+                Text(
+                    "Version 3 files use the backup password. Version 2 files use the original Vault master password.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             item {
                 SecondaryButton("Import CSV file", onClick = onImportCsv, icon = Icons.Rounded.TableView)
@@ -1635,11 +1726,13 @@ private fun VaultHome(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            item {
-                TextButton(onClick = onResetQaData, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Rounded.DeleteForever, null, tint = MaterialTheme.colorScheme.error)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Reset Vault QA data", color = MaterialTheme.colorScheme.error)
+            if (VaultQaReset.isEnabled()) {
+                item {
+                    TextButton(onClick = onResetQaData, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Rounded.DeleteForever, null, tint = MaterialTheme.colorScheme.error)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Reset Vault QA data", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }
@@ -1649,6 +1742,15 @@ private fun VaultHome(
             modifier = Modifier.align(Alignment.BottomEnd).padding(MomentumTokens.screenPadding)
         )
     }
+}
+
+@Composable
+internal fun VaultThreatModelCard() {
+    InfoBanner(
+        icon = Icons.Rounded.Security,
+        text = VAULT_CLOUD_KEY_THREAT_MODEL,
+        tint = MaterialTheme.colorScheme.tertiary
+    )
 }
 
 @Composable
@@ -1707,6 +1809,7 @@ private fun VaultDetailSheet(item: VaultListItem, onDismiss: () -> Unit, onEdit:
     val context = LocalContext.current
     val secret = item.secret
     var reveal by remember(item.id) { mutableStateOf(false) }
+    var revealTotp by remember(item.id) { mutableStateOf(false) }
     FormSheet(secret.title, onDismiss) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconBubble(if (secret.type == "note") Icons.AutoMirrored.Rounded.StickyNote2 else Icons.Rounded.Key, MaterialTheme.colorScheme.primary, 46.dp)
@@ -1732,7 +1835,15 @@ private fun VaultDetailSheet(item: VaultListItem, onDismiss: () -> Unit, onEdit:
                     }
                 )
             }
-            if (secret.totp.isNotBlank()) VaultValue("TOTP secret", secret.totp) { copySensitive(context, secret.totp) }
+            if (secret.totp.isNotBlank()) {
+                SensitiveVaultValue(
+                    label = "TOTP secret",
+                    value = secret.totp,
+                    revealed = revealTotp,
+                    onToggleReveal = { revealTotp = !revealTotp },
+                    onCopy = { copySensitive(context, secret.totp) }
+                )
+            }
         }
         if (secret.folder.isNotBlank()) Text("Folder: ${secret.folder}", style = MaterialTheme.typography.bodySmall)
         if (secret.tags.isNotBlank()) Text("Tags: ${secret.tags}", style = MaterialTheme.typography.bodySmall)
@@ -1755,6 +1866,35 @@ private fun VaultValue(label: String, value: String, onCopy: () -> Unit) {
         label = { Text(label) },
         singleLine = true,
         trailingIcon = { IconButton(onClick = onCopy) { Icon(Icons.Rounded.ContentCopy, "Copy $label") } }
+    )
+}
+
+@Composable
+internal fun SensitiveVaultValue(
+    label: String,
+    value: String,
+    revealed: Boolean,
+    onToggleReveal: () -> Unit,
+    onCopy: () -> Unit
+) {
+    MomentumTextField(
+        value = value,
+        onValueChange = {},
+        readOnly = true,
+        label = { Text(label) },
+        singleLine = true,
+        visualTransformation = if (revealed) VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            Row {
+                IconButton(onClick = onToggleReveal) {
+                    Icon(
+                        if (revealed) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                        "Show or hide $label"
+                    )
+                }
+                IconButton(onClick = onCopy) { Icon(Icons.Rounded.ContentCopy, "Copy $label") }
+            }
+        }
     )
 }
 
@@ -1856,30 +1996,22 @@ private fun VaultEntryEditor(initial: VaultListItem?, onDismiss: () -> Unit, onS
 
 private fun copySensitive(context: Context, value: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    val clip = ClipData.newPlainText("Sensitive vault value", value)
+    val clip = ClipData.newPlainText(SENSITIVE_CLIPBOARD_LABEL, value)
     if (Build.VERSION.SDK_INT >= 33) {
         val extras = clip.description.extras ?: PersistableBundle().also { clip.description.extras = it }
         extras.putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
     }
     clipboard.setPrimaryClip(clip)
-    val hash = java.security.MessageDigest.getInstance("SHA-256")
-        .digest(value.toByteArray(Charsets.UTF_8))
     val work = OneTimeWorkRequestBuilder<SensitiveClipboardWorker>()
         .setInitialDelay(30, TimeUnit.SECONDS)
-        .setInputData(workDataOf(SensitiveClipboardWorker.KEY_HASH to VaultCrypto.encode(hash)))
+        .setInputData(
+            workDataOf(
+                SensitiveClipboardWorker.KEY_HASH to VaultCrypto.encode(sensitiveClipboardHash(value))
+            )
+        )
         .build()
     WorkManager.getInstance(context).enqueue(work)
-    Toast.makeText(context, "Copied. Clipboard clears after 30 seconds if unchanged.", Toast.LENGTH_SHORT).show()
-    Handler(Looper.getMainLooper()).postDelayed({
-        val current = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
-        if (current == value) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                clipboard.clearPrimaryClip()
-            } else {
-                clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
-            }
-        }
-    }, 30_000)
+    Toast.makeText(context, SENSITIVE_CLIPBOARD_TOAST, Toast.LENGTH_SHORT).show()
 }
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {

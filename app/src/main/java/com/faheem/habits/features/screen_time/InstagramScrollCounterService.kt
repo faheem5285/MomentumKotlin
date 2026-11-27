@@ -39,20 +39,30 @@ class InstagramScrollCounterService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
         val packageName = event.packageName?.toString()
-
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            when {
-                packageName == INSTAGRAM_PACKAGE -> keepCounterVisible()
-                packageName == null || packageName == getPackageName() -> Unit
-                else -> scheduleHide()
-            }
+        val kind = when (event.eventType) {
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ->
+                ScreenTimeAccessibilityEventKind.WINDOW_STATE_CHANGED
+            AccessibilityEvent.TYPE_VIEW_SCROLLED ->
+                ScreenTimeAccessibilityEventKind.VIEW_SCROLLED
+            else -> ScreenTimeAccessibilityEventKind.OTHER
         }
-        if (event.eventType != AccessibilityEvent.TYPE_VIEW_SCROLLED || packageName != INSTAGRAM_PACKAGE) return
-        keepCounterVisible()
 
-        val now = event.eventTime
-        if (lastCountedEventMs > 0 && now >= lastCountedEventMs && now - lastCountedEventMs < EVENT_DEBOUNCE_MS) return
-        lastCountedEventMs = now
+        when (overlayAction(kind, packageName, INSTAGRAM_PACKAGE, getPackageName())) {
+            ScreenTimeOverlayAction.SHOW -> keepCounterVisible()
+            ScreenTimeOverlayAction.HIDE_DELAYED -> scheduleHide()
+            ScreenTimeOverlayAction.IGNORE -> Unit
+        }
+
+        val decision = scrollCountDecision(
+            kind = kind,
+            packageName = packageName,
+            targetPackage = INSTAGRAM_PACKAGE,
+            eventTimeMs = event.eventTime,
+            lastCountedEventMs = lastCountedEventMs
+        )
+        if (!decision.shouldCount) return
+        lastCountedEventMs = decision.lastCountedEventMs
+        keepCounterVisible()
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val key = countKey(LocalDate.now())
@@ -140,7 +150,7 @@ class InstagramScrollCounterService : AccessibilityService() {
         const val PREFS_NAME = "screen_time"
         const val PREF_LIMIT = "reels_daily_limit"
         const val PREF_FLOATING_COUNTER = "reels_floating_counter"
-        const val EVENT_DEBOUNCE_MS = 900L
+        const val EVENT_DEBOUNCE_MS = INSTAGRAM_SCROLL_DEBOUNCE_MS
         const val OVERLAY_HIDE_DELAY_MS = 12_000L
         fun countKey(day: LocalDate) = "instagram_scroll_count_${day}"
 

@@ -23,9 +23,30 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 enum class SessionRestoreResult { AUTHENTICATED, NO_SESSION, TEMPORARY_FAILURE }
+
+/** Parsed auth payload; tokens stay in this layer and are never placed in UI state. */
+@Serializable
+internal data class AuthResponse(
+    val access_token: String? = null,
+    val refresh_token: String? = null,
+    val expires_in: Long? = null,
+    val token_type: String? = null,
+    val user: AuthUser? = null
+)
+
+@Serializable
+internal data class AuthUser(
+    val id: String? = null,
+    val email: String? = null,
+    val user_metadata: JsonObject? = null,
+    val app_metadata: JsonObject? = null,
+    val created_at: String? = null
+)
 
 /**
  * Supabase email/password auth. Refresh tokens are encrypted by Android Keystore;
@@ -56,28 +77,16 @@ object SupabaseAuthApi {
     private data class PasswordUpdate(val password: String)
 
     @Serializable
-    private data class AuthResponse(
-        val access_token: String? = null,
-        val refresh_token: String? = null,
-        val expires_in: Long? = null,
-        val token_type: String? = null,
-        val user: AuthUser? = null
-    )
-
-    @Serializable
-    private data class AuthUser(
-        val id: String? = null,
-        val email: String? = null,
-        val user_metadata: JsonObject? = null,
-        val app_metadata: JsonObject? = null,
-        val created_at: String? = null
-    )
+    private data class ResendConfirmation(val type: String, val email: String)
 
     @Volatile
     private var accessToken: String? = null
 
     @Volatile
     private var accessTokenExpiresAt: Long = 0L
+
+    /** Serializes refresh-token rotation so concurrent sync calls cannot race. */
+    private val refreshMutex = Mutex()
 
     private fun rememberSession(session: AuthResponse) {
         accessToken = session.access_token
@@ -127,15 +136,37 @@ object SupabaseAuthApi {
     private fun hasFreshToken(): Boolean =
         !accessToken.isNullOrBlank() && System.currentTimeMillis() < accessTokenExpiresAt - 60_000L
 
-    private class AuthHttpException(val status: Int, detail: String) :
-        IllegalStateException("Supabase authentication failed ($status): $detail")
+    private class AuthHttpException(val status: Int) :
+        IllegalStateException(HttpErrorSanitizer.forHttp(status))
 
-    suspend fun signUp(email: String, password: String) {
-        request("signup", json.encodeToString(Credentials(email, password)))
+    /**
+     * Returns an explicit outcome. When confirmation is disabled Supabase may
+     * return a complete session; in that case the session is applied only after
+     * the caller's account-link snapshot callback has succeeded.
+     */
+    suspend fun signUp(
+        context: Context,
+        email: String,
+        password: String,
+        displayName: String,
+        beforeActivate: suspend (String) -> Unit = {}
+    ): SignUpOutcome {
+        val (status, body) = requestRaw(
+            "signup",
+            json.encodeToString(SignupCredentials(email, password, SignupMetadata(displayName)))
+        )
+        val parsed = SignUpResponseParser.parse(status, body)
+        if (parsed.outcome == SignUpOutcome.SESSION_STARTED && parsed.session != null) {
+            applyEmailSession(context.applicationContext, parsed.session!!, beforeActivate)
+        }
+        return parsed.outcome
     }
 
-    suspend fun signUp(email: String, password: String, displayName: String) {
-        request("signup", json.encodeToString(SignupCredentials(email, password, SignupMetadata(displayName))))
+    suspend fun resendConfirmation(email: String) {
+        request(
+            "resend",
+            json.encodeToString(ResendConfirmation("signup", email.trim().take(160)))
+        )
     }
 
     suspend fun sendPasswordReset(email: String) {
@@ -147,14 +178,17 @@ object SupabaseAuthApi {
         idToken: String,
         nonce: String,
         profilePictureUrl: String? = null,
-        profileDisplayName: String? = null
+        profileDisplayName: String? = null,
+        beforeActivate: suspend (String) -> Unit = {}
     ) {
         val body = request("token?grant_type=id_token", json.encodeToString(IdTokenCredentials("google", idToken, nonce)))
         val session = json.decodeFromString<AuthResponse>(body)
+        val userId = session.user?.id?.trim().takeUnless { it.isNullOrBlank() }
+            ?: error("Supabase did not return the signed-in account ID.")
+        beforeActivate(userId)
         activateAccountDatabase(context.applicationContext, session)
         rememberSession(session)
         cacheProfile(context.applicationContext, session, profileDisplayName, profilePictureUrl)
-        val userId = session.user?.id?.trim().orEmpty()
         if (userId.isNotBlank()) {
             val prefs = context.applicationContext.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
             val memberSince = prefs.getLong("member_since", System.currentTimeMillis())
@@ -178,22 +212,29 @@ object SupabaseAuthApi {
         SecureTokenStore.saveRefreshToken(context.applicationContext, refreshToken)
     }
 
+    /** Verifies the current password without activating or persisting a second session. */
+    private suspend fun verifyCurrentPassword(context: Context, email: String, current: String): Boolean {
+        val body = request("token?grant_type=password", json.encodeToString(Credentials(email.trim(), current)))
+        val verification = runCatching { json.decodeFromString<AuthResponse>(body) }.getOrNull()
+        val verifiedUserId = verification?.user?.id?.trim().takeUnless { it.isNullOrBlank() }
+        return verification?.access_token?.isNotBlank() == true &&
+            verifiedUserId != null &&
+            verifiedUserId == currentUserId(context)
+    }
+
     suspend fun changePassword(context: Context, email: String, current: String, next: String) {
-        signIn(context, email, current)
+        check(verifyCurrentPassword(context, email, current)) { "The current password was not accepted." }
         val token = getAccessToken(context) ?: error("Sign in again before changing your password.")
-        val baseUrl = BuildConfig.SUPABASE_URL.trim().trimEnd('/').removeSuffix("/rest/v1").removeSuffix("/auth/v1").trimEnd('/')
-        val response = http.put("$baseUrl/auth/v1/user") {
-            header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
-            header("Authorization", "Bearer $token")
-            contentType(ContentType.Application.Json)
-            setBody(json.encodeToString(PasswordUpdate(next)))
-        }
-        val responseBody = response.bodyAsText()
-        if (response.status.value !in 200..299) throw AuthHttpException(response.status.value, responseBody.take(300))
+        updatePassword(token, next)
     }
 
     suspend fun setPassword(context: Context, next: String) {
         val token = getAccessToken(context) ?: error("Sign in again before setting a password.")
+        updatePassword(token, next)
+        context.getSharedPreferences("account_profile", Context.MODE_PRIVATE).edit().putString("auth_provider", "email").apply()
+    }
+
+    private suspend fun updatePassword(token: String, next: String) {
         val baseUrl = BuildConfig.SUPABASE_URL.trim().trimEnd('/').removeSuffix("/rest/v1").removeSuffix("/auth/v1").trimEnd('/')
         val response = http.put("$baseUrl/auth/v1/user") {
             header("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
@@ -201,8 +242,7 @@ object SupabaseAuthApi {
             contentType(ContentType.Application.Json)
             setBody(json.encodeToString(PasswordUpdate(next)))
         }
-        if (response.status.value !in 200..299) throw AuthHttpException(response.status.value, response.bodyAsText().take(300))
-        context.getSharedPreferences("account_profile", Context.MODE_PRIVATE).edit().putString("auth_provider", "email").apply()
+        if (response.status.value !in 200..299) throw AuthHttpException(response.status.value)
     }
 
     suspend fun completePasswordRecovery(accessToken: String, next: String) {
@@ -213,28 +253,69 @@ object SupabaseAuthApi {
             contentType(ContentType.Application.Json)
             setBody(json.encodeToString(PasswordUpdate(next)))
         }
-        if (response.status.value !in 200..299) throw AuthHttpException(response.status.value, response.bodyAsText().take(300))
+        if (response.status.value !in 200..299) throw AuthHttpException(response.status.value)
     }
 
-    suspend fun signIn(context: Context, email: String, password: String) {
-        val body = request("token?grant_type=password", json.encodeToString(Credentials(email, password)))
+    suspend fun signIn(
+        context: Context,
+        email: String,
+        password: String,
+        beforeActivate: suspend (String) -> Unit = {}
+    ) {
+        val body = request("token?grant_type=password", json.encodeToString(Credentials(email.trim(), password)))
         val session = json.decodeFromString<AuthResponse>(body)
-        activateAccountDatabase(context.applicationContext, session)
+        applyEmailSession(context.applicationContext, session, beforeActivate)
+    }
+
+    /** Common post-authentication path for password sign-in and session-returning signup. */
+    private suspend fun applyEmailSession(
+        appContext: Context,
+        session: AuthResponse,
+        beforeActivate: suspend (String) -> Unit
+    ) {
+        val userId = session.user?.id?.trim().takeUnless { it.isNullOrBlank() }
+            ?: error("Supabase did not return the signed-in account ID.")
+        beforeActivate(userId)
+        activateAccountDatabase(appContext, session)
         rememberSession(session)
-        cacheProfile(context.applicationContext, session)
-        context.applicationContext.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
+        cacheProfile(appContext, session)
+        appContext.getSharedPreferences("account_profile", Context.MODE_PRIVATE)
             .edit().putString("auth_provider", "email").apply()
         val refreshToken = session.refresh_token
         check(!refreshToken.isNullOrBlank()) {
             "Sign-in succeeded but Supabase did not return a refresh token."
         }
-        SecureTokenStore.saveRefreshToken(context.applicationContext, refreshToken)
+        SecureTokenStore.saveRefreshToken(appContext, refreshToken)
     }
 
-    suspend fun restoreSession(context: Context): SessionRestoreResult {
-        val refreshToken = SecureTokenStore.readRefreshToken(context.applicationContext)
+    suspend fun restoreSession(context: Context): SessionRestoreResult = refreshMutex.withLock {
+        performRefresh(context.applicationContext)
+    }
+
+    /**
+     * Returns a usable access token, forcing a single refresh when the cached
+     * token is stale or a request returned 401. Concurrent callers share one
+     * refresh so rotated refresh tokens are never used twice.
+     */
+    suspend fun refreshAccessToken(context: Context, force: Boolean = false): String? =
+        refreshMutex.withLock {
+            if (!force && hasFreshToken()) return@withLock accessToken
+            when (performRefresh(context.applicationContext)) {
+                SessionRestoreResult.AUTHENTICATED -> accessToken
+                else -> null
+            }
+        }
+
+    suspend fun getAccessToken(context: Context): String? {
+        if (hasFreshToken()) return accessToken
+        return refreshAccessToken(context.applicationContext)
+    }
+
+    private suspend fun performRefresh(appContext: Context): SessionRestoreResult {
+        val refreshToken = SecureTokenStore.readRefreshToken(appContext)
             ?: run {
-                clearAuthIdentity(context.applicationContext, keepLocalBinding = true)
+                clearInMemorySession()
+                clearAuthIdentity(appContext, keepLocalBinding = true)
                 return SessionRestoreResult.NO_SESSION
             }
         return try {
@@ -243,21 +324,24 @@ object SupabaseAuthApi {
                 json.encodeToString(RefreshCredentials(refreshToken))
             )
             val session = json.decodeFromString<AuthResponse>(body)
-            activateAccountDatabase(context.applicationContext, session)
+            activateAccountDatabase(appContext, session)
             rememberSession(session)
-            cacheProfile(context.applicationContext, session)
+            cacheProfile(appContext, session)
             val updatedToken = session.refresh_token
             check(!updatedToken.isNullOrBlank()) {
                 "Supabase did not return a refreshed session token."
             }
-            SecureTokenStore.saveRefreshToken(context.applicationContext, updatedToken)
+            SecureTokenStore.saveRefreshToken(appContext, updatedToken)
             SessionRestoreResult.AUTHENTICATED
         } catch (e: AuthHttpException) {
             if (e.status in listOf(400, 401, 403)) {
-                SecureTokenStore.clear(context.applicationContext)
-                accessToken = null
-                accessTokenExpiresAt = 0L
-                clearAuthIdentity(context.applicationContext, keepLocalBinding = true, notice = "Your saved session expired. Sign in again to use cloud sync; local records remain available.")
+                SecureTokenStore.clear(appContext)
+                clearInMemorySession()
+                clearAuthIdentity(
+                    appContext,
+                    keepLocalBinding = true,
+                    notice = "Your saved session expired. Sign in again to use cloud sync; local records remain available."
+                )
                 SessionRestoreResult.NO_SESSION
             } else {
                 SessionRestoreResult.TEMPORARY_FAILURE
@@ -265,14 +349,6 @@ object SupabaseAuthApi {
         } catch (_: Exception) {
             // Keep the encrypted token on network errors so an offline start does not destroy it.
             SessionRestoreResult.TEMPORARY_FAILURE
-        }
-    }
-
-    suspend fun getAccessToken(context: Context): String? {
-        if (hasFreshToken()) return accessToken
-        return when (restoreSession(context.applicationContext)) {
-            SessionRestoreResult.AUTHENTICATED -> accessToken
-            else -> null
         }
     }
 
@@ -337,6 +413,13 @@ object SupabaseAuthApi {
     }
 
     private suspend fun request(endpoint: String, body: String): String {
+        val (status, responseBody) = requestRaw(endpoint, body)
+        if (status !in 200..299) throw AuthHttpException(status)
+        return responseBody
+    }
+
+    /** Returns the status and body only to parsers inside this layer; neither is logged. */
+    private suspend fun requestRaw(endpoint: String, body: String): Pair<Int, String> {
         check(SupabaseProvider.isConfigured) {
             "Supabase is not configured. Check your local Gradle properties."
         }
@@ -349,10 +432,6 @@ object SupabaseAuthApi {
             contentType(ContentType.Application.Json)
             setBody(body)
         }
-        val responseBody = response.bodyAsText()
-        if (response.status.value !in 200..299) {
-            throw AuthHttpException(response.status.value, responseBody.take(500))
-        }
-        return responseBody
+        return response.status.value to response.bodyAsText()
     }
 }

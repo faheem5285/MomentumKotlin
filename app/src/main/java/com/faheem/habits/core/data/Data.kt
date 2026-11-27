@@ -389,13 +389,13 @@ interface HabitDao {
     suspend fun markHabitsClean(uuids: List<String>)
     @Query("UPDATE completions SET dirty = 0 WHERE uuid IN (:uuids)")
     suspend fun markCompletionsClean(uuids: List<String>)
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertHabit(habit: Habit)
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertCompletion(completion: Completion)
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertSkipForSync(skip: HabitSkip)
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertReminderForSync(reminder: HabitReminder)
     @Query("SELECT * FROM habits WHERE deleted = 0 ORDER BY id")
     fun getHabits(): Flow<List<Habit>>
@@ -466,7 +466,7 @@ interface HabitDao {
     @Query("UPDATE completions SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE habitId = :habitId AND epochDay = :epochDay AND deleted = 0")
     suspend fun deleteCompletion(habitId: Int, epochDay: Long, updatedAt: Long = System.currentTimeMillis())
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertSkip(skip: HabitSkip)
 
     @Query("SELECT * FROM habit_skips WHERE habitId = :habitId AND epochDay = :epochDay LIMIT 1")
@@ -493,7 +493,7 @@ interface ExpenseDao {
     suspend fun markClean(uuids: List<String>)
     @Query("UPDATE category_budgets SET dirty = 0 WHERE uuid IN (:uuids)")
     suspend fun markBudgetsClean(uuids: List<String>)
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertExpense(expense: Expense)
     @Query("SELECT * FROM expenses WHERE deleted = 0 ORDER BY epochDay DESC, id DESC")
     fun getAll(): Flow<List<Expense>>
@@ -508,10 +508,19 @@ interface ExpenseDao {
     @Query("UPDATE expenses SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
     suspend fun delete(id: Int, updatedAt: Long = System.currentTimeMillis())
 
-    @Query("SELECT * FROM category_budgets ORDER BY monthKey DESC, category")
+    @Query("SELECT * FROM category_budgets WHERE deleted = 0 ORDER BY monthKey DESC, category")
     fun getBudgets(): Flow<List<CategoryBudget>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Query("SELECT * FROM category_budgets WHERE category = :category AND monthKey = :monthKey AND deleted = 0 LIMIT 1")
+    fun observeBudget(category: String, monthKey: String): Flow<CategoryBudget?>
+
+    @Query("SELECT * FROM category_budgets WHERE monthKey = :monthKey AND deleted = 0 ORDER BY category")
+    fun observeBudgets(monthKey: String): Flow<List<CategoryBudget>>
+
+    @Query("UPDATE category_budgets SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE category = :category AND monthKey = :monthKey AND deleted = 0")
+    suspend fun deleteBudget(category: String, monthKey: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Upsert
     suspend fun upsertBudget(budget: CategoryBudget)
 }
 
@@ -532,7 +541,7 @@ interface LoanDao {
     suspend fun getPersonByUuid(uuid: String): LoanPerson?
     @Query("UPDATE loan_people SET dirty = 0 WHERE uuid IN (:uuids)")
     suspend fun markPeopleClean(uuids: List<String>)
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertPersonForSync(person: LoanPerson)
     @Query("SELECT * FROM loan_attachments ORDER BY id")
     suspend fun getAllAttachmentsForSync(): List<LoanAttachment>
@@ -540,7 +549,7 @@ interface LoanDao {
     suspend fun getAttachmentByUuid(uuid: String): LoanAttachment?
     @Query("UPDATE loan_attachments SET dirty = 0 WHERE uuid IN (:uuids)")
     suspend fun markAttachmentsClean(uuids: List<String>)
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertAttachmentForSync(attachment: LoanAttachment)
     @Update suspend fun updateAttachment(attachment: LoanAttachment)
     @Query("UPDATE loan_people SET archived = 1, deleted = 1, updatedAt = :updatedAt, dirty = 1 WHERE id = :id")
@@ -566,9 +575,9 @@ interface LoanDao {
     suspend fun markClean(uuids: List<String>)
     @Query("UPDATE loan_payments SET dirty = 0 WHERE uuid IN (:uuids)")
     suspend fun markPaymentsClean(uuids: List<String>)
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertLoan(loan: Loan)
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertPayment(payment: LoanPayment)
     @Query("SELECT * FROM loans WHERE deleted = 0 ORDER BY settled ASC, epochDay DESC, id DESC")
     fun getAll(): Flow<List<Loan>>
@@ -584,13 +593,22 @@ interface LoanDao {
     @Query("UPDATE loans SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
     suspend fun delete(id: Int, updatedAt: Long = System.currentTimeMillis())
 
+    @Query("SELECT * FROM loan_payments WHERE deleted = 0 ORDER BY epochDay DESC, id DESC")
+    fun getAllPayments(): Flow<List<LoanPayment>>
+
     @Query("SELECT * FROM loan_payments WHERE loanId = :loanId AND deleted = 0 ORDER BY epochDay DESC, id DESC")
     fun getPayments(loanId: Int): Flow<List<LoanPayment>>
 
     @Insert suspend fun insertPayment(payment: LoanPayment)
 
+    @Query("UPDATE loan_payments SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun deletePayment(id: Int, updatedAt: Long = System.currentTimeMillis())
+
     @Query("SELECT COALESCE(SUM(amountMinorUnits), 0) FROM loan_payments WHERE loanId = :loanId AND deleted = 0")
     suspend fun getPaidAmount(loanId: Int): Long
+
+    @Query("SELECT COALESCE(SUM(amountMinorUnits), 0) FROM loan_payments WHERE loanId = :loanId AND deleted = 0")
+    fun observePaidAmount(loanId: Int): Flow<Long>
 }
 
 @Dao
@@ -600,7 +618,7 @@ interface FileDao {
     suspend fun getAllForSync(): List<FileItem>
     @Query("UPDATE library_files SET dirty = 0 WHERE uuid IN (:uuids)")
     suspend fun markClean(uuids: List<String>)
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertForSync(file: FileItem)
     @Query("SELECT * FROM library_files WHERE deleted = 0 ORDER BY id DESC")
     fun getAll(): Flow<List<FileItem>>
@@ -614,6 +632,10 @@ interface FileDao {
     @Query("DELETE FROM library_files") suspend fun deleteAll()
     @Query("UPDATE library_files SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
     suspend fun delete(id: Int, updatedAt: Long = System.currentTimeMillis())
+    @Query("UPDATE library_files SET missing = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun markMissing(id: Int, updatedAt: Long = System.currentTimeMillis())
+    @Query("UPDATE library_files SET missing = 0 WHERE id = :id")
+    suspend fun markAvailable(id: Int)
 }
 
 @Dao
@@ -633,10 +655,10 @@ interface VaultDao {
     @Query("UPDATE vault_entries SET dirty = 0 WHERE uuid IN (:uuids)")
     suspend fun markClean(uuids: List<String>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsert(record: VaultRecord)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertAll(records: List<VaultRecord>)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -665,7 +687,7 @@ interface ToDoDao {
     suspend fun getAllForSync(): List<ToDoItem>
     @Query("UPDATE todo_items SET dirty = 0 WHERE uuid IN (:uuids)")
     suspend fun markClean(uuids: List<String>)
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertForSync(item: ToDoItem)
     @Query("SELECT * FROM todo_items WHERE deleted = 0 ORDER BY completed ASC, dueEpochDay ASC, id DESC")
     fun getAll(): Flow<List<ToDoItem>>
@@ -686,6 +708,8 @@ interface ToDoDao {
     @Update suspend fun update(item: ToDoItem)
     @Query("UPDATE todo_items SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
     suspend fun delete(id: Int, updatedAt: Long = System.currentTimeMillis())
+    @Query("UPDATE todo_items SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE parentId = :parentId AND deleted = 0")
+    suspend fun deleteChildren(parentId: Int, updatedAt: Long)
 }
 
 @Dao
@@ -702,7 +726,7 @@ interface LifeRuleDao {
     suspend fun getByUuid(uuid: String): LifeRule?
 
     @Insert suspend fun insert(rule: LifeRule): Long
-    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertForSync(rule: LifeRule): Long
+    @Upsert suspend fun upsertForSync(rule: LifeRule): Long
     @Query("UPDATE life_rules SET dirty = 0 WHERE uuid IN (:uuids)")
     suspend fun markClean(uuids: List<String>)
     @Update suspend fun update(rule: LifeRule)
@@ -719,7 +743,7 @@ interface LifeRuleDao {
     suspend fun getFileByUuid(uuid: String): LifeRuleFile?
     @Query("UPDATE life_rule_files SET dirty = 0 WHERE uuid IN (:uuids)")
     suspend fun markFilesClean(uuids: List<String>)
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertFileForSync(file: LifeRuleFile)
     @Update suspend fun updateFile(file: LifeRuleFile)
     @Query("UPDATE life_rule_files SET deleted = 1, dirty = 1, updatedAt = :updatedAt WHERE id = :id")
@@ -733,7 +757,7 @@ interface CustomNotificationDao {
     suspend fun getAllForSync(): List<CustomNotification>
     @Query("UPDATE custom_notifications SET dirty = 0 WHERE uuid IN (:uuids)")
     suspend fun markClean(uuids: List<String>)
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertForSync(notification: CustomNotification)
     @Query("SELECT * FROM custom_notifications WHERE deleted = 0 ORDER BY enabled DESC, hour ASC, minute ASC, id DESC")
     fun getAll(): Flow<List<CustomNotification>>
@@ -769,7 +793,7 @@ interface ContactDao {
     suspend fun getByUuid(uuid: String): Contact?
     @Query("UPDATE contacts SET dirty = 0 WHERE uuid IN (:uuids)")
     suspend fun markClean(uuids: List<String>)
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertForSync(contact: Contact)
     @Insert
     suspend fun insert(contact: Contact): Long
@@ -791,7 +815,10 @@ interface SyncStateDao {
     @Query("SELECT * FROM sync_state WHERE tableName = :tableName LIMIT 1")
     suspend fun get(tableName: String): SyncState?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Query("DELETE FROM sync_state")
+    suspend fun deleteAll()
+
+    @Upsert
     suspend fun upsert(state: SyncState)
 }
 
@@ -812,7 +839,7 @@ interface ProfileCacheDao {
     @Query("SELECT * FROM profile_cache WHERE userId = :userId LIMIT 1")
     fun observe(userId: String): Flow<ProfileCache?>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsert(profile: ProfileCache)
 }
 
@@ -837,11 +864,12 @@ interface VocabularyDao {
     @Query("SELECT * FROM vocabulary_words WHERE word LIKE '%' || :query || '%' OR meaning LIKE '%' || :query || '%' ORDER BY word COLLATE NOCASE") fun search(query: String): Flow<List<VocabularyWord>>
     @Query("SELECT * FROM vocabulary_words WHERE id = :id LIMIT 1") suspend fun get(id: Long): VocabularyWord?
     @Query("SELECT * FROM vocabulary_words WHERE mastered = 0 ORDER BY word COLLATE NOCASE") suspend fun getUnmastered(): List<VocabularyWord>
-    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(word: VocabularyWord): Long
+    @Upsert suspend fun upsert(word: VocabularyWord): Long
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertImported(words: List<VocabularyWord>): List<Long>
     @Query("DELETE FROM vocabulary_words WHERE id = :id") suspend fun delete(id: Long)
     @Query("UPDATE vocabulary_words SET mastered = :mastered, updatedAt = :at WHERE id = :id") suspend fun setMastered(id: Long, mastered: Boolean, at: Long = System.currentTimeMillis())
     @Query("SELECT * FROM vocabulary_words ORDER BY createdAt DESC") suspend fun allForExport(): List<VocabularyWord>
+    @Query("DELETE FROM vocabulary_words") suspend fun deleteAll()
 }
 
 @Entity(tableName = "grammar_notes", indices = [Index("category"), Index("pinned")])
@@ -862,10 +890,11 @@ data class GrammarNote(
 interface GrammarNoteDao {
     @Query("SELECT * FROM grammar_notes ORDER BY pinned DESC, title COLLATE NOCASE") fun observeAll(): Flow<List<GrammarNote>>
     @Query("SELECT * FROM grammar_notes WHERE title LIKE '%' || :query || '%' OR explanation LIKE '%' || :query || '%' ORDER BY pinned DESC, title COLLATE NOCASE") fun search(query: String): Flow<List<GrammarNote>>
-    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(note: GrammarNote): Long
+    @Upsert suspend fun upsert(note: GrammarNote): Long
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertImported(notes: List<GrammarNote>): List<Long>
     @Query("DELETE FROM grammar_notes WHERE id = :id") suspend fun delete(id: Long)
     @Query("SELECT * FROM grammar_notes ORDER BY updatedAt DESC") suspend fun allForExport(): List<GrammarNote>
+    @Query("DELETE FROM grammar_notes") suspend fun deleteAll()
 }
 
 @Entity(tableName = "review_states", indices = [Index("nextReviewAt")])
@@ -883,7 +912,9 @@ interface ReviewStateDao {
     @Query("SELECT * FROM review_states ORDER BY nextReviewAt") fun observeAll(): Flow<List<ReviewState>>
     @Query("SELECT * FROM review_states WHERE nextReviewAt <= :now ORDER BY nextReviewAt") fun due(now: Long): Flow<List<ReviewState>>
     @Query("SELECT * FROM review_states WHERE wordId = :wordId LIMIT 1") suspend fun get(wordId: Long): ReviewState?
-    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(state: ReviewState)
+    @Query("SELECT * FROM review_states ORDER BY nextReviewAt, wordId") suspend fun allForExport(): List<ReviewState>
+    @Query("DELETE FROM review_states") suspend fun deleteAll()
+    @Upsert suspend fun upsert(state: ReviewState)
     @Query("DELETE FROM review_states WHERE wordId = :wordId") suspend fun delete(wordId: Long)
 }
 
@@ -901,10 +932,11 @@ data class TranslationHistory(
 @Dao
 interface TranslationHistoryDao {
     @Query("SELECT * FROM translation_history ORDER BY createdAt DESC") fun observeAll(): Flow<List<TranslationHistory>>
-    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insert(item: TranslationHistory): Long
+    @Upsert suspend fun insert(item: TranslationHistory): Long
     @Query("UPDATE translation_history SET favorite = :favorite WHERE id = :id") suspend fun setFavorite(id: Long, favorite: Boolean)
     @Query("DELETE FROM translation_history WHERE id = :id") suspend fun delete(id: Long)
     @Query("DELETE FROM translation_history") suspend fun clear()
+    @Query("SELECT * FROM translation_history ORDER BY createdAt DESC, id DESC") suspend fun allForExport(): List<TranslationHistory>
 }
 
 @Database(
@@ -932,8 +964,9 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile private var instance: AppDatabase? = null
         private const val DATABASE_NAME = "momentum.db"
-        private const val ACCOUNT_SCOPE_PREFS = "momentum_account_database_scope"
+        const val ACCOUNT_SCOPE_PREFS = "momentum_account_database_scope"
         private const val ACTIVE_USER_KEY = "active_user_id"
+        private const val UNASSIGNED_ACCOUNT_FILE = "unassigned-legacy-database.db"
 
         /** Keeps Room rows and sync cursors in a separate local database per Supabase user. */
         fun activateAccount(context: Context, userId: String) = synchronized(this) {
@@ -944,45 +977,149 @@ abstract class AppDatabase : RoomDatabase() {
             val activeUser = scopePrefs.getString(ACTIVE_USER_KEY, null)
             if (activeUser == normalizedId) return@synchronized
 
-            val db = instance
-            if (db != null) {
-                runCatching {
-                    db.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(TRUNCATE)").close()
-                }
-                db.close()
-                instance = null
-            }
+            closeActiveDatabase()
 
             val baseFile = appContext.getDatabasePath(DATABASE_NAME)
             val accountDirectory = File(appContext.filesDir, "account-databases").apply {
                 check(isDirectory || mkdirs()) { "Could not prepare account-local data storage." }
             }
             if (baseFile.exists()) {
-                val unassignedFile = File(accountDirectory, "unassigned-legacy-database.db")
                 val previousFile = activeUser?.let { accountDatabaseFile(accountDirectory, it) }
                     ?: accountDatabaseFile(accountDirectory, normalizedId).takeUnless(File::exists)
-                    ?: unassignedFile
-                baseFile.copyTo(previousFile, overwrite = true)
+                    ?: File(accountDirectory, UNASSIGNED_ACCOUNT_FILE)
+                deleteDatabaseFiles(previousFile)
+                copyDatabaseFiles(baseFile, previousFile)
             }
             deleteDatabaseFiles(baseFile)
 
             val accountFile = accountDatabaseFile(accountDirectory, normalizedId)
             if (accountFile.exists()) {
-                accountFile.copyTo(baseFile, overwrite = true)
+                copyDatabaseFiles(accountFile, baseFile)
             }
             check(scopePrefs.edit().putString(ACTIVE_USER_KEY, normalizedId).commit()) {
                 "Could not save the active account for local data."
             }
         }
 
+        internal fun closeForInstrumentation() = closeActiveDatabase()
+
+        private fun closeActiveDatabase() {
+            val db = instance ?: return
+            runCatching {
+                db.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(TRUNCATE)").close()
+            }
+            db.close()
+            instance = null
+        }
+
+        internal fun activeUserId(context: Context): String? =
+            context.applicationContext.getSharedPreferences(ACCOUNT_SCOPE_PREFS, Context.MODE_PRIVATE)
+                .getString(ACTIVE_USER_KEY, null)
+
+        /**
+         * Copies the current local database to a timestamped snapshot before an
+         * account is linked or switched. Returns false when there is no local
+         * database to preserve. The copy is checkpointed and atomic, matching
+         * the existing account-switch logic.
+         */
+        fun snapshotForAccountLink(context: Context): Boolean = synchronized(this) {
+            val appContext = context.applicationContext
+            val baseFile = appContext.getDatabasePath(DATABASE_NAME)
+            if (!baseFile.exists()) return@synchronized false
+            closeActiveDatabase()
+            val directory = File(appContext.filesDir, "account-link-snapshots").apply {
+                check(isDirectory || mkdirs()) { "Could not prepare the account-link snapshot directory." }
+            }
+            val target = File(directory, "link-${System.currentTimeMillis()}.db")
+            copyDatabaseFiles(baseFile, target)
+            directory.listFiles { file -> file.name.startsWith("link-") && file.name.endsWith(".db") }
+                ?.sortedBy(File::lastModified)
+                ?.takeIf { it.size > MAX_LINK_SNAPSHOTS }
+                ?.let { snapshots ->
+                    snapshots.take(snapshots.size - MAX_LINK_SNAPSHOTS).forEach(::deleteDatabaseFiles)
+                }
+            true
+        }
+
+        private const val MAX_LINK_SNAPSHOTS = 3
+
+        internal fun accountDatabaseExists(context: Context, userId: String): Boolean {
+            val normalized = runCatching { UUID.fromString(userId).toString() }.getOrNull() ?: return false
+            val directory = File(context.applicationContext.filesDir, "account-databases")
+            return accountDatabaseFile(directory, normalized).exists()
+        }
+
+        /** True when at least one local record exists in the currently active database. */
+        fun hasLocalRecords(context: Context): Boolean = synchronized(this) {
+            val readable = get(context.applicationContext).openHelper.readableDatabase
+            listOf("habits", "expenses", "todo_items", "library_files", "loan_people", "contacts", "vault_entries")
+                .any { table ->
+                    runCatching {
+                        readable.query("SELECT 1 FROM `$table` LIMIT 1").use { it.moveToNext() }
+                    }.getOrDefault(false)
+                }
+        }
+
+        /** Names of the active database and its sidecars, for account-scoped resets. */
+        fun activeDatabaseFileNames(context: Context): Set<String> {
+            val appContext = context.applicationContext
+            val baseFile = appContext.getDatabasePath(DATABASE_NAME)
+            val activeUser = appContext.getSharedPreferences(ACCOUNT_SCOPE_PREFS, Context.MODE_PRIVATE)
+                .getString(ACTIVE_USER_KEY, null)
+            val accountDirectory = File(appContext.filesDir, "account-databases")
+            val snapshot = if (activeUser == null) {
+                File(accountDirectory, UNASSIGNED_ACCOUNT_FILE)
+            } else {
+                accountDatabaseFile(accountDirectory, activeUser)
+            }
+            return databaseFamily(baseFile).map(File::getName).toSet() +
+                databaseFamily(snapshot).map(File::getName).toSet()
+        }
+
+        /** Removes only the active account's stored snapshot, preserving other accounts. */
+        fun clearActiveAccountSnapshot(context: Context) {
+            val appContext = context.applicationContext
+            val activeUser = appContext.getSharedPreferences(ACCOUNT_SCOPE_PREFS, Context.MODE_PRIVATE)
+                .getString(ACTIVE_USER_KEY, null)
+            val accountDirectory = File(appContext.filesDir, "account-databases")
+            val snapshot = if (activeUser == null) {
+                File(accountDirectory, UNASSIGNED_ACCOUNT_FILE)
+            } else {
+                accountDatabaseFile(accountDirectory, activeUser)
+            }
+            deleteDatabaseFiles(snapshot)
+        }
+
         private fun accountDatabaseFile(directory: File, userId: String): File =
             File(directory, "account-${userId.replace("-", "")}.db")
 
+        private fun databaseFamily(database: File): List<File> = listOf(
+            database,
+            File("${database.path}-wal"),
+            File("${database.path}-shm"),
+            File("${database.path}-journal")
+        )
+
         private fun deleteDatabaseFiles(database: File) {
-            listOf(database, File("${database.path}-wal"), File("${database.path}-shm"), File("${database.path}-journal"))
-                .forEach { file ->
-                    if (file.exists()) check(file.delete()) { "Could not switch the local account database." }
-                }
+            databaseFamily(database).forEach { file ->
+                if (file.exists()) check(file.delete()) { "Could not switch the local account database." }
+            }
+        }
+
+        private fun copyDatabaseFiles(source: File, target: File) {
+            databaseFamily(source).forEach { sourceFile ->
+                if (!sourceFile.exists() || sourceFile.name.endsWith("-shm")) return@forEach
+                val suffix = sourceFile.name.removePrefix(source.name)
+                copyAtomically(sourceFile, File("${target.path}$suffix"))
+            }
+        }
+
+        private fun copyAtomically(source: File, target: File) {
+            val temporary = File(target.parentFile, "${target.name}.swap")
+            if (temporary.exists()) check(temporary.delete()) { "Could not prepare the local account database switch." }
+            source.copyTo(temporary, overwrite = true)
+            if (target.exists()) check(target.delete()) { "Could not replace the local account database." }
+            check(temporary.renameTo(target)) { "Could not finish the local account database switch." }
         }
 
         // The last committed app schema was v3. Keep its data while adding the

@@ -2,10 +2,13 @@ package com.faheem.habits.features.loans.data
 
 import android.content.Context
 import android.net.Uri
+import androidx.room.withTransaction
+import com.faheem.habits.core.data.AppDatabase
 import com.faheem.habits.core.data.Loan
 import com.faheem.habits.core.data.LoanAttachment
-import com.faheem.habits.core.data.LoanDao
+import com.faheem.habits.core.data.LoanPayment
 import com.faheem.habits.core.data.LoanPerson
+import com.faheem.habits.core.data.today
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -13,11 +16,18 @@ import javax.inject.Inject
 
 @Suppress("TooManyFunctions")
 class LoanRepository @Inject constructor(
-    private val dao: LoanDao,
+    private val database: AppDatabase,
     @ApplicationContext private val context: Context
 ) {
+    private val dao get() = database.loanDao()
+
     val loans: Flow<List<Loan>> = dao.getAll()
     val people: Flow<List<LoanPerson>> = dao.getPeople()
+    val payments: Flow<List<LoanPayment>> = dao.getAllPayments()
+
+    fun paymentsForLoan(loanId: Int): Flow<List<LoanPayment>> = dao.getPayments(loanId)
+
+    fun paidAmount(loanId: Int): Flow<Long> = dao.observePaidAmount(loanId)
 
     suspend fun addPerson(person: LoanPerson) {
         dao.insertPerson(person.copy(name = person.name.trim()))
@@ -43,35 +53,39 @@ class LoanRepository @Inject constructor(
 
     suspend fun add(loan: Loan, proofUris: List<String>) {
         val normalized = loan.person.trim()
-        val personId = resolvePersonId(normalized, loan.personId)
-        val loanId = dao.insert(
-            loan.copy(
-                person = normalized,
-                personId = personId,
-                note = loan.note.trim(),
-                title = loan.title.trim()
-            )
-        ).toInt()
-        proofUris.forEach { insertAttachment(loanId, it) }
+        database.withTransaction {
+            val personId = resolvePersonId(normalized, loan.personId)
+            val loanId = dao.insert(
+                loan.copy(
+                    person = normalized,
+                    personId = personId,
+                    note = loan.note.trim(),
+                    title = loan.title.trim()
+                )
+            ).toInt()
+            proofUris.forEach { insertAttachment(loanId, it) }
+        }
     }
 
     suspend fun updateLoan(loan: Loan, person: String, personId: Int?, proofUris: List<String>) {
         val normalized = person.trim()
-        val resolvedPersonId = resolvePersonId(normalized, personId)
-        dao.update(
-            loan.copy(
-                person = normalized,
-                personId = resolvedPersonId,
-                updatedAt = System.currentTimeMillis(),
-                deleted = false,
-                dirty = true
+        database.withTransaction {
+            val resolvedPersonId = resolvePersonId(normalized, personId)
+            dao.update(
+                loan.copy(
+                    person = normalized,
+                    personId = resolvedPersonId,
+                    updatedAt = System.currentTimeMillis(),
+                    deleted = false,
+                    dirty = true
+                )
             )
-        )
-        proofUris.forEach { insertAttachment(loan.id, it) }
+            proofUris.forEach { insertAttachment(loan.id, it) }
+        }
     }
 
     private suspend fun resolvePersonId(name: String, requestedId: Int?): Int {
-        val selectedPerson = requestedId?.let { dao.getPerson(it) }
+        val selectedPerson = requestedId?.takeIf { it > 0 }?.let { dao.getPerson(it) }
         return selectedPerson?.id
             ?: dao.getPeople().first().firstOrNull { it.name.equals(name, true) }?.id
             ?: dao.insertPerson(LoanPerson(name = name)).toInt()
@@ -79,6 +93,24 @@ class LoanRepository @Inject constructor(
 
     suspend fun update(loan: Loan) {
         dao.update(loan.copy(updatedAt = System.currentTimeMillis(), deleted = false, dirty = true))
+    }
+
+    suspend fun addPayment(loanId: Int, amountMinorUnits: Long, note: String = "", epochDay: Long = today()) {
+        if (amountMinorUnits <= 0) return
+        database.withTransaction {
+            dao.insertPayment(
+                LoanPayment(
+                    loanId = loanId,
+                    amountMinorUnits = amountMinorUnits,
+                    epochDay = epochDay,
+                    note = note.trim()
+                )
+            )
+        }
+    }
+
+    suspend fun deletePayment(payment: LoanPayment) {
+        database.withTransaction { dao.deletePayment(payment.id) }
     }
 
     suspend fun addAttachment(loanId: Int, uri: String) {
@@ -101,9 +133,11 @@ class LoanRepository @Inject constructor(
     fun attachments(loanId: Int) = dao.getAttachments(loanId)
 
     suspend fun remove(loan: Loan) {
-        val updatedAt = System.currentTimeMillis()
-        dao.deleteAttachmentsForLoan(loan.id, updatedAt)
-        dao.deletePaymentsForLoan(loan.id, updatedAt)
-        dao.delete(loan.id, updatedAt)
+        database.withTransaction {
+            val updatedAt = System.currentTimeMillis()
+            dao.deleteAttachmentsForLoan(loan.id, updatedAt)
+            dao.deletePaymentsForLoan(loan.id, updatedAt)
+            dao.delete(loan.id, updatedAt)
+        }
     }
 }

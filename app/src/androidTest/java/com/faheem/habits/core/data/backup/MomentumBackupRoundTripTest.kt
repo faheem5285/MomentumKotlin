@@ -9,6 +9,7 @@ import com.faheem.habits.core.data.Completion
 import com.faheem.habits.core.data.Contact
 import com.faheem.habits.core.data.Expense
 import com.faheem.habits.core.data.FileItem
+import com.faheem.habits.core.data.GrammarNote
 import com.faheem.habits.core.data.Habit
 import com.faheem.habits.core.data.HabitReminder
 import com.faheem.habits.core.data.HabitSkip
@@ -18,7 +19,10 @@ import com.faheem.habits.core.data.Loan
 import com.faheem.habits.core.data.LoanAttachment
 import com.faheem.habits.core.data.LoanPayment
 import com.faheem.habits.core.data.LoanPerson
+import com.faheem.habits.core.data.ReviewState
 import com.faheem.habits.core.data.ToDoItem
+import com.faheem.habits.core.data.TranslationHistory
+import com.faheem.habits.core.data.VocabularyWord
 import com.faheem.habits.core.data.CustomNotification
 import com.faheem.habits.core.settings.MomentumSettingsBackup
 import com.faheem.habits.core.settings.MomentumSettingsRepository
@@ -67,6 +71,10 @@ class MomentumBackupRoundTripTest {
             assertEquals("specific_days", restored.scheduleType)
             assertEquals(1, restored.targetQuantity)
             assertTrue(db.contactDao().getAllForBackup().isEmpty())
+            assertTrue(db.vocabularyDao().allForExport().isEmpty())
+            assertTrue(db.grammarNoteDao().allForExport().isEmpty())
+            assertTrue(db.reviewStateDao().allForExport().isEmpty())
+            assertTrue(db.translationHistoryDao().allForExport().isEmpty())
         } finally {
             db.close()
         }
@@ -179,10 +187,38 @@ class MomentumBackupRoundTripTest {
             db.customNotificationDao().insert(
                 CustomNotification(title = "Weekly review", repeatMode = "weekly", hour = 18, minute = 0)
             )
+            val wordId = db.vocabularyDao().upsert(
+                VocabularyWord(word = "serendipity", meaning = "good fortune", language = "en", difficulty = 3)
+            )
+            db.grammarNoteDao().upsert(
+                GrammarNote(
+                    title = "Articles", category = "Grammar", explanation = "Use a/an before countable nouns",
+                    correctExample = "a book", incorrectExample = "book", commonMistake = true, pinned = true
+                )
+            )
+            db.reviewStateDao().upsert(
+                ReviewState(
+                    wordId = wordId, box = 2, nextReviewAt = 20_100L, lastReviewedAt = 20_000L,
+                    correctCount = 3, reviewCount = 4
+                )
+            )
+            db.translationHistoryDao().insert(
+                TranslationHistory(
+                    sourceLanguage = "en", targetLanguage = "es", sourceText = "hello",
+                    translatedText = "hola", favorite = true
+                )
+            )
 
             val snapshot = MomentumBackup.exportBytes(context, db)
-            assertTrue(String(snapshot, Charsets.UTF_8).contains("\"schemaVersion\": 20"))
-            val preferenceBackup = JSONObject(String(snapshot, Charsets.UTF_8))
+            val snapshotText = String(snapshot, Charsets.UTF_8)
+            val snapshotJson = JSONObject(snapshotText)
+            assertEquals(4, snapshotJson.getInt("formatVersion"))
+            assertEquals(22, snapshotJson.getInt("schemaVersion"))
+            assertEquals(1, snapshotJson.getJSONArray("vocabularyWords").length())
+            assertEquals(1, snapshotJson.getJSONArray("grammarNotes").length())
+            assertEquals(1, snapshotJson.getJSONArray("reviewStates").length())
+            assertEquals(1, snapshotJson.getJSONArray("translationHistory").length())
+            val preferenceBackup = JSONObject(snapshotText)
             assertEquals(
                 false,
                 preferenceBackup.getJSONObject("settings").getBoolean("module_enabled_backup_round_trip_test")
@@ -215,7 +251,10 @@ class MomentumBackupRoundTripTest {
             assertEquals(1, db.expenseDao().getAllForBackup().size)
             assertEquals(275L, db.expenseDao().getAllForBackup().single().amountMinorUnits)
             assertEquals("Card", db.expenseDao().getAllForBackup().single().account)
-            assertEquals(1, db.expenseDao().getAllBudgetsForSync().size)
+            val restoredBudget = db.expenseDao().getAllBudgetsForSync().single()
+            assertEquals("Food", restoredBudget.category)
+            assertEquals("2026-11", restoredBudget.monthKey)
+            assertEquals(20_000L, restoredBudget.limitMinorUnits)
             assertEquals(1, db.loanDao().getAllPeopleForSync().size)
             assertEquals(1, db.contactDao().getAllForBackup().size)
             assertEquals(1, db.loanDao().getAllForBackup().size)
@@ -229,8 +268,99 @@ class MomentumBackupRoundTripTest {
             assertEquals(1, db.lifeRuleDao().getAllForBackup().size)
             assertEquals(1, db.lifeRuleDao().getAllFilesForSync().size)
             assertEquals(1, db.customNotificationDao().getAllForBackup().size)
+            val restoredWord = db.vocabularyDao().allForExport().single()
+            assertEquals("serendipity", restoredWord.word)
+            assertEquals(3, restoredWord.difficulty)
+            val restoredNote = db.grammarNoteDao().allForExport().single()
+            assertEquals("Articles", restoredNote.title)
+            assertTrue(restoredNote.commonMistake)
+            assertEquals(2, db.reviewStateDao().allForExport().single().box)
+            val restoredTranslation = db.translationHistoryDao().allForExport().single()
+            assertEquals("hola", restoredTranslation.translatedText)
+            assertTrue(restoredTranslation.favorite)
         } finally {
             settingsBackup.importPreferences(originalSettings.first, originalSettings.second, replace = true)
+            db.close()
+        }
+    }
+
+    @Test
+    fun versionThreeBackupGainsEmptyLanguageTables() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+        try {
+            val legacyHabit = JSONObject()
+                .put("uuid", UUID.randomUUID().toString())
+                .put("updatedAt", 100L)
+                .put("deleted", false)
+                .put("dirty", true)
+                .put("name", "v3 habit")
+                .put("createdEpochDay", 20_000L)
+            val backup = JSONObject()
+                .put("format", "momentum-backup")
+                .put("formatVersion", 3)
+                .put("schemaVersion", 20)
+                .put("exportedAt", System.currentTimeMillis())
+                .put("habits", JSONArray().put(legacyHabit))
+                .put("completions", JSONArray())
+                .put("habitSkips", JSONArray())
+                .put("reminders", JSONArray())
+                .put("expenses", JSONArray())
+                .put("categoryBudgets", JSONArray())
+                .put("contacts", JSONArray())
+                .put("loanPeople", JSONArray())
+                .put("loans", JSONArray())
+                .put("loanAttachments", JSONArray())
+                .put("loanPayments", JSONArray())
+                .put("files", JSONArray())
+                .put("todos", JSONArray())
+                .put("lifeRules", JSONArray())
+                .put("lifeRuleFiles", JSONArray())
+                .put("customNotifications", JSONArray())
+                .put("budgets", JSONObject())
+                .put("settings", JSONObject())
+
+            MomentumBackup.restoreBytes(context, backup.toString().toByteArray(), replace = true, db = db)
+
+            assertEquals("v3 habit", db.habitDao().getAllForBackup().single().name)
+            assertTrue(db.vocabularyDao().allForExport().isEmpty())
+            assertTrue(db.grammarNoteDao().allForExport().isEmpty())
+            assertTrue(db.reviewStateDao().allForExport().isEmpty())
+            assertTrue(db.translationHistoryDao().allForExport().isEmpty())
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun encryptedBackupRequiresItsPassword() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+        val secret = "backup passphrase".toCharArray()
+        try {
+            db.habitDao().insertHabit(Habit(name = "Encrypted habit"))
+            val bytes = MomentumBackup.exportBytes(context, db, passphrase = secret)
+            assertTrue(PortableBackupCrypto.isEncrypted(bytes))
+            assertTrue(!String(bytes, Charsets.UTF_8).contains("Encrypted habit"))
+
+            val wrongPassword = runCatching {
+                MomentumBackup.restoreBytes(
+                    context, bytes, replace = true, db = db,
+                    passphrase = "wrong passphrase".toCharArray()
+                )
+            }
+            assertTrue(wrongPassword.isFailure)
+            assertEquals("Encrypted habit", db.habitDao().getAllForBackup().single().name)
+
+            val missingPassword = runCatching {
+                MomentumBackup.restoreBytes(context, bytes, replace = true, db = db)
+            }
+            assertTrue(missingPassword.isFailure)
+
+            MomentumBackup.restoreBytes(context, bytes, replace = true, db = db, passphrase = secret)
+            assertEquals("Encrypted habit", db.habitDao().getAllForBackup().single().name)
+        } finally {
+            secret.fill('\u0000')
             db.close()
         }
     }

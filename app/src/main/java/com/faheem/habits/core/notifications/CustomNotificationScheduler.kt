@@ -10,6 +10,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.faheem.habits.core.data.AppDatabase
 import com.faheem.habits.core.data.CustomNotification
+import com.faheem.habits.core.data.CustomNotificationDao
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,6 +24,11 @@ object CustomNotificationScheduler {
     private const val ACTION_DONE = "com.faheem.habits.REMINDER_ACTION_DONE"
     private const val ACTION_SNOOZE = "com.faheem.habits.REMINDER_ACTION_SNOOZE"
     private const val KEY_CUSTOM_ID = "custom_id"
+    private const val PREFS_CUSTOM_NOTIFICATIONS = "zylo_custom_notifications"
+    private const val KEY_LEGACY_DAYS_MASK_REPAIRED = "legacy_days_mask_repaired_v1"
+
+    private fun legacyDaysMaskMarkerKey(context: Context): String =
+        KEY_LEGACY_DAYS_MASK_REPAIRED + "_" + AppDatabase.activeUserId(context).orEmpty()
 
     private fun requestCode(id: Int) = 70_000 + id
     private fun snoozeRequestCode(id: Int) = 80_000 + id
@@ -58,15 +64,46 @@ object CustomNotificationScheduler {
     }
 
     suspend fun rescheduleAllNow(context: Context) {
-        AppDatabase.get(context).customNotificationDao().getForScheduling()
-            .forEach { schedule(context, it) }
+        val dao = AppDatabase.get(context).customNotificationDao()
+        repairLegacyDaysMasksOnce(context, dao)
+        dao.getForScheduling().forEach { schedule(context, it) }
+    }
+
+    private suspend fun repairLegacyDaysMasksOnce(
+        context: Context,
+        dao: CustomNotificationDao
+    ) {
+        val prefs = context.getSharedPreferences(PREFS_CUSTOM_NOTIFICATIONS, Context.MODE_PRIVATE)
+        val markerKey = legacyDaysMaskMarkerKey(context)
+        if (prefs.getBoolean(markerKey, false)) return
+        val now = System.currentTimeMillis()
+        dao.getAllForSync()
+            .filter {
+                it.repeatMode == CustomNotificationTimeCalculator.WEEKLY &&
+                    CustomNotificationTimeCalculator.repairLegacyDaysMask(it.daysMask) != it.daysMask
+            }
+            .forEach {
+                dao.update(
+                    it.copy(
+                        daysMask = CustomNotificationTimeCalculator.repairLegacyDaysMask(it.daysMask),
+                        updatedAt = now,
+                        dirty = true
+                    )
+                )
+            }
+        prefs.edit().putBoolean(markerKey, true).apply()
     }
 
     fun cancel(context: Context, id: Int) {
+        cancelAlarms(context, id)
+        cancelNotification(context, id)
+    }
+
+    /** Cancels pending alarms without removing a notification the user has not acted on yet. */
+    private fun cancelAlarms(context: Context, id: Int) {
         val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         alarms.cancel(pendingIntent(context, id))
         alarms.cancel(snoozePendingIntent(context, id))
-        cancelNotification(context, id)
     }
 
     fun cancelNotification(context: Context, id: Int) {
@@ -128,7 +165,7 @@ object CustomNotificationScheduler {
         val now = System.currentTimeMillis()
         if (notification.repeatMode == CustomNotificationTimeCalculator.ONCE) {
             dao.update(notification.copy(enabled = false, lastDeliveredEpochMillis = now, updatedAt = now, dirty = true))
-            cancel(context, id)
+            cancelAlarms(context, id)
         } else {
             val refreshed = notification.copy(lastDeliveredEpochMillis = now, updatedAt = now, dirty = true)
             dao.update(refreshed)

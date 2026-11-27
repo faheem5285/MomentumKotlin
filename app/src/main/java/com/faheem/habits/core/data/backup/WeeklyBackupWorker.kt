@@ -34,11 +34,33 @@ object WeeklyBackupSettings {
         context.getSharedPreferences(BACKUP_PREFS, Context.MODE_PRIVATE).edit().putBoolean(ENABLED_KEY, enabled).apply()
         val manager = WorkManager.getInstance(context)
         if (enabled && folder(context) != null) {
-            val request = PeriodicWorkRequestBuilder<WeeklyBackupWorker>(7, TimeUnit.DAYS).build()
+            val constraints = androidx.work.Constraints.Builder()
+                .setRequiresBatteryNotLow(true)
+                .build()
+            val request = PeriodicWorkRequestBuilder<WeeklyBackupWorker>(7, TimeUnit.DAYS)
+                .setConstraints(constraints)
+                .build()
             manager.enqueueUniquePeriodicWork(UNIQUE_WORK, ExistingPeriodicWorkPolicy.UPDATE, request)
         } else {
             manager.cancelUniqueWork(UNIQUE_WORK)
         }
+    }
+
+    fun cancel(context: Context) {
+        WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_WORK)
+    }
+
+    /** Restores the schedule after an account-scoped reset clears app preferences. */
+    fun restoreAfterReset(context: Context, enabled: Boolean, folderUri: String?) {
+        if (folderUri == null) {
+            cancel(context)
+            return
+        }
+        context.getSharedPreferences(BACKUP_PREFS, Context.MODE_PRIVATE).edit()
+            .putString(FOLDER_KEY, folderUri)
+            .putBoolean(ENABLED_KEY, enabled)
+            .apply()
+        setEnabled(context, enabled)
     }
 }
 

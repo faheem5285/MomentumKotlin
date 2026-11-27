@@ -5,7 +5,6 @@ package com.faheem.habits.features.profile
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
-import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,177 +30,224 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.automirrored.rounded.Logout
-import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.Email
-import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.PhotoCamera
-import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.AlternateEmail
+import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.CloudOff
-import androidx.compose.material.icons.rounded.Save
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DeleteForever
-import androidx.compose.material.icons.rounded.Badge
-import androidx.compose.material.icons.rounded.Phone
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.MarkEmailRead
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.Phone
+import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.Save
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.faheem.habits.core.data.ProfileCache
-import com.faheem.habits.core.ui.EmptyState
-import com.faheem.habits.core.ui.GlassCard
-import com.faheem.habits.core.ui.MomentumTextField
-import com.faheem.habits.core.ui.PasswordField
-import com.faheem.habits.core.ui.PrimaryButton
-import com.faheem.habits.core.ui.PremiumCard
-import com.faheem.habits.core.ui.SecondaryButton
-import com.faheem.habits.core.ui.StatusPill
-import com.faheem.habits.core.ui.SettingsGroup
-import com.faheem.habits.core.ui.SettingsRow
-import com.faheem.habits.core.ui.StrengthMeter
-import com.faheem.habits.core.ui.passwordStrength
-import java.text.DateFormat
-import java.net.URL
-import java.util.Date
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.runtime.produceState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.net.URL
+import com.faheem.habits.R
+import com.faheem.habits.core.data.ProfileCache
+import com.faheem.habits.core.ui.GlassSheet
+import com.faheem.habits.core.ui.MomentumTextField
+import com.faheem.habits.core.ui.PremiumCard
+import com.faheem.habits.core.ui.PrimaryButton
+import com.faheem.habits.core.ui.ScreenBackground
+import com.faheem.habits.core.ui.SecondaryButton
+import com.faheem.habits.core.ui.StatusPill
+import java.text.DateFormat
+import java.util.Date
+import kotlinx.coroutines.launch
 
 @Composable
-fun ProfileScreen(onContinueWithoutAccount: () -> Unit, passwordResetRequestToken: Long? = null) {
+fun ProfileScreen(
+    initialCreateAccount: Boolean = false,
+    onAccountChanged: () -> Unit = {},
+    onSignedOut: () -> Unit = {},
+    onMessage: (String) -> Unit = {},
+    onContinueWithoutAccount: () -> Unit = {},
+    passwordResetRequestToken: Long? = null
+) {
     val context = LocalContext.current
-    val viewModel: ProfileViewModel = hiltViewModel()
-    val state by viewModel.state.collectAsStateWithLifecycle()
-    var eventMessage by remember { mutableStateOf<String?>(null) }
-    var recoveryToken by remember(context, passwordResetRequestToken) { mutableStateOf(recoveryTokenFromIntent(context)) }
-    var showSignOut by remember { mutableStateOf(false) }
-    var showDeleteFirst by remember { mutableStateOf(false) }
-    var showDeleteFinal by remember { mutableStateOf(false) }
-    var showPasswordDialog by remember { mutableStateOf(false) }
+    val vm: ProfileViewModel = hiltViewModel()
+    val state by vm.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    var message by remember { mutableStateOf<String?>(null) }
+    var deleteConfirm by remember { mutableStateOf(false) }
+    var passwordDialog by remember { mutableStateOf(false) }
+    var recoveryToken by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(viewModel) {
-        viewModel.events.collect { event ->
+    LaunchedEffect(passwordResetRequestToken) {
+        when (val result = consumeRecoveryLink(context)) {
+            is RecoveryLinkResult.Valid -> recoveryToken = result.accessToken
+            is RecoveryLinkResult.Invalid -> {
+                message = result.message
+                onMessage(result.message)
+            }
+            RecoveryLinkResult.Absent -> Unit
+        }
+    }
+
+    LaunchedEffect(initialCreateAccount, state) {
+        if (initialCreateAccount) {
+            val signedOut = state as? ProfileUiState.SignedOut
+            if (signedOut != null && !signedOut.createAccount) vm.updateAuth(createAccount = true)
+        }
+    }
+
+    LaunchedEffect(vm) {
+        vm.events.collect { event ->
             when (event) {
-                ProfileUiEvent.SignedIn -> eventMessage = "You are signed in."
-                ProfileUiEvent.SignedOut -> eventMessage = "Signed out. Your local records remain on this device."
-                is ProfileUiEvent.Message -> eventMessage = event.text
+                is ProfileUiEvent.Message -> {
+                    message = event.text
+                    onMessage(event.text)
+                }
+                ProfileUiEvent.SignedIn -> onAccountChanged()
+                ProfileUiEvent.SignedOut -> onSignedOut()
             }
         }
     }
 
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            (state as? ProfileUiState.SignedIn)?.let { viewModel.updateProfile(it.profile.copy(avatarUri = uri.toString())) }
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            (state as? ProfileUiState.SignedIn)?.let { vm.updateProfile(it.profile.copy(avatarUri = uri.toString())) }
         }
     }
 
-    when (val current = state) {
-        ProfileUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        is ProfileUiState.SignedOut -> SignedOutProfile(
-            state = current,
-            message = eventMessage,
-            onEmail = { viewModel.updateAuth(email = it) },
-            onPassword = { viewModel.updateAuth(password = it) },
-            onName = { viewModel.updateAuth(name = it) },
-            onToggleCreate = { viewModel.updateAuth(createAccount = !current.createAccount) },
-            onSubmit = viewModel::authenticate,
-            onReset = viewModel::resetPassword,
-            onGoogle = { viewModel.signInWithGoogle(context) },
-            onContinue = onContinueWithoutAccount
-        )
-        is ProfileUiState.SignedIn -> SignedInProfile(
-            state = current,
-            message = eventMessage,
-            onEdit = viewModel::editProfile,
-            onChange = viewModel::updateProfile,
-            onPhoto = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-            onSave = viewModel::saveProfile,
-            onCancel = viewModel::cancelEdit,
-            onSignOut = { showSignOut = true },
-            onChangePassword = { showPasswordDialog = true },
-            onDelete = { showDeleteFirst = true }
+    ScreenBackground {
+        when (val s = state) {
+            ProfileUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+
+            is ProfileUiState.SignedOut -> SignedOutProfile(
+                state = s,
+                message = message,
+                onEmail = { vm.updateAuth(email = it) },
+                onPassword = { vm.updateAuth(password = it) },
+                onName = { vm.updateAuth(name = it) },
+                onToggleCreate = { vm.updateAuth(createAccount = !s.createAccount) },
+                onSubmit = vm::authenticate,
+                onReset = vm::resetPassword,
+                onResendConfirmation = vm::resendConfirmation,
+                onGoogle = { vm.signInWithGoogle(context) },
+                onConfirmLink = vm::confirmAccountLink,
+                onCancelLink = vm::cancelAccountLink,
+                onAccountChanged = onAccountChanged
+            )
+
+            is ProfileUiState.SignedIn -> SignedInProfile(
+                state = s,
+                message = message,
+                onEdit = vm::editProfile,
+                onCancel = vm::cancelEdit,
+                onSave = vm::saveProfile,
+                onChange = vm::updateProfile,
+                onPhoto = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                onChangePassword = { passwordDialog = true },
+                onSignOut = { vm.signOut(); onAccountChanged() },
+                onDelete = { deleteConfirm = true }
+            )
+        }
+    }
+
+    if (deleteConfirm) {
+        DeleteAccountDialog(
+            onDismiss = { deleteConfirm = false },
+            onConfirm = {
+                deleteConfirm = false
+                vm.requestDeleteAccount()
+            }
         )
     }
 
-    if (showSignOut) AlertDialog(
-        onDismissRequest = { showSignOut = false },
-        title = { Text("Sign out?") },
-        text = { Text("Your local records stay on this device. Cloud sync pauses until you sign in again.") },
-        confirmButton = { TextButton(onClick = { showSignOut = false; viewModel.signOut() }) { Text("Sign out") } },
-        dismissButton = { TextButton(onClick = { showSignOut = false }) { Text("Cancel") } }
-    )
-    if (showDeleteFirst) AlertDialog(
-        onDismissRequest = { showDeleteFirst = false },
-        title = { Text("Delete your account?") },
-        text = { Text("This is permanent. It removes your cloud account and cloud records if the server supports deletion. Your local records remain on this device.") },
-        confirmButton = { TextButton(onClick = { showDeleteFirst = false; showDeleteFinal = true }) { Text("Continue") } },
-        dismissButton = { TextButton(onClick = { showDeleteFirst = false }) { Text("Cancel") } }
-    )
-    if (showDeleteFinal) AlertDialog(
-        onDismissRequest = { showDeleteFinal = false },
-        title = { Text("Confirm account deletion") },
-        text = { Text("The server must have a delete_my_account RPC installed. Without it, nothing will be deleted.") },
-        confirmButton = { TextButton(onClick = { showDeleteFinal = false; viewModel.requestDeleteAccount() }) { Text("Delete account") } },
-        dismissButton = { TextButton(onClick = { showDeleteFinal = false }) { Text("Keep account") } }
-    )
-    if (showPasswordDialog) {
+    if (passwordDialog) {
         val signedIn = state as? ProfileUiState.SignedIn
-        if (signedIn != null) ChangePasswordDialog(signedIn, onDismiss = { showPasswordDialog = false }, onSubmit = { old, next, confirm ->
-            showPasswordDialog = false
-            viewModel.changePassword(old, next, confirm)
-        })
+        if (signedIn != null) {
+            ChangePasswordDialog(
+                hasPassword = signedIn.hasPassword,
+                onDismiss = { passwordDialog = false },
+                onConfirm = { current, next, confirm ->
+                    passwordDialog = false
+                    vm.changePassword(current, next, confirm)
+                }
+            )
+        }
     }
+
     recoveryToken?.let { token ->
         PasswordRecoveryDialog(
             onDismiss = { recoveryToken = null },
-            onSubmit = { next, confirm ->
-                viewModel.completePasswordRecovery(token, next, confirm)
+            onConfirm = { next, confirm ->
+                vm.completePasswordRecovery(token, next, confirm)
                 recoveryToken = null
             }
         )
     }
 }
 
-private fun recoveryTokenFromIntent(context: Context): String? {
+/** Reads and clears only the deep-link data; notification extras stay intact. */
+private fun consumeRecoveryLink(context: Context): RecoveryLinkResult {
     var current = context
     while (current is ContextWrapper) {
         if (current is android.app.Activity) {
-            val fragment = current.intent?.data?.fragment ?: return null
-            return fragment.split('&').firstNotNullOfOrNull { part ->
-                val keyValue = part.split('=', limit = 2)
-                keyValue.takeIf { it.size == 2 && it[0] == "access_token" }?.get(1)?.let { android.net.Uri.decode(it) }
-            }
+            val intent = current.intent ?: return RecoveryLinkResult.Absent
+            val link = intent.data?.toString() ?: return RecoveryLinkResult.Absent
+            val result = RecoveryLinkParser.parse(link, System.currentTimeMillis())
+            current.intent = Intent(intent).apply { data = null }
+            return result
         }
         current = current.baseContext
     }
-    return null
+    return RecoveryLinkResult.Absent
 }
 
 @Composable
@@ -213,151 +260,246 @@ private fun SignedOutProfile(
     onToggleCreate: () -> Unit,
     onSubmit: () -> Unit,
     onReset: () -> Unit,
+    onResendConfirmation: () -> Unit,
     onGoogle: () -> Unit,
-    onContinue: () -> Unit
+    onConfirmLink: () -> Unit,
+    onCancelLink: () -> Unit,
+    onAccountChanged: () -> Unit
 ) {
+    var showPassword by rememberSaveable { mutableStateOf(false) }
+    val title = if (state.createAccount) "Create your account" else "Welcome back"
+    val subtitle = if (state.createAccount) {
+        "Sync your habits, tasks, and progress across devices."
+    } else {
+        "Sign in to access your profile and synced data."
+    }
+
     Column(
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(horizontal = 20.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        PremiumCard(
-            accent = MaterialTheme.colorScheme.primary,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(18.dp)
-        ) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ProfileModeChip(
-                    selected = !state.createAccount,
-                    label = "Sign in",
-                    modifier = Modifier.weight(1f),
-                    onClick = { if (state.createAccount) onToggleCreate() }
-                )
-                ProfileModeChip(
-                    selected = state.createAccount,
-                    label = "Create account",
-                    modifier = Modifier.weight(1f),
-                    onClick = { if (!state.createAccount) onToggleCreate() }
-                )
-            }
+        AuthHero(title = title, subtitle = subtitle, createAccount = state.createAccount)
+
+        PremiumCard(contentPadding = PaddingValues(20.dp)) {
+            AuthModeToggle(createAccount = state.createAccount, onToggle = onToggleCreate)
             Spacer(Modifier.height(18.dp))
-            Text(
-                if (state.createAccount) "Build your Zylo profile" else "Welcome back",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                if (state.createAccount)
-                    "Create an account to sync your profile and protected data."
-                else
-                    "Sign in to keep everything connected across devices.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(16.dp))
+
             if (state.createAccount) {
                 MomentumTextField(
-                    state.name,
-                    onName,
+                    value = state.name,
+                    onValueChange = onName,
                     label = { Text("Display name") },
-                    leadingIcon = { Icon(Icons.Rounded.AccountCircle, null) },
+                    leadingIcon = { Icon(Icons.Rounded.Person, null) },
                     singleLine = true,
-                    enabled = !state.busy
-                )
-                Spacer(Modifier.height(10.dp))
-            }
-            MomentumTextField(
-                state.email,
-                onEmail,
-                label = { Text("Email") },
-                leadingIcon = { Icon(Icons.Rounded.Email, null) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                singleLine = true,
-                enabled = !state.busy
-            )
-            Spacer(Modifier.height(10.dp))
-            PasswordField(
-                state.password,
-                onPassword,
-                label = "Password",
-                enabled = !state.busy
-            )
-            if (state.createAccount && state.password.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                StrengthMeter(state.password)
-                Text(
-                    "Password strength ${passwordStrength(state.password)} of 4",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(Modifier.height(16.dp))
-            PrimaryButton(
-                if (state.createAccount) "Create account" else "Sign in",
-                onSubmit,
-                enabled = !state.busy,
-                loading = state.busy,
-                icon = Icons.Rounded.Lock
-            )
-            if (!state.createAccount) {
-                TextButton(
-                    onClick = onReset,
                     enabled = !state.busy,
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Forgot password?") }
+                )
+                Spacer(Modifier.height(12.dp))
             }
-            if (state.googleAvailable) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    HorizontalDivider(Modifier.weight(1f))
-                    Text(
-                        "  or  ",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    HorizontalDivider(Modifier.weight(1f))
+
+            MomentumTextField(
+                value = state.email,
+                onValueChange = onEmail,
+                label = { Text("Email address") },
+                leadingIcon = { Icon(Icons.Rounded.AlternateEmail, null) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                singleLine = true,
+                enabled = !state.busy,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(12.dp))
+            MomentumTextField(
+                value = state.password,
+                onValueChange = onPassword,
+                label = { Text("Password") },
+                leadingIcon = { Icon(Icons.Rounded.Lock, null) },
+                trailingIcon = {
+                    IconButton(onClick = { showPassword = !showPassword }) {
+                        Icon(
+                            if (showPassword) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                            contentDescription = if (showPassword) "Hide password" else "Show password"
+                        )
+                    }
+                },
+                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                singleLine = true,
+                enabled = !state.busy,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (!state.createAccount) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                    TextButton(onClick = onReset, enabled = !state.busy) { Text("Forgot password?") }
                 }
-                Spacer(Modifier.height(10.dp))
+            } else {
+                Spacer(Modifier.height(8.dp))
+            }
+
+            PrimaryButton(
+                text = if (state.createAccount) "Create account" else "Sign in",
+                onClick = { onSubmit(); onAccountChanged() },
+                enabled = !state.busy,
+                loading = state.busy,
+                icon = if (state.createAccount) Icons.Rounded.PersonAdd else Icons.AutoMirrored.Rounded.Login
+            )
+
+            if (state.googleAvailable) {
+                Spacer(Modifier.height(12.dp))
                 SecondaryButton(
-                    "Continue with Google",
-                    onGoogle,
+                    text = "Continue with Google",
+                    onClick = onGoogle,
                     icon = Icons.Rounded.AccountCircle
                 )
             }
-            state.error?.let {
-                Spacer(Modifier.height(8.dp))
-                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            }
-            (state.notice ?: message)?.let {
-                Spacer(Modifier.height(8.dp))
-                Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+        }
+
+        AuthFeedbackCard(
+            error = state.error ?: message,
+            notice = state.notice,
+            canResendConfirmation = state.canResendConfirmation,
+            busy = state.busy,
+            onResendConfirmation = onResendConfirmation
+        )
+
+        state.pendingLinkMessage?.let { notice ->
+            PremiumCard(accent = MaterialTheme.colorScheme.secondary, contentPadding = PaddingValues(16.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.Top) {
+                        Icon(Icons.Rounded.Info, null, tint = MaterialTheme.colorScheme.secondary)
+                        Spacer(Modifier.width(12.dp))
+                        Text(notice, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SecondaryButton("Cancel", onCancelLink, modifier = Modifier.weight(1f))
+                        PrimaryButton("Continue", onConfirmLink, modifier = Modifier.weight(1f))
+                    }
+                }
             }
         }
-        PremiumCard(
-            onClick = onContinue,
-            accent = MaterialTheme.colorScheme.secondary,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 14.dp)
+
+        Text(
+            "You can use Zylo without an account. Signing in only enables sync and backup.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+        )
+    }
+}
+
+@Composable
+private fun AuthHero(title: String, subtitle: String, createAccount: Boolean) {
+    val accent = if (createAccount) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
+    PremiumCard(accent = accent, contentPadding = PaddingValues(24.dp)) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Rounded.CloudOff,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.secondary
+            Box(
+                Modifier
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(Brush.linearGradient(listOf(accent.copy(alpha = 0.18f), accent.copy(alpha = 0.06f))))
+                    .border(1.dp, accent.copy(alpha = 0.25f), RoundedCornerShape(22.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.zylo_launcher),
+                    contentDescription = "Zylo",
+                    modifier = Modifier.size(52.dp).clip(RoundedCornerShape(16.dp))
                 )
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Use Zylo offline", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Local data stays on this device",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            }
+            Spacer(Modifier.height(16.dp))
+            Text(
+                title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun AuthModeToggle(createAccount: Boolean, onToggle: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        AuthModeChip("Sign in", !createAccount, Modifier.weight(1f), onClick = { if (createAccount) onToggle() })
+        AuthModeChip("Create account", createAccount, Modifier.weight(1f), onClick = { if (!createAccount) onToggle() })
+    }
+}
+
+@Composable
+private fun AuthModeChip(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        modifier
+            .clip(shape)
+            .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun AuthFeedbackCard(
+    error: String?,
+    notice: String?,
+    canResendConfirmation: Boolean,
+    busy: Boolean,
+    onResendConfirmation: () -> Unit
+) {
+    val text = error ?: notice ?: return
+    val isError = error != null
+    val accent = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    PremiumCard(accent = accent, contentPadding = PaddingValues(16.dp)) {
+        Row(verticalAlignment = Alignment.Top) {
+            Icon(
+                if (isError) Icons.Rounded.Info else Icons.Rounded.MarkEmailRead,
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.padding(top = 1.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                )
+                if (canResendConfirmation) {
+                    Spacer(Modifier.height(4.dp))
+                    TextButton(onClick = onResendConfirmation, enabled = !busy, contentPadding = PaddingValues(0.dp)) {
+                        Text("Resend confirmation email")
+                    }
                 }
-                Icon(Icons.Rounded.ChevronRight, contentDescription = null)
             }
         }
     }
@@ -368,109 +510,108 @@ private fun SignedInProfile(
     state: ProfileUiState.SignedIn,
     message: String?,
     onEdit: () -> Unit,
+    onCancel: () -> Unit,
+    onSave: () -> Unit,
     onChange: (ProfileCache) -> Unit,
     onPhoto: () -> Unit,
-    onSave: () -> Unit,
-    onCancel: () -> Unit,
-    onSignOut: () -> Unit,
     onChangePassword: () -> Unit,
+    onSignOut: () -> Unit,
     onDelete: () -> Unit
 ) {
     val profile = state.profile
+
     Column(
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(horizontal = 20.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        PremiumCard(
-            accent = if (state.pendingChanges) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(18.dp)
-        ) {
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top
-            ) {
-                Box(contentAlignment = Alignment.BottomEnd) {
-                    ProfileAvatar(profile, 96.dp)
-                    if (state.editing) {
-                        Box(
-                            Modifier
-                                .size(34.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
-                                .border(3.dp, MaterialTheme.colorScheme.surface, CircleShape)
-                                .clickable(onClick = onPhoto),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Rounded.PhotoCamera,
-                                contentDescription = "Change profile photo",
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.onPrimary
-                            )
-                        }
+        PremiumCard(contentPadding = PaddingValues(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(84.dp)) {
+                    ProfileAvatar(profile = profile, editing = state.editing, onPhoto = onPhoto)
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary)
+                            .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                            .clickable(onClick = onPhoto),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Rounded.PhotoCamera, "Change photo", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onPrimary)
                     }
                 }
-                Spacer(Modifier.width(14.dp))
+                Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     StatusPill(
-                        if (state.pendingChanges) "Saved locally" else "Synced",
-                        if (state.pendingChanges) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+                        text = if (state.pendingChanges) "Saved locally" else "Synced",
+                        color = if (state.pendingChanges) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                        icon = if (state.pendingChanges) Icons.Rounded.CloudOff else Icons.Rounded.CloudDone
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
                         profile.displayName.ifBlank { "Your profile" },
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 2
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                     if (profile.email.isNotBlank()) {
                         Text(
                             profile.email,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
+                if (!state.editing) {
+                    IconButton(onClick = onEdit) {
+                        Icon(Icons.Rounded.Edit, contentDescription = "Edit profile")
+                    }
+                }
             }
+
             if (state.editing) {
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(20.dp))
                 MomentumTextField(
-                    profile.displayName,
-                    { onChange(profile.copy(displayName = it.take(80))) },
+                    value = profile.displayName,
+                    onValueChange = { onChange(profile.copy(displayName = it.take(80))) },
                     label = { Text("Display name") },
                     leadingIcon = { Icon(Icons.Rounded.Person, null) },
                     singleLine = true,
-                    enabled = !state.busy
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(12.dp))
                 MomentumTextField(
-                    profile.phone,
-                    { onChange(profile.copy(phone = it.take(30))) },
+                    value = profile.phone,
+                    onValueChange = { onChange(profile.copy(phone = it.take(30))) },
                     label = { Text("Phone (optional)") },
+                    leadingIcon = { Icon(Icons.Rounded.Phone, null) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     singleLine = true,
-                    enabled = !state.busy
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(12.dp))
                 MomentumTextField(
-                    profile.bio,
-                    { onChange(profile.copy(bio = it.take(240))) },
-                    label = { Text("Short bio (optional)") },
+                    value = profile.bio,
+                    onValueChange = { onChange(profile.copy(bio = it.take(240))) },
+                    label = { Text("Bio (optional)") },
                     minLines = 3,
-                    enabled = !state.busy
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TextButton(
-                        onClick = onCancel,
-                        enabled = !state.busy,
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Cancel") }
+                    SecondaryButton("Cancel", onCancel, modifier = Modifier.weight(1f))
                     PrimaryButton(
-                        "Save profile",
+                        "Save",
                         onSave,
                         enabled = !state.busy,
                         loading = state.busy,
@@ -479,236 +620,93 @@ private fun SignedInProfile(
                     )
                 }
             } else {
-                    Spacer(Modifier.height(16.dp))
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        ProfileInfoChip(
-                            icon = Icons.Rounded.Badge,
-                            label = "Member",
-                            value = if (profile.memberSince > 0L)
-                                DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(profile.memberSince))
-                            else "Recently",
-                            modifier = Modifier.weight(1f)
-                        )
-                        ProfileInfoChip(
-                            icon = if (state.pendingChanges) Icons.Rounded.CloudOff else Icons.Rounded.CloudDone,
-                            label = "Cloud",
-                            value = if (state.pendingChanges) "Pending" else "Synced",
-                            modifier = Modifier.weight(1f)
-                        )
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ProfileInfoChip(
+                        icon = Icons.Rounded.Badge,
+                        label = "Member since",
+                        value = if (profile.memberSince > 0L)
+                            DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(profile.memberSince))
+                        else "Recently",
+                        modifier = Modifier.weight(1f)
+                    )
+                    ProfileInfoChip(
+                        icon = if (state.pendingChanges) Icons.Rounded.CloudOff else Icons.Rounded.CloudDone,
+                        label = "Cloud",
+                        value = if (state.pendingChanges) "Pending" else "Synced",
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
         }
 
         if (!state.editing) {
-            PremiumCard(
-                    accent = MaterialTheme.colorScheme.secondary,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)
-            ) {
-                    Text(
-                        "About",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        profile.bio.ifBlank { "Add a short bio to tell your story." },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (profile.bio.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
-                    )
-                    if (profile.phone.isNotBlank()) {
-                        Spacer(Modifier.height(12.dp))
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Spacer(Modifier.height(12.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Rounded.Phone,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.secondary
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(profile.phone, style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-            }
-        }
-
-        Text(
-            "Account",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(start = 4.dp, top = 2.dp)
-        )
-        PremiumCard(contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp)) {
-            ProfileActionRow(
-                    icon = Icons.Rounded.Shield,
-                    title = if (state.hasPassword) "Change password" else "Set a password",
-                    subtitle = if (state.hasPassword) "Secure your account" else "Enable email sign-in",
-                    tint = MaterialTheme.colorScheme.primary,
-                    onClick = onChangePassword
-            )
-            HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
-            ProfileActionRow(
-                    icon = Icons.AutoMirrored.Rounded.Logout,
-                    title = "Sign out",
-                    subtitle = "Keep local records on this device",
-                    tint = MaterialTheme.colorScheme.secondary,
-                    onClick = onSignOut
-            )
-            HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
-            ProfileActionRow(
-                    icon = Icons.Rounded.DeleteForever,
-                    title = "Delete account",
-                    subtitle = "Permanently remove cloud account",
-                    tint = MaterialTheme.colorScheme.error,
-                    onClick = onDelete
-            )
-        }
-
-        (state.error ?: state.notice ?: message)?.let {
-            PremiumCard(
-                    accent = if (state.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp)
-            ) {
+            PremiumCard(contentPadding = PaddingValues(20.dp)) {
+                Text("About", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    profile.bio.ifBlank { "Add a short bio to personalize your profile." },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (profile.bio.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                )
+                if (profile.phone.isNotBlank()) {
+                    Spacer(Modifier.height(14.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(Modifier.height(14.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            if (state.error != null) Icons.Rounded.Info else Icons.Rounded.CloudDone,
-                            contentDescription = null,
-                            tint = if (state.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                        )
+                        Icon(Icons.Rounded.Phone, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(10.dp))
-                        Text(
-                            it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (state.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                        )
+                        Text(profile.phone, style = MaterialTheme.typography.bodyMedium)
                     }
+                }
             }
         }
-    }
-}
 
-@Composable
-private fun ProfileModeChip(
-    selected: Boolean,
-    label: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    val shape = RoundedCornerShape(14.dp)
-    Box(
-        modifier
-            .clip(shape)
-            .background(
-                if (selected) MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-            )
-            .border(
-                1.dp,
-                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
-                else MaterialTheme.colorScheme.outlineVariant,
-                shape
-            )
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-            else MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-private fun ProfileInfoChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            modifier = Modifier.size(18.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-        Spacer(Modifier.width(8.dp))
-        Column {
+        PremiumCard(contentPadding = PaddingValues(8.dp)) {
             Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                "Account",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
             )
-            Text(value, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            ProfileActionRow(
+                icon = Icons.Rounded.Shield,
+                title = if (state.hasPassword) "Change password" else "Set a password",
+                subtitle = if (state.hasPassword) "Update your sign-in password" else "Add a password for email sign-in",
+                tint = MaterialTheme.colorScheme.primary,
+                onClick = onChangePassword
+            )
+            HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            ProfileActionRow(
+                icon = Icons.AutoMirrored.Rounded.Logout,
+                title = "Sign out",
+                subtitle = "Keep your local data on this device",
+                tint = MaterialTheme.colorScheme.secondary,
+                onClick = onSignOut
+            )
+            HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            ProfileActionRow(
+                icon = Icons.Rounded.DeleteForever,
+                title = "Delete account",
+                subtitle = "Permanently remove your cloud account",
+                tint = MaterialTheme.colorScheme.error,
+                onClick = onDelete
+            )
         }
+
+        ProfileFeedback(message = state.error ?: state.notice ?: message, isError = state.error != null)
     }
 }
 
 @Composable
-private fun ProfileActionRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    tint: androidx.compose.ui.graphics.Color,
-    onClick: () -> Unit
-) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 13.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(tint.copy(alpha = 0.12f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, contentDescription = null, tint = tint)
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Icon(
-            Icons.Rounded.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.outline
-        )
-    }
-}
-
-@Composable
-private fun ProfileAvatar(profile: ProfileCache, size: androidx.compose.ui.unit.Dp) {
+private fun ProfileAvatar(profile: ProfileCache, editing: Boolean, onPhoto: () -> Unit) {
     val context = LocalContext.current
-    val image by produceState<ImageBitmap?>(null, profile.avatarUri) {
+    val image by produceState<ImageBitmap?>(initialValue = null, key1 = profile.avatarUri) {
         value = if (profile.avatarUri.isBlank()) null else withContext(Dispatchers.IO) {
             runCatching {
                 val uri = android.net.Uri.parse(profile.avatarUri)
                 val bitmap = when (uri.scheme?.lowercase()) {
-                    "https" -> URL(profile.avatarUri).openConnection().apply {
+                    "https", "http" -> URL(profile.avatarUri).openConnection().apply {
                         connectTimeout = 5_000
                         readTimeout = 5_000
                     }.getInputStream().use { BitmapFactory.decodeStream(it) }
@@ -719,68 +717,221 @@ private fun ProfileAvatar(profile: ProfileCache, size: androidx.compose.ui.unit.
             }.getOrNull()
         }
     }
-    val avatarModifier = Modifier
-        .size(size)
-        .clip(CircleShape)
-        .border(3.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.38f), CircleShape)
-        .padding(3.dp)
-        .clip(CircleShape)
-        .background(MaterialTheme.colorScheme.surfaceVariant)
 
-    if (image != null) {
-        Image(
-            image!!,
-            "Profile photo",
-            avatarModifier
-        )
-    } else {
-        Box(avatarModifier, contentAlignment = Alignment.Center) {
+    val shape = CircleShape
+    Box(
+        Modifier
+            .size(84.dp)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+            .clickable(onClick = onPhoto),
+        contentAlignment = Alignment.Center
+    ) {
+        val initials = profile.displayName.trim().take(1).ifBlank { "?" }.uppercase()
+        if (image != null) {
+            Image(
+                bitmap = image!!,
+                contentDescription = "Profile photo",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
             Text(
-                profile.displayName
-                    .split(' ')
-                    .mapNotNull { it.firstOrNull()?.uppercase() }
-                    .take(2)
-                    .joinToString("")
-                    .ifBlank { "?" },
-                style = MaterialTheme.typography.headlineSmall,
+                initials,
+                style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.onPrimaryContainer
             )
         }
     }
 }
 
 @Composable
-private fun ChangePasswordDialog(state: ProfileUiState.SignedIn, onDismiss: () -> Unit, onSubmit: (String, String, String) -> Unit) {
-    var current by remember { mutableStateOf("") }
-    var next by remember { mutableStateOf("") }
-    var confirmation by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (state.hasPassword) "Change password" else "Set a password") }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (state.hasPassword) PasswordField(current, { current = it }, label = "Current password")
-            PasswordField(next, { next = it }, label = "New password")
-            if (next.isNotEmpty()) StrengthMeter(next)
-            PasswordField(confirmation, { confirmation = it }, label = "Confirm new password")
-            if (state.error != null) Text(state.error, color = MaterialTheme.colorScheme.error)
+private fun ProfileInfoChip(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        tonalElevation = 0.dp
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
-    }, confirmButton = { TextButton(onClick = { onSubmit(current, next, confirmation) }, enabled = !state.busy) { Text("Save password") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+    }
 }
 
 @Composable
-private fun PasswordRecoveryDialog(onDismiss: () -> Unit, onSubmit: (String, String) -> Unit) {
-    var next by remember { mutableStateOf("") }
-    var confirm by remember { mutableStateOf("") }
+private fun ProfileActionRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    tint: Color,
+    onClick: () -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(tint.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, null, Modifier.size(20.dp), tint = tint)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun ProfileFeedback(message: String?, isError: Boolean) {
+    if (message == null) return
+    val accent = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    PremiumCard(accent = accent, contentPadding = PaddingValues(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                if (isError) Icons.Rounded.Info else Icons.Rounded.CloudDone,
+                contentDescription = null,
+                tint = accent
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isError) accent else MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+@Composable
+private fun DeleteAccountDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Reset password") },
+        icon = { Icon(Icons.Rounded.DeleteForever, null, tint = MaterialTheme.colorScheme.error) },
+        title = { Text("Delete account?") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                PasswordField(next, { next = it }, label = "New password")
-                if (next.isNotEmpty()) StrengthMeter(next)
-                PasswordField(confirm, { confirm = it }, label = "Confirm password")
-            }
+            Text(
+                "This permanently removes your cloud account and synced data. Local data on this device may remain until you remove it."
+            )
         },
-        confirmButton = { TextButton(onClick = { onSubmit(next, confirm) }) { Text("Save password") } },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
+}
+
+@Composable
+private fun ChangePasswordDialog(
+    hasPassword: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (String, String, String) -> Unit
+) {
+    var current by rememberSaveable { mutableStateOf("") }
+    var next by rememberSaveable { mutableStateOf("") }
+    var confirm by rememberSaveable { mutableStateOf("") }
+    var show by rememberSaveable { mutableStateOf(false) }
+    val visual = if (show) VisualTransformation.None else PasswordVisualTransformation()
+
+    GlassSheet(if (hasPassword) "Change password" else "Set a password", onDismiss) {
+        if (hasPassword) {
+            MomentumTextField(
+                value = current,
+                onValueChange = { current = it },
+                label = { Text("Current password") },
+                visualTransformation = visual,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+        MomentumTextField(
+            value = next,
+            onValueChange = { next = it },
+            label = { Text("New password") },
+            visualTransformation = visual,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(12.dp))
+        MomentumTextField(
+            value = confirm,
+            onValueChange = { confirm = it },
+            label = { Text("Confirm new password") },
+            visualTransformation = visual,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        TextButton(onClick = { show = !show }) {
+            Text(if (show) "Hide passwords" else "Show passwords")
+        }
+        Spacer(Modifier.height(8.dp))
+        PrimaryButton(
+            text = if (hasPassword) "Update password" else "Set password",
+            onClick = { onConfirm(current, next, confirm) },
+            icon = Icons.Rounded.Key
+        )
+    }
+}
+
+@Composable
+private fun PasswordRecoveryDialog(onDismiss: () -> Unit, onConfirm: (String, String) -> Unit) {
+    var next by rememberSaveable { mutableStateOf("") }
+    var confirm by rememberSaveable { mutableStateOf("") }
+    var show by rememberSaveable { mutableStateOf(false) }
+    val visual = if (show) VisualTransformation.None else PasswordVisualTransformation()
+
+    GlassSheet("Reset password", onDismiss) {
+        Text(
+            "Choose a new password for your account.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(16.dp))
+        MomentumTextField(
+            value = next,
+            onValueChange = { next = it },
+            label = { Text("New password") },
+            visualTransformation = visual,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(12.dp))
+        MomentumTextField(
+            value = confirm,
+            onValueChange = { confirm = it },
+            label = { Text("Confirm new password") },
+            visualTransformation = visual,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        TextButton(onClick = { show = !show }) {
+            Text(if (show) "Hide passwords" else "Show passwords")
+        }
+        Spacer(Modifier.height(8.dp))
+        PrimaryButton("Reset password", onClick = { onConfirm(next, confirm) }, icon = Icons.Rounded.Key)
+    }
 }

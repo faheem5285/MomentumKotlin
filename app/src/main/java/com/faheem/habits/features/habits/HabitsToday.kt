@@ -30,11 +30,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.faheem.habits.features.phase7.isHabitDue
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -125,52 +129,48 @@ private fun HabitRow(
     PremiumCard(
         modifier = modifier,
         onClick = onOpen,
-        accent = if (done) Positive else null,
+        accent = if (done) Positive else color.copy(alpha = 0.55f),
         shape = RoundedCornerShape(MomentumTokens.radiusMedium),
-        contentPadding = PaddingValues(start = 12.dp, end = 10.dp, top = 9.dp, bottom = 9.dp)
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
     ) {
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconBubble(habitIcon(h.icon), color, 38.dp)
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(color.copy(alpha = if (done) 0.18f else 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(habitIcon(h.icon), null, Modifier.size(20.dp), tint = if (done) Positive else color)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     h.name,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
+                    fontSize = 15.sp,
                     color = if (done) Positive else colors.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (h.description.isNotBlank()) {
-                    Text(
-                        h.description,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = colors.onSurfaceVariant
-                    )
-                }
-                Spacer(Modifier.height(3.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Schedule, null, Modifier.size(13.dp), tint = color)
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        scheduleText(h.daysMask),
-                        fontSize = 10.sp,
-                        color = colors.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                if (ui.current > 0) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.LocalFireDepartment, null, Modifier.size(13.dp), tint = Warning)
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "${ui.current} day streak",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Warning.copy(alpha = 0.95f)
+                        )
+                    }
                 }
             }
-            Spacer(Modifier.width(6.dp))
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                CompletionToggle(checked = done, color = color, onClick = onToggle, size = 30.dp)
-                if (ui.current > 0) StreakChip(ui.current)
-            }
+            Spacer(Modifier.width(10.dp))
+            CompletionToggle(checked = done, color = color, onClick = onToggle, size = 32.dp)
         }
     }
 }
@@ -230,6 +230,12 @@ fun HabitDetailSheet(ui: HabitUi, onDismiss: () -> Unit, onEdit: () -> Unit, onA
             MiniStat("Best", "${ui.best}", Modifier.weight(1f))
             MiniStat("Check-ins", "${ui.days.size}", Modifier.weight(1f))
         }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Streaks count completed days on the schedule. Days off the schedule do not break them, and today stays open until the day ends.",
+            fontSize = 11.sp,
+            color = colors.onSurfaceVariant
+        )
         PremiumCard(
             onClick = onManageReminders,
             accent = color,
@@ -260,7 +266,7 @@ fun HabitDetailSheet(ui: HabitUi, onDismiss: () -> Unit, onEdit: () -> Unit, onA
                         .background(
                             when {
                                 d in ui.days -> color
-                                isScheduled(h.daysMask, d) -> colors.surfaceVariant
+                                isHabitDue(h, d, ui.days) -> colors.surfaceVariant
                                 else -> Color.Transparent
                             }
                         )
@@ -303,7 +309,7 @@ fun TodayScreen(
     val active = remember(all) { all.filter { !it.habit.archived } }
     val weekSchedule = remember(active, todayDay) {
         (todayDay - 6..todayDay).associateWith { day ->
-            active.filter { isScheduled(it.habit.daysMask, day) && it.habit.createdEpochDay <= day }
+            active.filter { isHabitDue(it.habit, day, it.days) }
         }
     }
     val list = remember(weekSchedule, selected) { weekSchedule[selected].orEmpty() }
@@ -353,7 +359,10 @@ fun TodayScreen(
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
-            Modifier.fillMaxSize(),
+            Modifier
+                .fillMaxSize()
+                .testTag("habits-today-scroll")
+                .semantics { contentDescription = "Habits for today" },
             contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {

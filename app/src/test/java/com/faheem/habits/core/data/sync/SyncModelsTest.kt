@@ -17,6 +17,48 @@ class SyncModelsTest {
     }
 
     @Test
+    fun dirtyLocalEditWinsOverNewerRemoteEdit() {
+        val local = SyncCandidate("id", 10, "device-a", false, dirty = true)
+        val remote = SyncCandidate("id", 20, "device-b", false)
+        assertFalse(shouldApplyRemote(local, remote))
+    }
+
+    @Test
+    fun localTombstoneIsNotResurrectedByRemoteEdit() {
+        val local = SyncCandidate("id", 10, "device-a", true)
+        val remote = SyncCandidate("id", 20, "device-b", false)
+        assertFalse(shouldApplyRemote(local, remote))
+    }
+
+    @Test
+    fun remoteTombstoneDeletesCleanLocal() {
+        val local = SyncCandidate("id", 10, "device-a", false)
+        val remote = SyncCandidate("id", 20, "device-b", true)
+        assertTrue(shouldApplyRemote(local, remote))
+    }
+
+    @Test
+    fun newerDirtyLocalEditWinsOverRemoteTombstone() {
+        val local = SyncCandidate("id", 30, "device-a", false, dirty = true)
+        val remote = SyncCandidate("id", 20, "device-b", true)
+        assertFalse(shouldApplyRemote(local, remote))
+    }
+
+    @Test
+    fun olderDirtyLocalEditLosesToRemoteTombstone() {
+        val local = SyncCandidate("id", 10, "device-a", false, dirty = true)
+        val remote = SyncCandidate("id", 20, "device-b", true)
+        assertTrue(shouldApplyRemote(local, remote))
+    }
+
+    @Test
+    fun cleanConflictStillUsesTimestampAndDeviceTieBreak() {
+        val cleanLocal = SyncCandidate("id", 10, "device-b", false)
+        assertTrue(shouldApplyRemote(cleanLocal, SyncCandidate("id", 11, "device-a", false)))
+        assertFalse(shouldApplyRemote(cleanLocal, SyncCandidate("id", 9, "device-a", false)))
+    }
+
+    @Test
     fun cursorRoundTripsAndReadsLegacyTimestamp() {
         val cursor = SyncCursor("2026-01-02T03:04:05Z", "record-id")
         assertEquals(cursor, SyncCursor.decode(cursor.encode()))

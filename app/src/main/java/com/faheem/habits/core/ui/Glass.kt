@@ -69,22 +69,41 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.faheem.habits.R
 
 enum class GlassLevel { Low, Medium, High }
 
-/** Shared spacing, radii and motion constants. */
+/**
+ * Shared spacing, radii and motion constants.
+ *
+ * Usage rules: use `space1..space6` for all new spacing, `screenPadding` for
+ * screen gutters and `cardPadding` inside cards. Prefer `radius*` over raw
+ * `dp` values. `motion*` values are durations for [animationSpecFor], which
+ * must be used instead of a fixed `tween` so reduced-effects mode works.
+ * The `space*dp` aliases are legacy names kept only for existing screens.
+ */
 object MomentumTokens {
-    // Fixed rhythm used by new and refreshed screens.
+    @Deprecated("Use space1.", ReplaceWith("MomentumTokens.space1"))
     val space4dp = 4.dp
+    @Deprecated("Use space2.", ReplaceWith("MomentumTokens.space2"))
     val space8dp = 8.dp
+    @Deprecated("Use space3.", ReplaceWith("MomentumTokens.space3"))
     val space12dp = 12.dp
+    @Deprecated("Use space4.", ReplaceWith("MomentumTokens.space4"))
     val space16dp = 16.dp
+    @Deprecated("Use space5.", ReplaceWith("MomentumTokens.space5"))
     val space24dp = 24.dp
+    @Deprecated("Use space6.", ReplaceWith("MomentumTokens.space6"))
     val space32dp = 32.dp
 
     val radiusSmall = 14.dp
@@ -806,23 +825,24 @@ fun PrimaryButton(
 ) {
     val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(18.dp)
+    val interactive = enabled && !loading
     Button(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
             .height(54.dp)
-            .shadow(4.dp, shape, clip = false),
-        enabled = enabled,
+            .shadow(if (interactive) 2.dp else 0.dp, shape, clip = false),
+        enabled = interactive,
         shape = shape,
         border = BorderStroke(
             1.dp,
-            Color.White.copy(alpha = 0.18f)
+            if (interactive) Color.White.copy(alpha = 0.18f) else colors.outlineVariant
         ),
         colors = ButtonDefaults.buttonColors(
             containerColor = colors.primary,
             contentColor = colors.onPrimary,
-            disabledContainerColor = colors.primary.copy(alpha = 0.38f),
-            disabledContentColor = colors.onPrimary
+            disabledContainerColor = colors.surfaceVariant,
+            disabledContentColor = colors.onSurfaceVariant
         ),
         elevation = null
     ) {
@@ -833,7 +853,7 @@ fun PrimaryButton(
             ) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(20.dp),
-                    color = colors.onPrimary,
+                    color = colors.onSurfaceVariant,
                     strokeWidth = 2.dp
                 )
                 Spacer(Modifier.width(MomentumTokens.space2))
@@ -866,18 +886,17 @@ fun SecondaryButton(
             .fillMaxWidth()
             .height(52.dp)
             .shadow(
-                10.dp,
+                2.dp,
                 shape,
                 clip = false,
-                ambientColor = glow.copy(alpha = 0.35f),
-                spotColor = glow.copy(alpha = 0.22f)
+                ambientColor = glow.copy(alpha = 0.18f),
+                spotColor = glow.copy(alpha = 0.12f)
             )
             .clip(shape)
             .background(Brush.verticalGradient(listOf(glass.chip, glass.chip.copy(alpha = 0.35f))))
-            .background(glassSheenBrush(glass))
-            .border(1.dp, neonEdgeBrush(glass, glow), shape),
+            .background(glassSheenBrush(glass)),
         shape = shape,
-        border = null,
+        border = BorderStroke(1.dp, neonEdgeBrush(glass, glow)),
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = Color.Transparent,
             contentColor = colors.onSurface
@@ -971,12 +990,18 @@ fun MomentumChip(
     val glass = LocalGlassPalette.current
     val colors = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(MomentumTokens.radiusSmall)
+    val spec = rememberAnimationSpecFor<androidx.compose.ui.graphics.Color>(
+        LocalReduceEffects.current,
+        MomentumTokens.motionShort
+    )
     val background by animateColorAsState(
         if (selected) colors.primary else glass.chip,
+        animationSpec = spec,
         label = "chip-bg"
     )
     val contentColor by animateColorAsState(
         if (selected) colors.onPrimary else colors.onSurfaceVariant,
+        animationSpec = spec,
         label = "chip-content"
     )
     Row(
@@ -998,7 +1023,7 @@ fun MomentumChip(
             .clip(shape)
             .background(background)
             .border(1.dp, if (selected) Color.Transparent else glass.panelBorder, shape)
-            .clickable(enabled = enabled, onClick = onClick)
+            .momentumClickable(label, onClick, enabled, Role.Tab)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
@@ -1034,11 +1059,14 @@ fun MomentumOutlinedButton(
         onClick = onClick,
         modifier = modifier
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(glass.chip, glass.chip.copy(alpha = 0.35f))))
-            .border(1.dp, neonEdgeBrush(glass, glow), shape),
+            .background(Brush.verticalGradient(listOf(glass.chip, glass.chip.copy(alpha = 0.35f)))),
         enabled = enabled,
         shape = shape,
-        border = null,
+        border = if (enabled) {
+            BorderStroke(1.dp, neonEdgeBrush(glass, glow))
+        } else {
+            BorderStroke(1.dp, glass.panelBorder.copy(alpha = 0.55f))
+        },
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = Color.Transparent,
             contentColor = colors.onSurface,
@@ -1109,9 +1137,15 @@ fun CompletionToggle(
     color: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    size: Dp = 36.dp
+    size: Dp = 36.dp,
+    label: String = "Mark complete"
 ) {
-    val background by animateColorAsState(if (checked) color else Color.Transparent, label = "toggle-bg")
+    val spec = rememberAnimationSpecFor<Color>(LocalReduceEffects.current, MomentumTokens.motionShort)
+    val background by animateColorAsState(
+        if (checked) color else Color.Transparent,
+        animationSpec = spec,
+        label = "toggle-bg"
+    )
     Box(
         modifier
             .size(size)
@@ -1125,13 +1159,18 @@ fun CompletionToggle(
             .clip(CircleShape)
             .background(background)
             .border(2.dp, if (checked) Color.White.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline, CircleShape)
-            .clickable(onClick = onClick),
+            .semantics {
+                role = Role.Checkbox
+                stateDescription = if (checked) "Completed" else "Not completed"
+            }
+            .momentumClickable(label, onClick, role = Role.Checkbox),
         contentAlignment = Alignment.Center
     ) {
         if (checked) Icon(Icons.Rounded.Check, null, Modifier.size(size * 0.52f), tint = Color.White)
     }
 }
 
+@Deprecated("Use ListErrorState for new screens; this compact variant remains for legacy callers.")
 @Composable
 fun ErrorState(message: String, onRetry: (() -> Unit)? = null) {
     Column(
@@ -1145,12 +1184,13 @@ fun ErrorState(message: String, onRetry: (() -> Unit)? = null) {
             TextButton(onClick = onRetry) {
                 Icon(Icons.Rounded.Refresh, null)
                 Spacer(Modifier.size(MomentumTokens.space1))
-                Text("Try again")
+                Text(stringResource(R.string.action_retry))
             }
         }
     }
 }
 
+@Deprecated("Use ListLoadingState for new screens; this compact variant remains for legacy callers.")
 @Composable
 fun SkeletonLoader(modifier: Modifier = Modifier) {
     val glass = LocalGlassPalette.current

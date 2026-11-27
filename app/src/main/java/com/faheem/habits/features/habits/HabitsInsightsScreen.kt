@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.faheem.habits.features.phase7.isHabitDue
 import java.time.LocalDate
 
 private val Gold = Color(0xFFF59E0B)
@@ -77,7 +78,7 @@ fun InsightsScreen(vm: HabitViewModel) {
     // New habits are not penalized for dates before they were created.
     fun consistency30(ui: HabitUi): Int {
         val start = maxOf(today() - 29, ui.habit.createdEpochDay)
-        val scheduled = (start..today()).filter { isScheduled(ui.habit.daysMask, it) }
+        val scheduled = (start..today()).filter { isHabitDue(ui.habit, it, ui.days) }
         if (scheduled.isEmpty()) return 0
         return (scheduled.count { it in ui.days } * 100) / scheduled.size
     }
@@ -95,7 +96,7 @@ fun InsightsScreen(vm: HabitViewModel) {
             HeroCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Your level", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
+                        HeroCaption("Your level")
                         Text("Level ${ins.level}", fontSize = 34.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
                         Text("${ins.xp} XP · ${ins.totalCheckIns} check-ins", fontSize = 13.sp, color = Color.White.copy(alpha = 0.9f))
                     }
@@ -128,7 +129,7 @@ fun InsightsScreen(vm: HabitViewModel) {
                     Column(Modifier.weight(1f)) {
                         Text("Consistency", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text(
-                            "${ins.rate7}% done this week",
+                            "Across days with at least one scheduled habit",
                             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }

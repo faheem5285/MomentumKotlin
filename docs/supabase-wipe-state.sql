@@ -18,7 +18,8 @@ alter table public.momentum_wipe_state enable row level security;
 drop policy if exists momentum_wipe_state_read on public.momentum_wipe_state;
 create policy momentum_wipe_state_read on public.momentum_wipe_state
   for select to authenticated using (true);
-grant select on public.momentum_wipe_state to authenticated;
+revoke all on public.momentum_wipe_state from public, anon;
+grant select, insert, update, delete on public.momentum_wipe_state to authenticated;
 
 create or replace function public.momentum_sync_writes_allowed()
 returns boolean
@@ -61,12 +62,12 @@ begin
     drop policy if exists profiles_owner_update on public.profiles;
     drop policy if exists profiles_owner_delete on public.profiles;
     create policy profiles_owner_insert on public.profiles
-      for insert with check (id = auth.uid() and public.momentum_sync_writes_allowed());
+      for insert to authenticated with check (id = auth.uid() and public.momentum_sync_writes_allowed());
     create policy profiles_owner_update on public.profiles
-      for update using (id = auth.uid() and public.momentum_sync_writes_allowed())
+      for update to authenticated using (id = auth.uid() and public.momentum_sync_writes_allowed())
       with check (id = auth.uid() and public.momentum_sync_writes_allowed());
     create policy profiles_owner_delete on public.profiles
-      for delete using (id = auth.uid() and public.momentum_sync_writes_allowed());
+      for delete to authenticated using (id = auth.uid() and public.momentum_sync_writes_allowed());
   end if;
 end $$;
 
@@ -88,9 +89,9 @@ begin
     execute format('drop policy if exists %I on public.%I', table_name || '_owner_insert', table_name);
     execute format('drop policy if exists %I on public.%I', table_name || '_owner_update', table_name);
     execute format('drop policy if exists %I on public.%I', table_name || '_owner_delete', table_name);
-    execute format('create policy %I on public.%I for insert with check (user_id = auth.uid() and public.momentum_sync_writes_allowed())', table_name || '_owner_insert', table_name);
-    execute format('create policy %I on public.%I for update using (user_id = auth.uid() and public.momentum_sync_writes_allowed()) with check (user_id = auth.uid() and public.momentum_sync_writes_allowed())', table_name || '_owner_update', table_name);
-    execute format('create policy %I on public.%I for delete using (user_id = auth.uid() and public.momentum_sync_writes_allowed())', table_name || '_owner_delete', table_name);
+    execute format('create policy %I on public.%I for insert to authenticated with check (user_id = auth.uid() and public.momentum_sync_writes_allowed())', table_name || '_owner_insert', table_name);
+    execute format('create policy %I on public.%I for update to authenticated using (user_id = auth.uid() and public.momentum_sync_writes_allowed()) with check (user_id = auth.uid() and public.momentum_sync_writes_allowed())', table_name || '_owner_update', table_name);
+    execute format('create policy %I on public.%I for delete to authenticated using (user_id = auth.uid() and public.momentum_sync_writes_allowed())', table_name || '_owner_delete', table_name);
     execute format('drop policy if exists %I on public.%I', 'momentum_wipe_guard_insert', table_name);
     execute format('drop policy if exists %I on public.%I', 'momentum_wipe_guard_update', table_name);
     execute format('drop policy if exists %I on public.%I', 'momentum_wipe_guard_delete', table_name);
@@ -108,12 +109,12 @@ drop policy if exists momentum_vault_keys_owner_insert on public.momentum_vault_
 drop policy if exists momentum_vault_keys_owner_update on public.momentum_vault_keys;
 drop policy if exists momentum_vault_keys_owner_delete on public.momentum_vault_keys;
 create policy momentum_vault_keys_owner_insert on public.momentum_vault_keys
-  for insert with check (user_id = auth.uid() and public.momentum_sync_writes_allowed());
+  for insert to authenticated with check (user_id = auth.uid() and public.momentum_sync_writes_allowed());
 create policy momentum_vault_keys_owner_update on public.momentum_vault_keys
-  for update using (user_id = auth.uid() and public.momentum_sync_writes_allowed())
+  for update to authenticated using (user_id = auth.uid() and public.momentum_sync_writes_allowed())
   with check (user_id = auth.uid() and public.momentum_sync_writes_allowed());
 create policy momentum_vault_keys_owner_delete on public.momentum_vault_keys
-  for delete using (user_id = auth.uid() and public.momentum_sync_writes_allowed());
+  for delete to authenticated using (user_id = auth.uid() and public.momentum_sync_writes_allowed());
 drop policy if exists momentum_wipe_guard_insert on public.momentum_vault_keys;
 drop policy if exists momentum_wipe_guard_update on public.momentum_vault_keys;
 drop policy if exists momentum_wipe_guard_delete on public.momentum_vault_keys;
@@ -130,12 +131,12 @@ end $$;
 drop policy if exists momentum_files_insert on storage.objects;
 drop policy if exists momentum_files_update on storage.objects;
 drop policy if exists momentum_files_delete on storage.objects;
-create policy momentum_files_insert on storage.objects for insert
+create policy momentum_files_insert on storage.objects for insert to authenticated
   with check (bucket_id = 'momentum-files' and owner_id = auth.uid()::text and public.momentum_sync_writes_allowed());
-create policy momentum_files_update on storage.objects for update
+create policy momentum_files_update on storage.objects for update to authenticated
   using (bucket_id = 'momentum-files' and owner_id = auth.uid()::text and public.momentum_sync_writes_allowed())
   with check (bucket_id = 'momentum-files' and owner_id = auth.uid()::text and public.momentum_sync_writes_allowed());
-create policy momentum_files_delete on storage.objects for delete
+create policy momentum_files_delete on storage.objects for delete to authenticated
   using (bucket_id = 'momentum-files' and owner_id = auth.uid()::text and public.momentum_sync_writes_allowed());
 drop policy if exists momentum_wipe_storage_guard_insert on storage.objects;
 drop policy if exists momentum_wipe_storage_guard_update on storage.objects;

@@ -27,6 +27,8 @@ class Phase7LogicTest {
         assertEquals(LocalDate.of(2026, 11, 1).toEpochDay(), parsed.dueEpochDay)
         assertEquals("call mom", parsed.title)
         assertTrue(parsed.dueEpochMillis != null)
+        assertTrue(hasQuickTaskCue("call mom tomorrow 18:00"))
+        assertTrue(!hasQuickTaskCue("call mom"))
     }
 
     @Test
@@ -47,6 +49,16 @@ class Phase7LogicTest {
 
         assertEquals(750, loanRemaining(loan, payments))
         assertEquals(0, loanRemaining(loan, listOf(LoanPayment(loanId = 4, amountMinorUnits = 1200, epochDay = 2))))
+    }
+
+    @Test
+    fun loanRemainingDoesNotCountDeletedPayments() {
+        val loan = Loan(7, "B", 10_000L, true, "", 1)
+        val payments = listOf(
+            LoanPayment(loanId = 7, amountMinorUnits = 2_500L, epochDay = 2),
+            LoanPayment(loanId = 7, amountMinorUnits = 3_000L, epochDay = 3, deleted = true)
+        )
+        assertEquals(7_500L, loanRemaining(loan, payments))
     }
 
     @Test

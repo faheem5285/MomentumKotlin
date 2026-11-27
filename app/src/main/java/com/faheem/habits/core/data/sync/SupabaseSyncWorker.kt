@@ -5,6 +5,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.WorkerParameters
 import io.ktor.client.plugins.HttpRequestTimeoutException
+import com.faheem.habits.core.data.supabase.HttpErrorSanitizer
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 
@@ -33,5 +34,5 @@ class SupabaseSyncWorker(
         }
 
     private fun failureResult(cause: Exception): Result =
-        Result.failure(Data.Builder().putString("error", cause.message.orEmpty()).build())
+        Result.failure(Data.Builder().putString("error", HttpErrorSanitizer.forDisplay(cause.message)).build())
 }

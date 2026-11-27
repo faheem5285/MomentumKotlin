@@ -62,15 +62,25 @@ import java.util.Locale
 class ExpenseViewModel @Inject constructor(
     private val repository: ExpenseRepository
 ) : ViewModel() {
-    val expenses: StateFlow<List<Expense>> = repository.expenses.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val budget: StateFlow<Long> = repository.budgetMinorUnits.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
-    fun categoryBudget(category: String): StateFlow<Long> = repository.categoryBudgetMinorUnits(category)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
-    fun setCategoryBudget(category: String, value: Double) { viewModelScope.launch { repository.setCategoryBudget(category, value) } }
-    fun setBudget(value: Double) { viewModelScope.launch { repository.setBudget(value) } }
-    fun add(title: String, amount: Double, category: String, epochDay: Long) {
-        viewModelScope.launch { repository.add(title, amount, category, epochDay) }
+    init {
+        viewModelScope.launch(Dispatchers.IO) { runCatching { repository.migrateLegacyBudgets() } }
     }
+
+    val expenses: StateFlow<List<Expense>> = repository.expenses.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val budgets: StateFlow<List<CategoryBudget>> = repository.budgets.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun setCategoryBudget(category: String, minorUnits: Long, monthKey: String) {
+        viewModelScope.launch { repository.setCategoryBudget(category, minorUnits, monthKey) }
+    }
+
+    fun setBudget(minorUnits: Long, monthKey: String) {
+        viewModelScope.launch { repository.setBudget(minorUnits, monthKey) }
+    }
+
+    fun add(title: String, amountMinorUnits: Long, category: String, epochDay: Long) {
+        viewModelScope.launch { repository.add(title, amountMinorUnits, category, epochDay) }
+    }
+
     fun remove(expense: Expense) { viewModelScope.launch { repository.delete(expense) } }
 }
 
@@ -78,10 +88,11 @@ class ExpenseViewModel @Inject constructor(
 @OptIn(ExperimentalMaterial3Api::class)
 fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel()) {
     val expenses by vm.expenses.collectAsStateWithLifecycle()
-    val budgetMinorUnits by vm.budget.collectAsStateWithLifecycle()
-    val budget = budgetMinorUnits / 100.0
+    val budgets by vm.budgets.collectAsStateWithLifecycle()
     var tab by remember { mutableIntStateOf(0) }
     var month by remember { mutableStateOf(YearMonth.now()) }
+    val monthKey = month.toString()
+    val budgetMinorUnits = remember(budgets, monthKey) { budgetLimit(budgets, OVERALL_BUDGET_CATEGORY, monthKey) }
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("All") }
     var showAdd by remember { mutableStateOf(false) }
@@ -92,18 +103,16 @@ fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel()) {
     val inMonth = remember(expenses, month) {
         expenses.filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == month }
     }
-    val spentMinorUnits = remember(inMonth) { inMonth.sumOf { it.amountMinorUnits } }
+    val spentMinorUnits = remember(inMonth) { inMonth.sumMinorUnits { it.amountMinorUnits } }
     val byCategory = remember(inMonth) {
-        inMonth.groupBy { it.category }.mapValues { (_, rows) -> rows.sumOf { it.amountMinorUnits } / 100.0 }
+        inMonth.groupBy { it.category }.mapValues { (_, rows) -> rows.sumMinorUnits { it.amountMinorUnits } }
     }
-    val spent = spentMinorUnits / 100.0
-    val previousMonthSpent = remember(expenses, month) {
+    val previousMonthSpentMinorUnits = remember(expenses, month) {
         val previousMonth = month.minusMonths(1)
-        expenses.asSequence()
-            .filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == previousMonth }
-            .sumOf { it.amountMinorUnits } / 100.0
+        expenses.filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == previousMonth }
+            .sumMinorUnits { it.amountMinorUnits }
     }
-    val budgetFraction = if (budget > 0) (spent / budget).toFloat() else 0f
+    val fraction = budgetFraction(spentMinorUnits, budgetMinorUnits)
     val filtered = remember(inMonth, category, query) {
         inMonth.filter {
             (category == "All" || it.category == category) &&
@@ -117,9 +126,8 @@ fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel()) {
         (5 downTo 0).map { offset ->
             val target = month.minusMonths(offset.toLong())
             target.format(DateTimeFormatter.ofPattern("MMM")) to
-                expenses.asSequence()
-                    .filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == target }
-                    .sumOf { it.amountMinorUnits } / 100.0
+                expenses.filter { YearMonth.from(LocalDate.ofEpochDay(it.epochDay)) == target }
+                    .sumMinorUnits { it.amountMinorUnits }
         }
     }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri: Uri? ->
@@ -134,14 +142,14 @@ fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel()) {
         }
     }
 
-    if (showBudget) BudgetSheet(budget, { showBudget = false }) { vm.setBudget(it); showBudget = false }
+    if (showBudget) BudgetSheet(budgetMinorUnits, { showBudget = false }) { vm.setBudget(it, monthKey); showBudget = false }
     if (showAdd) {
         val defaultDate = if (month == YearMonth.now()) LocalDate.now() else month.atDay(1)
         AddExpenseSheet(
             initialDate = defaultDate,
             onDismiss = { showAdd = false }
-        ) { title, amount, cat, date ->
-            vm.add(title, amount, cat, date)
+        ) { title, amountMinorUnits, cat, date ->
+            vm.add(title, amountMinorUnits, cat, date)
             showAdd = false
         }
     }
@@ -185,14 +193,18 @@ fun ExpensesScreen(vm: ExpenseViewModel = hiltViewModel()) {
         Box(Modifier.weight(1f)) {
             when (tab) {
                 0 -> OverviewScreen(
-                    month, inMonth, spent, previousMonthSpent, budget, budgetFraction, byCategory, vm,
+                    month, monthKey, inMonth, spentMinorUnits, previousMonthSpentMinorUnits,
+                    budgetMinorUnits, fraction, byCategory, budgets,
                     onBudget = { showBudget = true }, onDelete = { deleting = it }, onAll = { tab = 1 },
                     onExport = { exportLauncher.launch("momentum-expenses-$month.csv") },
                     exportMessage = exportMessage,
                     monthTrend = monthTrend
                 )
                 1 -> ActivityScreen(filtered, query, { query = it }, category, { category = it }, onDelete = { deleting = it })
-                else -> BudgetScreen(spent, budget, budgetFraction, byCategory, vm, onBudget = { showBudget = true })
+                else -> BudgetScreen(
+                    monthKey, spentMinorUnits, budgetMinorUnits, fraction, byCategory, budgets,
+                    vm = vm, onBudget = { showBudget = true }
+                )
             }
             MomentumFab(
                 text = "Add expense",
@@ -253,21 +265,23 @@ private fun MonthSwitcher(month: YearMonth, onPrevious: () -> Unit, onNext: () -
 
 @Composable
 private fun OverviewScreen(
-    month: YearMonth, expenses: List<Expense>, spent: Double, previousMonthSpent: Double, budget: Double, fraction: Float, byCategory: Map<String, Double>,
-    vm: ExpenseViewModel, onBudget: () -> Unit, onDelete: (Expense) -> Unit, onAll: () -> Unit,
+    month: YearMonth, monthKey: String, expenses: List<Expense>, spentMinorUnits: Long,
+    previousMonthSpentMinorUnits: Long, budgetMinorUnits: Long, fraction: Float,
+    byCategory: Map<String, Long>, budgets: List<CategoryBudget>,
+    onBudget: () -> Unit, onDelete: (Expense) -> Unit, onAll: () -> Unit,
     onExport: () -> Unit, exportMessage: String?,
-    monthTrend: List<Pair<String, Double>>
+    monthTrend: List<Pair<String, Long>>
 ) {
     val today = LocalDate.now()
     val days = if (month == YearMonth.now()) today.dayOfMonth else month.lengthOfMonth()
-    val average = if (days > 0) spent / days else 0.0
-    val projection = average * month.lengthOfMonth()
+    val averageMinorUnits = if (days > 0) spentMinorUnits / days else 0L
+    val projectionMinorUnits = averageMinorUnits * month.lengthOfMonth()
     val daily = remember(expenses, month) {
         val count = month.lengthOfMonth()
-        val totals = DoubleArray(count)
+        val totals = LongArray(count)
         expenses.forEach { expense ->
             val day = LocalDate.ofEpochDay(expense.epochDay).dayOfMonth
-            if (day in 1..count) totals[day - 1] += expense.amountMinorUnits / 100.0
+            if (day in 1..count) totals[day - 1] = saturatingAdd(totals[day - 1], expense.amountMinorUnits)
         }
         totals.toList()
     }
@@ -280,21 +294,21 @@ private fun OverviewScreen(
             HeroCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Monthly spending", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
-                        Text(money(spent), fontSize = 33.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.8).sp)
+                        HeroCaption("Monthly spending")
+                        Text(money(spentMinorUnits), fontSize = 33.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.8).sp)
                     }
                     TextButton(onClick = onBudget) {
                         Text("Set budget", color = Color.White, fontWeight = FontWeight.SemiBold)
                     }
                 }
                 Spacer(Modifier.height(14.dp))
-                ProgressBar(fraction, if (budget > 0 && spent > budget) Color(0xFFFFC9C9) else Color.White, Color.White.copy(alpha = 0.25f))
+                ProgressBar(fraction, if (budgetMinorUnits > 0 && spentMinorUnits > budgetMinorUnits) Color(0xFFFFC9C9) else Color.White, Color.White.copy(alpha = 0.25f))
                 Spacer(Modifier.height(8.dp))
                 Text(
                     when {
-                        budget <= 0 -> "Add a monthly limit to track your pace"
-                        spent > budget -> "${money(spent - budget)} over your limit"
-                        else -> "${money(budget - spent)} remaining"
+                        budgetMinorUnits <= 0 -> "Add a monthly limit to track your pace"
+                        spentMinorUnits > budgetMinorUnits -> "${money(budgetOverage(budgetMinorUnits, spentMinorUnits))} over your limit"
+                        else -> "${money(budgetRemaining(budgetMinorUnits, spentMinorUnits))} remaining"
                     },
                     fontSize = 12.5.sp,
                     color = Color.White.copy(alpha = 0.9f)
@@ -303,8 +317,8 @@ private fun OverviewScreen(
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricTile("Daily average", money(average), "This month", icon = Icons.Rounded.ShowChart, modifier = Modifier.weight(1f))
-                MetricTile("Month-end", money(projection), "Estimated", icon = Icons.Rounded.TrendingUp, modifier = Modifier.weight(1f))
+                MetricTile("Daily average", money(averageMinorUnits), "This month", icon = Icons.Rounded.ShowChart, modifier = Modifier.weight(1f))
+                MetricTile("Month-end", money(projectionMinorUnits), "Estimated", icon = Icons.Rounded.TrendingUp, modifier = Modifier.weight(1f))
             }
         }
         item { SectionHeader("Spending shape", subtitle = month.format(DateTimeFormatter.ofPattern("MMMM"))) }
@@ -317,7 +331,7 @@ private fun OverviewScreen(
                     DonutChart(
                         slices = slices,
                         modifier = Modifier.width(154.dp),
-                        centerValue = money(spent),
+                        centerValue = money(spentMinorUnits),
                         centerLabel = "this month",
                         thickness = 19.dp
                     )
@@ -326,10 +340,15 @@ private fun OverviewScreen(
                         ChartLegend(
                             slices = slices,
                             maxRows = 5,
-                            valueFormatter = { money(it.toDouble()) }
+                            valueFormatter = { money(it.toLong()) }
                         )
                     }
                 }
+                Text(
+                    "Total ${money(spentMinorUnits)} across ${byCategory.size} categor${if (byCategory.size == 1) "y" else "ies"}",
+                    fontSize = 11.5.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 if (slices.isEmpty()) {
                     Spacer(Modifier.height(6.dp))
                     Text(
@@ -348,14 +367,14 @@ private fun OverviewScreen(
                     Column(Modifier.weight(1f)) {
                         Text("Day by day", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text(
-                            "Peak ${money(daily.maxOrNull() ?: 0.0)} · average ${money(average)}",
+                            "Peak ${money(daily.maxOrNull() ?: 0L)} · average ${money(averageMinorUnits)}",
                             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
                 Spacer(Modifier.height(12.dp))
                 LineChart(
-                    values = daily.map { it.toFloat() },
+                    values = daily.map { (it / 100).toFloat() },
                     color = MaterialTheme.colorScheme.primary,
                     height = 136.dp
                 )
@@ -370,7 +389,7 @@ private fun OverviewScreen(
         item {
             PremiumCard(contentPadding = PaddingValues(16.dp)) {
                 BarChart(
-                    values = monthTrend.map { it.second.toFloat() },
+                    values = monthTrend.map { (it.second / 100).toFloat() },
                     labels = monthTrend.map { it.first },
                     colors = listOf(
                         MaterialTheme.colorScheme.primary,
@@ -381,7 +400,7 @@ private fun OverviewScreen(
                     valueFormatter = { value -> if (value >= 1000f) "${(value / 1000f).toInt()}k" else value.toInt().toString() }
                 )
                 Spacer(Modifier.height(8.dp))
-                val change = (monthTrend.lastOrNull()?.second ?: 0.0) - (monthTrend.dropLast(1).lastOrNull()?.second ?: 0.0)
+                val change = saturatingSubtract(monthTrend.lastOrNull()?.second ?: 0L, monthTrend.dropLast(1).lastOrNull()?.second ?: 0L)
                 Text(
                     when {
                         monthTrend.size < 2 -> "More history will appear as you add months"
@@ -394,19 +413,19 @@ private fun OverviewScreen(
             }
         }
         item {
-            val difference = spent - previousMonthSpent
+            val difference = saturatingSubtract(spentMinorUnits, previousMonthSpentMinorUnits)
             val comparison = when {
-                previousMonthSpent <= 0.0 && spent <= 0.0 -> "No spending in either month"
-                previousMonthSpent <= 0.0 -> "Spending started this month"
-                difference < 0.0 -> "${money(-difference)} less than last month"
-                difference > 0.0 -> "${money(difference)} more than last month"
+                previousMonthSpentMinorUnits <= 0L && spentMinorUnits <= 0L -> "No spending in either month"
+                previousMonthSpentMinorUnits <= 0L -> "Spending started this month"
+                difference < 0L -> "${money(-difference)} less than last month"
+                difference > 0L -> "${money(difference)} more than last month"
                 else -> "Same spending as last month"
             }
-            PremiumCard(accent = if (difference <= 0.0) Positive else MaterialTheme.colorScheme.error) {
+            PremiumCard(accent = if (difference <= 0L) Positive else MaterialTheme.colorScheme.error) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconBubble(
-                        if (difference <= 0.0) Icons.Rounded.TrendingDown else Icons.Rounded.TrendingUp,
-                        if (difference <= 0.0) Positive else MaterialTheme.colorScheme.error,
+                        if (difference <= 0L) Icons.Rounded.TrendingDown else Icons.Rounded.TrendingUp,
+                        if (difference <= 0L) Positive else MaterialTheme.colorScheme.error,
                         40.dp
                     )
                     Spacer(Modifier.width(12.dp))
@@ -414,7 +433,7 @@ private fun OverviewScreen(
                         Text("Compared with last month", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text(comparison, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text(money(previousMonthSpent), fontWeight = FontWeight.Bold)
+                    Text(money(previousMonthSpentMinorUnits), fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -442,9 +461,8 @@ private fun OverviewScreen(
         }
         item { SectionHeader("Spending by category", subtitle = if (byCategory.isEmpty()) null else "${byCategory.size} active") }
         if (byCategory.isEmpty()) item { EmptyState(Icons.Rounded.PieChart, "No spending this month", "Add an expense to see where your money goes") }
-        items(byCategory.entries.sortedByDescending { it.value }, key = { it.key }) { (name, total) ->
-            val limit by vm.categoryBudget(name).collectAsStateWithLifecycle()
-            CategorySpendRow(name, total, limit / 100.0)
+        items(byCategory.entries.sortedByDescending { it.value }, key = { it.key }) { (name, totalMinorUnits) ->
+            CategorySpendRow(name, totalMinorUnits, budgetLimit(budgets, name, monthKey))
         }
         item { SectionHeader("Recent activity", actionLabel = if (expenses.size > 5) "See all" else null, onAction = if (expenses.size > 5) onAll else null) }
         if (expenses.isEmpty()) item { EmptyState(Icons.Rounded.AccountBalanceWallet, "No expenses yet", "Add your first expense to get started") }
@@ -474,39 +492,44 @@ private fun ActivityScreen(
                 }
             }
         }
-        item { SectionHeader("${expenses.size} expenses · ${money(expenses.sumOf { it.amountMinorUnits })}") }
+        item { SectionHeader("${expenses.size} expenses · ${money(expenses.sumMinorUnits { it.amountMinorUnits })}") }
         if (expenses.isEmpty()) item { EmptyState(Icons.Rounded.ReceiptLong, "No matching expenses", "Try a different search or category") }
         items(expenses, key = { it.id }) { ExpenseRow(it) { onDelete(it) } }
     }
 }
 
 @Composable
-private fun BudgetScreen(spent: Double, budget: Double, fraction: Float, byCategory: Map<String, Double>, vm: ExpenseViewModel, onBudget: () -> Unit) {
+private fun BudgetScreen(
+    monthKey: String, spentMinorUnits: Long, budgetMinorUnits: Long, fraction: Float,
+    byCategory: Map<String, Long>, budgets: List<CategoryBudget>, vm: ExpenseViewModel, onBudget: () -> Unit
+) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(MomentumTokens.screenPadding, 6.dp, MomentumTokens.screenPadding, 100.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             HeroCard {
-                Text("Monthly plan", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
-                Text(if (budget > 0) money(budget) else "No limit set", fontSize = 31.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
+                HeroCaption("Monthly plan")
+                Text(if (budgetMinorUnits > 0) money(budgetMinorUnits) else "No limit set", fontSize = 31.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
                 Text(
-                    "${money(spent)} spent · ${if (budget > spent) money(budget - spent) + " remaining" else "review your spending"}",
+                    "${money(spentMinorUnits)} spent · ${if (budgetMinorUnits > spentMinorUnits) money(budgetRemaining(budgetMinorUnits, spentMinorUnits)) + " remaining" else "review your spending"}",
                     fontSize = 12.5.sp,
                     color = Color.White.copy(alpha = 0.9f)
                 )
                 Spacer(Modifier.height(14.dp))
-                ProgressBar(fraction, if (budget > 0 && spent > budget) Color(0xFFFFC9C9) else Color.White, Color.White.copy(alpha = 0.25f))
+                ProgressBar(fraction, if (budgetMinorUnits > 0 && spentMinorUnits > budgetMinorUnits) Color(0xFFFFC9C9) else Color.White, Color.White.copy(alpha = 0.25f))
                 TextButton(onClick = onBudget) { Text("Edit monthly limit", color = Color.White, fontWeight = FontWeight.SemiBold) }
             }
         }
         item { SectionHeader("Category limits", subtitle = "Set a comfortable cap for each area") }
         items(categories, key = { it.name }) { c ->
-            val limit by vm.categoryBudget(c.name).collectAsStateWithLifecycle()
-            CategoryBudgetCard(c.name, byCategory[c.name] ?: 0.0, limit / 100.0) { vm.setCategoryBudget(c.name, it) }
+            val limitMinorUnits = budgetLimit(budgets, c.name, monthKey)
+            CategoryBudgetCard(c.name, byCategory[c.name] ?: 0L, limitMinorUnits) {
+                vm.setCategoryBudget(c.name, it, monthKey)
+            }
         }
     }
 }
 
 @Composable
-private fun CategorySpendRow(name: String, total: Double, limit: Double) {
+private fun CategorySpendRow(name: String, totalMinorUnits: Long, limitMinorUnits: Long) {
     val c = catOf(name)
     PremiumCard(contentPadding = PaddingValues(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -515,28 +538,32 @@ private fun CategorySpendRow(name: String, total: Double, limit: Double) {
             Column(Modifier.weight(1f)) {
                 Text(name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 Text(
-                    if (limit > 0) {
-                        if (total <= limit) "${money(limit - total)} left of ${money(limit)}" else "${money(total - limit)} over limit"
+                    if (limitMinorUnits > 0) {
+                        if (totalMinorUnits <= limitMinorUnits) {
+                            "${money(budgetRemaining(limitMinorUnits, totalMinorUnits))} left of ${money(limitMinorUnits)}"
+                        } else "${money(budgetOverage(limitMinorUnits, totalMinorUnits))} over limit"
                     } else "No category limit",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Text(money(total), fontWeight = FontWeight.Bold)
+            Text(money(totalMinorUnits), fontWeight = FontWeight.Bold)
         }
-        if (limit > 0) {
+        if (limitMinorUnits > 0) {
             Spacer(Modifier.height(10.dp))
-            ProgressBar((total / limit).toFloat(), if (total > limit) MaterialTheme.colorScheme.error else c.color, MaterialTheme.colorScheme.surfaceVariant, height = 5.dp)
+            ProgressBar(budgetFraction(totalMinorUnits, limitMinorUnits), if (totalMinorUnits > limitMinorUnits) MaterialTheme.colorScheme.error else c.color, MaterialTheme.colorScheme.surfaceVariant, height = 5.dp)
         }
     }
 }
 
 @Composable
-private fun CategoryBudgetCard(name: String, spent: Double, limit: Double, onSave: (Double) -> Unit) {
+private fun CategoryBudgetCard(name: String, spentMinorUnits: Long, limitMinorUnits: Long, onSave: (Long) -> Unit) {
     var editing by remember { mutableStateOf(false) }
     val c = catOf(name)
     if (editing) {
-        var input by remember(limit) { mutableStateOf(if (limit > 0) limit.toString() else "") }
+        var input by remember(limitMinorUnits) {
+            mutableStateOf(if (limitMinorUnits > 0) minorUnitsToInput(limitMinorUnits) else "")
+        }
         MomentumDialog(
             onDismissRequest = { editing = false }, title = { Text("$name limit") },
             text = {
@@ -549,7 +576,12 @@ private fun CategoryBudgetCard(name: String, spent: Double, limit: Double, onSav
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                 )
             },
-            confirmButton = { TextButton(onClick = { input.toDoubleOrNull()?.takeIf { it >= 0 }?.let(onSave); editing = false }) { Text("Save") } },
+            confirmButton = {
+                TextButton(onClick = {
+                    parseMinorUnits(input, allowZero = true)?.let(onSave)
+                    editing = false
+                }) { Text("Save") }
+            },
             dismissButton = { TextButton(onClick = { editing = false }) { Text("Cancel") } }
         )
     }
@@ -560,18 +592,18 @@ private fun CategoryBudgetCard(name: String, spent: Double, limit: Double, onSav
             Column(Modifier.weight(1f)) {
                 Text(name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 Text(
-                    if (limit > 0) "${money(spent)} of ${money(limit)}" else "${money(spent)} spent · no limit",
+                    if (limitMinorUnits > 0) "${money(spentMinorUnits)} of ${money(limitMinorUnits)}" else "${money(spentMinorUnits)} spent · no limit",
                     fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            TextButton(onClick = { editing = true }) { Text(if (limit > 0) "Edit" else "Set limit") }
+            TextButton(onClick = { editing = true }) { Text(if (limitMinorUnits > 0) "Edit" else "Set limit") }
         }
-        if (limit > 0) {
+        if (limitMinorUnits > 0) {
             Spacer(Modifier.height(10.dp))
-            ProgressBar((spent / limit).toFloat(), if (spent > limit) MaterialTheme.colorScheme.error else c.color, MaterialTheme.colorScheme.surfaceVariant, height = 6.dp)
+            ProgressBar(budgetFraction(spentMinorUnits, limitMinorUnits), if (spentMinorUnits > limitMinorUnits) MaterialTheme.colorScheme.error else c.color, MaterialTheme.colorScheme.surfaceVariant, height = 6.dp)
             Spacer(Modifier.height(6.dp))
             Text(
-                if (spent > limit) "${money(spent - limit)} over limit" else "${money(limit - spent)} remaining",
+                if (spentMinorUnits > limitMinorUnits) "${money(budgetOverage(limitMinorUnits, spentMinorUnits))} over limit" else "${money(budgetRemaining(limitMinorUnits, spentMinorUnits))} remaining",
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -596,8 +628,8 @@ private fun ExpenseRow(expense: Expense, onDelete: () -> Unit) {
 }
 
 @Composable
-private fun BudgetSheet(value: Double, onDismiss: () -> Unit, onSave: (Double) -> Unit) {
-    var input by remember { mutableStateOf(if (value > 0) value.toString() else "") }
+private fun BudgetSheet(valueMinorUnits: Long, onDismiss: () -> Unit, onSave: (Long) -> Unit) {
+    var input by remember { mutableStateOf(if (valueMinorUnits > 0) minorUnitsToInput(valueMinorUnits) else "") }
     FormSheet("Monthly budget", onDismiss) {
         MomentumTextField(
             value = input,
@@ -607,7 +639,7 @@ private fun BudgetSheet(value: Double, onDismiss: () -> Unit, onSave: (Double) -
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
         )
-        PrimaryButton("Save budget", onClick = { input.toDoubleOrNull()?.takeIf { it > 0 }?.let(onSave) })
+        PrimaryButton("Save budget", onClick = { parseMinorUnits(input)?.let(onSave) })
     }
 }
 
@@ -616,7 +648,7 @@ private fun BudgetSheet(value: Double, onDismiss: () -> Unit, onSave: (Double) -
 private fun AddExpenseSheet(
     initialDate: LocalDate,
     onDismiss: () -> Unit,
-    onSave: (String, Double, String, Long) -> Unit
+    onSave: (String, Long, String, Long) -> Unit
 ) {
     var amount by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
@@ -676,7 +708,7 @@ private fun AddExpenseSheet(
             }
         }
         PrimaryButton("Save expense", onClick = {
-            amount.toDoubleOrNull()?.takeIf { it > 0 }?.let {
+            parseMinorUnits(amount)?.let {
                 onSave(title.ifBlank { category }, it, category, expenseDate.toEpochDay())
             }
         })

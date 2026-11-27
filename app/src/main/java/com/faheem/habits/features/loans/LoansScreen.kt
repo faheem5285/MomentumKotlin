@@ -8,7 +8,6 @@ import com.faheem.habits.R
 
 
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -50,8 +49,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.faheem.habits.core.settings.MomentumSettingsRepository
 import com.faheem.habits.features.loans.data.LoanRepository
+import com.faheem.habits.features.money.outstandingByLoan
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Dispatchers
@@ -68,22 +69,26 @@ class LoanViewModel @Inject constructor(
 ) : ViewModel() {
     val loans: StateFlow<List<Loan>> = repository.loans.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val people: StateFlow<List<LoanPerson>> = repository.people.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val payments: StateFlow<List<LoanPayment>> = repository.payments.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val outstandingBalances: StateFlow<Map<Int, Long>> = combine(loans, payments) { currentLoans, currentPayments ->
+        outstandingByLoan(currentLoans, currentPayments)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
     val accountBalanceMinorUnits: StateFlow<Long?> = settings.loansAccountBalanceMinorUnits
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-    fun setAccountBalance(value: Double) {
-        viewModelScope.launch { settings.setLoansAccountBalanceMinorUnits(value.toMinorUnits()) }
+    fun setAccountBalance(minorUnits: Long) {
+        viewModelScope.launch { settings.setLoansAccountBalanceMinorUnits(minorUnits) }
     }
     fun addPerson(person: LoanPerson) { viewModelScope.launch { repository.addPerson(person) } }
     fun updatePerson(person: LoanPerson) { viewModelScope.launch { repository.updatePerson(person) } }
     fun archivePerson(person: LoanPerson) { viewModelScope.launch { repository.archivePerson(person) } }
     fun deletePerson(person: LoanPerson) { viewModelScope.launch { repository.deletePerson(person) } }
-    fun add(person: String, personId: Int?, amount: Double, lent: Boolean, note: String, title: String = "", dueEpochDay: Long? = null, status: String = "pending", proofUris: List<String> = emptyList()) {
+    fun add(person: String, personId: Int?, amountMinorUnits: Long, lent: Boolean, note: String, title: String = "", dueEpochDay: Long? = null, status: String = "pending", proofUris: List<String> = emptyList()) {
         viewModelScope.launch {
             repository.add(
                 Loan(
                     person = person,
                     personId = personId,
-                    amountMinorUnits = amount.toMinorUnits(),
+                    amountMinorUnits = amountMinorUnits,
                     lent = lent,
                     note = note,
                     epochDay = today(),
@@ -103,12 +108,21 @@ class LoanViewModel @Inject constructor(
     }
     fun addAttachment(loanId: Int, uri: String) { viewModelScope.launch { repository.addAttachment(loanId, uri) } }
     fun attachments(loanId: Int) = repository.attachments(loanId)
+    fun paymentsForLoan(loanId: Int) = repository.paymentsForLoan(loanId)
+    fun paidAmount(loanId: Int) = repository.paidAmount(loanId)
+    fun addPayment(loanId: Int, amountMinorUnits: Long, note: String = "") {
+        viewModelScope.launch { repository.addPayment(loanId, amountMinorUnits, note) }
+    }
+    fun deletePayment(payment: LoanPayment) { viewModelScope.launch { repository.deletePayment(payment) } }
     fun toggleSettled(loan: Loan) { update(loan.copy(settled = !loan.settled)) }
     fun remove(loan: Loan) { viewModelScope.launch { repository.remove(loan) } }
 }
 
 private val LentColor = Positive
 private val BorrowedColor = AccentAmber
+
+private fun remainingFor(loan: Loan, balances: Map<Int, Long>): Long =
+    balances[loan.id] ?: loan.amountMinorUnits
 
 private enum class LoanDateRange(val label: String) {
     TODAY("Today"), THIS_WEEK("This week"), THIS_MONTH("This month"), THIS_YEAR("This year"), ALL_TIME("All time")
@@ -140,9 +154,12 @@ private fun PersonAvatar(person: LoanPerson, size: androidx.compose.ui.unit.Dp, 
     val image by produceState<ImageBitmap?>(initialValue = null, person.profileImageUri) {
         value = withContext(Dispatchers.IO) {
             runCatching {
-                context.contentResolver.openInputStream(Uri.parse(person.profileImageUri))?.use { input ->
-                    BitmapFactory.decodeStream(input)?.asImageBitmap()
-                }
+                decodeBoundedImage(
+                    context,
+                    Uri.parse(person.profileImageUri),
+                    ImagePreviewPolicy.AVATAR_SOURCE_BYTES,
+                    ImagePreviewPolicy.AVATAR_DECODE_DIMENSION
+                )?.asImageBitmap()
             }.getOrNull()
         }
     }
@@ -164,9 +181,7 @@ private fun ImagePreviewDialog(uri: String, title: String, onDismiss: () -> Unit
     val context = androidx.compose.ui.platform.LocalContext.current
     val image by produceState<ImageBitmap?>(initialValue = null, uri) {
         value = withContext(Dispatchers.IO) {
-            runCatching {
-                context.contentResolver.openInputStream(Uri.parse(uri))?.use { BitmapFactory.decodeStream(it)?.asImageBitmap() }
-            }.getOrNull()
+            runCatching { decodeBoundedImage(context, Uri.parse(uri))?.asImageBitmap() }.getOrNull()
         }
     }
     AlertDialog(
@@ -198,6 +213,8 @@ fun LoansScreen(
     openRequestToken: Long? = null
 ) {
     val loans by vm.loans.collectAsStateWithLifecycle()
+    val outstandingBalances by vm.outstandingBalances.collectAsStateWithLifecycle()
+    fun remaining(loan: Loan): Long = outstandingBalances[loan.id] ?: loan.amountMinorUnits
     var tab by remember { mutableIntStateOf(0) }
     var direction by remember { mutableIntStateOf(0) }
     var dateRange by remember { mutableStateOf(LoanDateRange.ALL_TIME) }
@@ -224,9 +241,13 @@ fun LoansScreen(
     val dateFilteredLoans = remember(loans, dateRange) { loans.filter { dateRange.includes(it.epochDay) } }
     val openLoans = remember(dateFilteredLoans) { dateFilteredLoans.filter { !it.settled } }
     val settledLoans = remember(dateFilteredLoans) { dateFilteredLoans.filter { it.settled } }
-    val toReceive = remember(openLoans) { openLoans.asSequence().filter { it.lent }.sumOf { it.amountMinorUnits } }
-    val toPay = remember(openLoans) { openLoans.asSequence().filter { !it.lent }.sumOf { it.amountMinorUnits } }
-    val net = toReceive - toPay
+    val toReceive = remember(openLoans, outstandingBalances) {
+        openLoans.filter { it.lent }.sumMinorUnits { remaining(it) }
+    }
+    val toPay = remember(openLoans, outstandingBalances) {
+        openLoans.filter { !it.lent }.sumMinorUnits { remaining(it) }
+    }
+    val net = saturatingSubtract(toReceive, toPay)
     val filtered = remember(openLoans, settledLoans, tab, direction, query) {
             (if (tab == 2) settledLoans else openLoans).filter { loan ->
                 (direction == 0 || (direction == 1 && loan.lent) || (direction == 2 && !loan.lent)) &&
@@ -251,8 +272,8 @@ fun LoansScreen(
         people = people,
         onDismiss = { showAdd = false; addLoanForPerson = null },
         presetPerson = addLoanForPerson
-    ) { personId, person, amount, lent, note, title, due, status, proofs ->
-        vm.add(person, personId, amount, lent, note, title, due, status, proofs)
+    ) { personId, person, amountMinorUnits, lent, note, title, due, status, proofs ->
+        vm.add(person, personId, amountMinorUnits, lent, note, title, due, status, proofs)
         showAdd = false
         addLoanForPerson = null
     }
@@ -263,22 +284,27 @@ fun LoansScreen(
             editingPerson = null
         }
     }
-    editing?.let { loan -> LoanEditorSheet(loan, people, { editing = null }) { personId, person, amount, lent, note, title, due, status, proofs ->
-        vm.updateLoan(loan.copy(amountMinorUnits = amount.toMinorUnits(), lent = lent, note = note, title = title, dueEpochDay = due, status = status), person, personId, proofs)
+    editing?.let { loan -> LoanEditorSheet(loan, people, { editing = null }) { personId, person, amountMinorUnits, lent, note, title, due, status, proofs ->
+        vm.updateLoan(loan.copy(amountMinorUnits = amountMinorUnits, lent = lent, note = note, title = title, dueEpochDay = due, status = status), person, personId, proofs)
         editing = null
         selected = null
     } }
     selected?.let { loan ->
         val attachments by vm.attachments(loan.id).collectAsStateWithLifecycle(initialValue = emptyList())
+        val loanPayments by vm.paymentsForLoan(loan.id).collectAsStateWithLifecycle(initialValue = emptyList())
         LoanDetailSheet(
             loan = loan,
+            outstandingMinorUnits = remaining(loan),
+            payments = loanPayments,
             personProfile = people.firstOrNull { it.id == loan.personId },
             attachments = attachments,
             onDismiss = { selected = null },
             onSettle = { vm.toggleSettled(loan); selected = null },
             onEdit = { editing = loan; selected = null },
             onDelete = { deleting = loan; selected = null },
-            onAttach = vm::addAttachment
+            onAttach = vm::addAttachment,
+            onAddPayment = { amountMinorUnits, note -> vm.addPayment(loan.id, amountMinorUnits, note) },
+            onDeletePayment = vm::deletePayment
         )
     }
     personDetails?.let { profile ->
@@ -290,6 +316,7 @@ fun LoansScreen(
         PersonDetailsSheet(
             person = currentProfile,
             loans = personLoans,
+            outstandingBalances = outstandingBalances,
             onDismiss = { personDetails = null },
             onAddLoan = {
                 addLoanForPerson = currentProfile
@@ -329,7 +356,7 @@ fun LoansScreen(
         Box(Modifier.weight(1f)) {
             when (tab) {
                 0 -> LoanOverview(
-                    openLoans, people, settledLoans.size, toReceive, toPay, net,
+                    openLoans, people, outstandingBalances, settledLoans.size, toReceive, toPay, net,
                     dateRange = dateRange,
                     onDateRange = { dateRange = it },
                     accountBalanceMinorUnits = accountBalanceMinorUnits,
@@ -340,6 +367,7 @@ fun LoansScreen(
                 3 -> PeopleScreen(
                     people = people,
                     loans = loans,
+                    outstandingBalances = outstandingBalances,
                     onAdd = { showPersonEditor = true },
                     onOpen = { personDetails = it },
                     onEdit = { editingPerson = it; showPersonEditor = true },
@@ -348,6 +376,7 @@ fun LoansScreen(
                 else -> LoanLedger(
                     loans = filtered,
                     people = people,
+                    outstandingBalances = outstandingBalances,
                     query = query,
                     onQuery = { query = it },
                     direction = direction,
@@ -385,6 +414,7 @@ fun LoansScreen(
 private fun PeopleScreen(
         people: List<LoanPerson>,
         loans: List<Loan>,
+        outstandingBalances: Map<Int, Long>,
         onAdd: () -> Unit,
         onOpen: (LoanPerson) -> Unit,
         onEdit: (LoanPerson) -> Unit,
@@ -404,7 +434,7 @@ private fun PeopleScreen(
         ) {
             item {
                 HeroCard {
-                    Text("People", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
+                    HeroCaption("People")
                     Text("${people.size} people in your ledger", fontSize = 26.sp, fontWeight = FontWeight.Bold)
                     Text("Keep contact details and every related loan together.", fontSize = 12.5.sp, color = Color.White.copy(alpha = 0.9f))
                 }
@@ -426,8 +456,10 @@ private fun PeopleScreen(
                             val related = loansByPerson[person.id].orEmpty()
                             if (related.isNotEmpty()) {
                                 val openCount = related.count { !it.settled }
-                                val receive = related.filter { !it.settled && it.lent }.sumOf { it.amountMinorUnits }
-                                val repay = related.filter { !it.settled && !it.lent }.sumOf { it.amountMinorUnits }
+                                val receive = related.filter { !it.settled && it.lent }
+                                    .sumMinorUnits { remainingFor(it, outstandingBalances) }
+                                val repay = related.filter { !it.settled && !it.lent }
+                                    .sumMinorUnits { remainingFor(it, outstandingBalances) }
                                 Text(
                                     "${related.size} record${if (related.size == 1) "" else "s"} · $openCount open · ${money(receive)} to receive · ${money(repay)} to repay",
                                     fontSize = 11.sp,
@@ -449,14 +481,15 @@ private fun PeopleScreen(
 private fun PersonDetailsSheet(
     person: LoanPerson,
     loans: List<Loan>,
+    outstandingBalances: Map<Int, Long>,
     onDismiss: () -> Unit,
     onAddLoan: () -> Unit,
     onEdit: () -> Unit,
     onSelectLoan: (Loan) -> Unit
 ) {
     val openLoans = loans.filterNot { it.settled }
-    val toReceive = openLoans.filter { it.lent }.sumOf { it.amountMinorUnits }
-    val toRepay = openLoans.filterNot { it.lent }.sumOf { it.amountMinorUnits }
+    val toReceive = openLoans.filter { it.lent }.sumMinorUnits { remainingFor(it, outstandingBalances) }
+    val toRepay = openLoans.filterNot { it.lent }.sumMinorUnits { remainingFor(it, outstandingBalances) }
     var previewAvatar by remember(person.id) { mutableStateOf(false) }
 
     FormSheet(person.name, onDismiss) {
@@ -494,7 +527,7 @@ private fun PersonDetailsSheet(
             EmptyState(Icons.Rounded.ReceiptLong, "No loans yet", "Add the first loan directly to this person.")
         } else {
             loans.forEach { loan ->
-                LoanRow(loan, person) { onSelectLoan(loan) }
+                LoanRow(loan, person, outstandingBalances) { onSelectLoan(loan) }
             }
         }
     }
@@ -535,7 +568,8 @@ private fun PersonEditorSheet(initial: LoanPerson?, onDismiss: () -> Unit, onSav
 
 @Composable
 private fun LoanOverview(
-    openLoans: List<Loan>, people: List<LoanPerson>, settledCount: Int, toReceive: Long, toPay: Long, net: Long,
+    openLoans: List<Loan>, people: List<LoanPerson>, outstandingBalances: Map<Int, Long>,
+    settledCount: Int, toReceive: Long, toPay: Long, net: Long,
     dateRange: LoanDateRange, onDateRange: (LoanDateRange) -> Unit,
     accountBalanceMinorUnits: Long?,
     onEditAccountBalance: () -> Unit,
@@ -548,7 +582,7 @@ private fun LoanOverview(
         item { LoanDateRangeFilters(dateRange, onDateRange) }
         item {
             HeroCard {
-                Text("Outstanding balance", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
+                HeroCaption("Outstanding balance")
                 Text(
                     if (net >= 0) "${money(net)} in your favour" else "${money(-net)} net owed",
                     fontSize = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp
@@ -616,7 +650,7 @@ private fun LoanOverview(
                             ChartLegend(
                                 slices = slices,
                                 maxRows = 2,
-                                valueFormatter = { money(it.toDouble()) }
+                                valueFormatter = { money(it.toLong()) }
                             )
                             Spacer(Modifier.height(8.dp))
                             Text(
@@ -630,7 +664,7 @@ private fun LoanOverview(
             item {
                 val byPerson = openLoans
                     .groupBy { it.person.trim().ifBlank { "Unnamed" } }
-                    .mapValues { (_, loans) -> loans.sumOf { it.amountMinorUnits } / 100.0 }
+                    .mapValues { (_, loans) -> loans.sumMinorUnits { remainingFor(it, outstandingBalances) } }
                     .entries
                     .sortedByDescending { it.value }
                     .take(6)
@@ -653,7 +687,7 @@ private fun LoanOverview(
                     HorizontalBarList(
                         items = byPerson,
                         maxItems = 6,
-                        valueFormatter = { money(it.toDouble()) }
+                        valueFormatter = { money(it.toLong()) }
                     )
                 }
             }
@@ -667,13 +701,16 @@ private fun LoanOverview(
             )
         }
         if (recent.isEmpty()) item { EmptyState(Icons.Rounded.CheckCircle, "All clear", "Add a lend or borrow record whenever you need to track one") }
-        items(recent, key = { it.id }) { loan -> LoanRow(loan, people.firstOrNull { it.id == loan.personId }) { onSelect(loan) } }
+        items(recent, key = { it.id }) { loan ->
+            LoanRow(loan, people.firstOrNull { it.id == loan.personId }, outstandingBalances) { onSelect(loan) }
+        }
     }
 }
 
 @Composable
 private fun LoanLedger(
-    loans: List<Loan>, people: List<LoanPerson>, query: String, onQuery: (String) -> Unit, direction: Int, onDirection: (Int) -> Unit,
+    loans: List<Loan>, people: List<LoanPerson>, outstandingBalances: Map<Int, Long>,
+    query: String, onQuery: (String) -> Unit, direction: Int, onDirection: (Int) -> Unit,
     settled: Boolean, dateRange: LoanDateRange, onDateRange: (LoanDateRange) -> Unit,
     onSelect: (Loan) -> Unit, onEmptyAdd: () -> Unit
 ) {
@@ -705,7 +742,7 @@ private fun LoanLedger(
             }
         }
         item {
-            val total = loans.sumOf { it.amountMinorUnits }
+            val total = loans.sumMinorUnits { remainingFor(it, outstandingBalances) }
             PremiumCard(accent = if (settled) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -733,13 +770,16 @@ private fun LoanLedger(
                 }
             }
         }
-        items(loans, key = { it.id }) { loan -> LoanRow(loan, people.firstOrNull { it.id == loan.personId }) { onSelect(loan) } }
+        items(loans, key = { it.id }) { loan ->
+            LoanRow(loan, people.firstOrNull { it.id == loan.personId }, outstandingBalances) { onSelect(loan) }
+        }
     }
 }
 
 @Composable
-private fun LoanRow(loan: Loan, person: LoanPerson?, onClick: () -> Unit) {
+private fun LoanRow(loan: Loan, person: LoanPerson?, outstandingBalances: Map<Int, Long>, onClick: () -> Unit) {
     val color = if (loan.lent) LentColor else BorrowedColor
+    val shownAmount = if (loan.settled) loan.amountMinorUnits else remainingFor(loan, outstandingBalances)
     PremiumCard(
         onClick = onClick,
         modifier = Modifier.alpha(if (loan.settled) 0.62f else 1f),
@@ -756,14 +796,14 @@ private fun LoanRow(loan: Loan, person: LoanPerson?, onClick: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(loan.person, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    "${if (loan.settled) "Settled" else if (loan.lent) "Owes you" else "You owe"} · ${dayText(loan.epochDay)}",
+                    "${if (loan.settled) "Settled" else if (loan.lent) "Owes you" else "You owe"} · ${if (loan.settled) "" else "outstanding · "}${dayText(loan.epochDay)}",
                     fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (loan.note.isNotBlank()) {
                     Text(loan.note, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text((if (loan.lent) "+" else "−") + money(loan.amountMinorUnits), color = color, fontWeight = FontWeight.Bold)
+            Text((if (loan.lent) "+" else "−") + money(shownAmount), color = color, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -786,12 +826,12 @@ private fun BalancePill(label: String, value: String, modifier: Modifier) {
 private fun AccountBalanceSheet(
     initialBalanceMinorUnits: Long?,
     onDismiss: () -> Unit,
-    onSave: (Double) -> Unit
+    onSave: (Long) -> Unit
 ) {
     var amount by remember(initialBalanceMinorUnits) {
-        mutableStateOf(initialBalanceMinorUnits?.let { (it / 100.0).toString() }.orEmpty())
+        mutableStateOf(initialBalanceMinorUnits?.let(::minorUnitsToInput).orEmpty())
     }
-    val parsedAmount = amount.toDoubleOrNull()
+    val parsedAmount = parseMinorUnits(amount, allowZero = true)
     MomentumDialog(
         onDismissRequest = onDismiss,
         title = { Text("In my account") },
@@ -814,8 +854,8 @@ private fun AccountBalanceSheet(
         },
         confirmButton = {
             TextButton(
-                enabled = parsedAmount != null && parsedAmount >= 0,
-                onClick = { parsedAmount?.takeIf { it >= 0 }?.let(onSave) }
+                enabled = parsedAmount != null,
+                onClick = { parsedAmount?.let(onSave) }
             ) { Text("Save balance") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
@@ -840,16 +880,24 @@ private fun LoanMetric(label: String, value: String, icon: androidx.compose.ui.g
 @Composable
 private fun LoanDetailSheet(
     loan: Loan,
+    outstandingMinorUnits: Long,
+    payments: List<LoanPayment>,
     personProfile: LoanPerson?,
     attachments: List<LoanAttachment>,
     onDismiss: () -> Unit,
     onSettle: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onAttach: (Int, String) -> Unit
+    onAttach: (Int, String) -> Unit,
+    onAddPayment: (Long, String) -> Unit,
+    onDeletePayment: (LoanPayment) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var previewAvatar by remember(loan.id) { mutableStateOf(false) }
+    var paymentAmount by remember(loan.id) { mutableStateOf("") }
+    var paymentNote by remember(loan.id) { mutableStateOf("") }
+    val parsedPayment = parseMinorUnits(paymentAmount)
+    val paidMinorUnits = remember(payments) { payments.sumMinorUnits { it.amountMinorUnits } }
     val color = if (loan.lent) LentColor else BorrowedColor
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -864,8 +912,9 @@ private fun LoanDetailSheet(
             }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(if (loan.lent) "They owe you" else "You owe them", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
-                Text(money(loan.amountMinorUnits), fontSize = 27.sp, fontWeight = FontWeight.Bold, color = color, letterSpacing = (-0.4).sp)
+                Text(if (loan.lent) "Outstanding from them" else "Outstanding you owe", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                Text(money(outstandingMinorUnits), fontSize = 27.sp, fontWeight = FontWeight.Bold, color = color, letterSpacing = (-0.4).sp)
+                Text("Principal ${money(loan.amountMinorUnits)}", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             StatusPill(if (loan.settled) "Settled" else "Open", if (loan.settled) Positive else color)
         }
@@ -878,6 +927,49 @@ private fun LoanDetailSheet(
         if (loan.title.isNotBlank()) LoanDetailLine("Purpose", loan.title)
         loan.dueEpochDay?.let { LoanDetailLine("Deadline", dayText(it)) }
         if (loan.note.isNotBlank()) LoanDetailLine("Note", loan.note)
+        LoanDetailLine("Paid so far", money(paidMinorUnits))
+        SectionHeader("Payments", subtitle = if (payments.isEmpty()) "No payments recorded" else "${payments.size} payment${if (payments.size == 1) "" else "s"} recorded")
+        payments.forEach { payment ->
+            PremiumCard(contentPadding = PaddingValues(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("${money(payment.amountMinorUnits)} · ${dayText(payment.epochDay)}", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        if (payment.note.isNotBlank()) {
+                            Text(payment.note, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    IconButton(onClick = { onDeletePayment(payment) }) {
+                        Icon(Icons.Rounded.DeleteOutline, "Delete payment", tint = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        }
+        MomentumTextField(
+            value = paymentAmount,
+            onValueChange = { paymentAmount = it.filter { ch -> ch.isDigit() || ch == '.' }.take(12) },
+            label = { Text("Payment amount") },
+            prefix = { Text(CURRENCY) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+        )
+        MomentumTextField(value = paymentNote, onValueChange = { paymentNote = it }, label = { Text("Payment note (optional)") }, singleLine = true)
+        Text(
+            "Payments reduce the outstanding balance. Extra payments are kept in history but cannot make the balance negative.",
+            fontSize = 11.5.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        PrimaryButton(
+            "Add payment",
+            enabled = parsedPayment != null,
+            icon = Icons.Rounded.Add,
+            onClick = {
+                parsedPayment?.let { amount ->
+                    onAddPayment(amount, paymentNote.trim())
+                    paymentAmount = ""
+                    paymentNote = ""
+                }
+            }
+        )
         SectionHeader("Loan proof", subtitle = if (attachments.isEmpty()) "No proof files attached" else "${attachments.size} file${if (attachments.size == 1) "" else "s"}")
         attachments.forEach { attachment ->
             SecondaryButton("Preview · ${attachment.name}", onClick = { openProofFile(context, attachment.uri, attachment.mime) }, icon = Icons.Rounded.Visibility)
@@ -915,14 +1007,16 @@ private fun LoanEditorSheet(
     people: List<LoanPerson>,
     onDismiss: () -> Unit,
     presetPerson: LoanPerson? = null,
-    onSave: (Int?, String, Double, Boolean, String, String, Long?, String, List<String>) -> Unit
+    onSave: (Int?, String, Long, Boolean, String, String, Long?, String, List<String>) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var person by remember(initial, presetPerson) { mutableStateOf(initial?.person ?: presetPerson?.name.orEmpty()) }
     var selectedPersonId by remember(initial, presetPerson) { mutableIntStateOf(initial?.personId ?: presetPerson?.id ?: 0) }
     var creatingPerson by remember(initial, presetPerson) { mutableStateOf(initial == null && presetPerson == null) }
     var peopleExpanded by remember { mutableStateOf(false) }
-    var amount by remember(initial) { mutableStateOf(initial?.amountMinorUnits?.toString() ?: "") }
+    var amount by remember(initial) {
+        mutableStateOf(initial?.amountMinorUnits?.let(::minorUnitsToInput) ?: "")
+    }
     var note by remember(initial) { mutableStateOf(initial?.note ?: "") }
     var lent by remember(initial) { mutableStateOf(initial?.lent ?: true) }
     var title by remember(initial) { mutableStateOf(initial?.title ?: "") }
@@ -1023,8 +1117,9 @@ private fun LoanEditorSheet(
         PrimaryButton(if (initial == null) "Save record" else "Save changes", onClick = {
             val due = dueText.takeIf { it.isNotBlank() }?.let { runCatching { LocalDate.parse(it).toEpochDay() }.getOrNull() }
             val personName = selectedPerson?.name ?: person.trim()
-            amount.toDoubleOrNull()?.takeIf { personName.isNotBlank() && it > 0 }?.let {
-                onSave(selectedPerson?.id, personName, it, lent, note.trim(), title.trim(), due, status, proofUris.toList())
+            val amountMinorUnits = parseMinorUnits(amount)
+            if (personName.isNotBlank() && amountMinorUnits != null) {
+                onSave(selectedPerson?.id, personName, amountMinorUnits, lent, note.trim(), title.trim(), due, status, proofUris.toList())
             }
         })
     }

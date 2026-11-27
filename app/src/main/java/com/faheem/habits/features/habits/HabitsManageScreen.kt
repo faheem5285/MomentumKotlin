@@ -83,7 +83,7 @@ fun ManageScreen(vm: HabitViewModel) {
         ) {
             item {
                 HeroCard(contentPadding = 18.dp) {
-                    Text("Manage habits", fontSize = 13.sp, color = Color.White.copy(alpha = 0.84f))
+                    HeroCaption("Manage habits")
                     Text("$totalActive active", fontSize = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
                     Text(
                         "$totalArchived archived · edit, reschedule or archive any habit",

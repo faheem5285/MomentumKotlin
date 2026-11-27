@@ -2,26 +2,32 @@ package com.faheem.habits.features.habits
 import com.faheem.habits.core.data.*
 import com.faheem.habits.core.notifications.*
 import com.faheem.habits.core.ui.*
+import com.faheem.habits.features.phase7.ratePercent
 import com.faheem.habits.R
 
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Chat
+import androidx.compose.material.icons.automirrored.rounded.DirectionsBike
+import androidx.compose.material.icons.automirrored.rounded.DirectionsRun
+import androidx.compose.material.icons.automirrored.rounded.DirectionsWalk
+import androidx.compose.material.icons.automirrored.rounded.FactCheck
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
+import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
+import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
-import java.time.LocalDate
-
+import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.unit.dp
 val DAY_LETTERS = listOf("M", "T", "W", "T", "F", "S", "S")
 val DAY_NAMES = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 val TIME_LABELS = listOf("Anytime", "Morning", "Afternoon", "Evening")
 const val WEEKDAYS = 31
 const val WEEKENDS = 96
-
-/** daysMask: bit0 = Monday ... bit6 = Sunday */
-fun isScheduled(mask: Int, epochDay: Long): Boolean {
-    val dow = LocalDate.ofEpochDay(epochDay).dayOfWeek.value
-    return ((mask shr (dow - 1)) and 1) == 1
-}
 
 fun scheduleText(mask: Int): String = when (mask) {
     ALL_DAYS -> "Every day"
@@ -30,55 +36,156 @@ fun scheduleText(mask: Int): String = when (mask) {
     else -> DAY_NAMES.filterIndexed { i, _ -> ((mask shr i) and 1) == 1 }.joinToString(", ")
 }
 
+private val PrayerHabitIcon = ImageVector.Builder(
+    name = "PrayerHands",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f
+).apply {
+    path(
+        fill = SolidColor(Color.Black),
+        stroke = SolidColor(Color.Black),
+        strokeLineWidth = 1.35f,
+        strokeLineCap = StrokeCap.Round,
+        strokeLineJoin = StrokeJoin.Round
+    ) {
+        moveTo(12f, 2.2f)
+        curveTo(9.95f, 2.2f, 8.3f, 3.85f, 8.3f, 5.9f)
+        curveTo(8.3f, 7.95f, 9.95f, 9.6f, 12f, 9.6f)
+        curveTo(14.05f, 9.6f, 15.7f, 7.95f, 15.7f, 5.9f)
+        curveTo(15.7f, 3.85f, 14.05f, 2.2f, 12f, 2.2f)
+        close()
+    }
+    path(
+        stroke = SolidColor(Color.Black),
+        strokeLineWidth = 1.75f,
+        strokeLineCap = StrokeCap.Round,
+        strokeLineJoin = StrokeJoin.Round
+    ) {
+        moveTo(9.4f, 9.1f)
+        curveTo(7.25f, 8.9f, 6.1f, 10.25f, 6.25f, 12.5f)
+        lineTo(6.7f, 17.45f)
+        curveTo(6.85f, 18.8f, 6.3f, 19.6f, 5.05f, 20f)
+        lineTo(2.65f, 20.75f)
+        curveTo(1.5f, 21.1f, 1.7f, 22.05f, 2.9f, 22.05f)
+        lineTo(10.2f, 22.05f)
+        curveTo(11.6f, 22.05f, 12.25f, 21.1f, 11.65f, 20f)
+        lineTo(10.55f, 17.8f)
+        curveTo(12.8f, 17.6f, 14.25f, 16.45f, 15.45f, 14.9f)
+        lineTo(17.7f, 13.35f)
+        moveTo(9.4f, 9.1f)
+        curveTo(10.65f, 9.15f, 11.3f, 10.35f, 11.8f, 11.7f)
+        lineTo(12.45f, 13.1f)
+        lineTo(16.55f, 11.55f)
+        lineTo(18.9f, 9.45f)
+        lineTo(19.85f, 7.45f)
+        curveTo(20.2f, 6.65f, 20.95f, 6.8f, 20.85f, 7.6f)
+        lineTo(20.5f, 9.3f)
+        lineTo(21.7f, 8.05f)
+        curveTo(22.3f, 7.45f, 22.9f, 7.95f, 22.5f, 8.65f)
+        lineTo(20.95f, 11.4f)
+        curveTo(20.55f, 12.1f, 20.05f, 12.6f, 19.35f, 13.05f)
+        lineTo(16.2f, 15.15f)
+    }
+}.build()
+
 val HabitIcons: Map<String, ImageVector> = linkedMapOf(
     // Dedicated symbols keep the Muslim habit library recognizable in cards,
     // templates, and the edit form instead of reusing generic icons.
-    "prayer" to Icons.Rounded.SelfImprovement,
-    "quran" to Icons.Rounded.AutoStories,
+    "prayer" to PrayerHabitIcon,
+    "quran" to Icons.AutoMirrored.Rounded.MenuBook,
     "dhikr" to Icons.Rounded.Toll,
-    "dua" to Icons.Rounded.WavingHand,
-    "charity" to Icons.Rounded.VolunteerActivism,
+    "dua" to Icons.Rounded.PanTool,
+    "charity" to Icons.Rounded.Handshake,
     "fast" to Icons.Rounded.NoFood,
     "mosque" to Icons.Rounded.Mosque,
     "wudu" to Icons.Rounded.WaterDrop,
-    "star" to Icons.Rounded.Star,
+    "star" to Icons.Rounded.Celebration,
     "health" to Icons.Rounded.HealthAndSafety,
     "fitness" to Icons.Rounded.FitnessCenter,
-    "run" to Icons.Rounded.DirectionsRun,
-    "cycle" to Icons.Rounded.DirectionsBike,
+    "run" to Icons.AutoMirrored.Rounded.DirectionsRun,
+    "cycle" to Icons.AutoMirrored.Rounded.DirectionsBike,
     "swim" to Icons.Rounded.Pool,
-    "walk" to Icons.Rounded.DirectionsWalk,
+    "walk" to Icons.AutoMirrored.Rounded.DirectionsWalk,
     "water" to Icons.Rounded.WaterDrop,
     "bed" to Icons.Rounded.Bedtime,
-    "book" to Icons.Rounded.MenuBook,
-    "mind" to Icons.Rounded.SelfImprovement,
-    "food" to Icons.Rounded.Restaurant,
-    "savings" to Icons.Rounded.Savings,
+    "book" to Icons.Rounded.AutoStories,
+    "mind" to Icons.Rounded.Psychology,
+    "food" to Icons.Rounded.DinnerDining,
+    "savings" to Icons.AutoMirrored.Rounded.TrendingUp,
     "wallet" to Icons.Rounded.AccountBalanceWallet,
-    "code" to Icons.Rounded.Code,
-    "music" to Icons.Rounded.MusicNote,
-    "brush" to Icons.Rounded.Brush,
+    "code" to Icons.Rounded.LaptopChromebook,
+    "music" to Icons.Rounded.Podcasts,
+    "brush" to Icons.Rounded.Palette,
     "heart" to Icons.Rounded.Favorite,
     "home" to Icons.Rounded.Home,
     "work" to Icons.Rounded.Work,
     "school" to Icons.Rounded.School,
-    "edit" to Icons.Rounded.Edit,
-    "language" to Icons.Rounded.Language,
-    "park" to Icons.Rounded.Park,
+    "edit" to Icons.Rounded.EditNote,
+    "language" to Icons.Rounded.Translate,
+    "park" to Icons.Rounded.Forest,
     "pets" to Icons.Rounded.Pets,
-    "clean" to Icons.Rounded.CleaningServices,
-    "spa" to Icons.Rounded.Spa,
-    "bolt" to Icons.Rounded.Bolt,
-    "sun" to Icons.Rounded.WbSunny,
-    "groups" to Icons.Rounded.Groups,
-    "call" to Icons.Rounded.Call,
+    "clean" to Icons.Rounded.LocalLaundryService,
+    "spa" to Icons.Rounded.SelfImprovement,
+    "bolt" to Icons.Rounded.TrackChanges,
+    "sun" to Icons.Rounded.WbTwilight,
+    "groups" to Icons.Rounded.FamilyRestroom,
+    "call" to Icons.AutoMirrored.Rounded.Chat,
     "timer" to Icons.Rounded.Timer,
-    "trophy" to Icons.Rounded.EmojiEvents,
+    "trophy" to Icons.Rounded.Celebration,
     "idea" to Icons.Rounded.Lightbulb,
-    "phone" to Icons.Rounded.PhoneAndroid,
-    "directions" to Icons.Rounded.Directions,
-    "checklist" to Icons.Rounded.Checklist,
+    "phone" to Icons.Rounded.Devices,
+    "directions" to Icons.Rounded.Hiking,
+    "checklist" to Icons.Rounded.TaskAlt,
     "calendar" to Icons.Rounded.CalendarMonth,
+    "psychology" to Icons.Rounded.Psychology,
+    "breathing" to Icons.Rounded.Air,
+    "sunrise" to Icons.Rounded.WbTwilight,
+    "medicine" to Icons.Rounded.Medication,
+    "eyes" to Icons.Rounded.Visibility,
+    "balance" to Icons.Rounded.Balance,
+    "stairs" to Icons.Rounded.Stairs,
+    "target" to Icons.Rounded.TrackChanges,
+    "task" to Icons.Rounded.TaskAlt,
+    "email" to Icons.Rounded.Email,
+    "laptop" to Icons.Rounded.LaptopChromebook,
+    "review" to Icons.AutoMirrored.Rounded.FactCheck,
+    "science" to Icons.Rounded.Science,
+    "calculator" to Icons.Rounded.Calculate,
+    "translate" to Icons.Rounded.Translate,
+    "podcast" to Icons.Rounded.Podcasts,
+    "history" to Icons.Rounded.HistoryEdu,
+    "family" to Icons.Rounded.FamilyRestroom,
+    "chat" to Icons.AutoMirrored.Rounded.Chat,
+    "handshake" to Icons.Rounded.Handshake,
+    "receipt" to Icons.AutoMirrored.Rounded.ReceiptLong,
+    "trend" to Icons.AutoMirrored.Rounded.TrendingUp,
+    "laundry" to Icons.Rounded.LocalLaundryService,
+    "plant" to Icons.Rounded.LocalFlorist,
+    "recycle" to Icons.Rounded.Recycling,
+    "kitchen" to Icons.Rounded.Kitchen,
+    "devices" to Icons.Rounded.Devices,
+    "backup" to Icons.Rounded.Backup,
+    "security" to Icons.Rounded.Security,
+    "notifications" to Icons.Rounded.Notifications,
+    "wifiOff" to Icons.Rounded.WifiOff,
+    "password" to Icons.Rounded.Password,
+    "palette" to Icons.Rounded.Palette,
+    "camera" to Icons.Rounded.PhotoCamera,
+    "movie" to Icons.Rounded.Movie,
+    "design" to Icons.Rounded.DesignServices,
+    "forest" to Icons.Rounded.Forest,
+    "meal" to Icons.Rounded.DinnerDining,
+    "sports" to Icons.Rounded.SportsSoccer,
+    "basketball" to Icons.Rounded.SportsBasketball,
+    "hiking" to Icons.Rounded.Hiking,
+    "celebrate" to Icons.Rounded.Celebration,
+    "inventory" to Icons.Rounded.Inventory2,
+    "shopping" to Icons.Rounded.ShoppingCart,
+    "budget" to Icons.Rounded.AccountBalanceWallet,
+    "journal" to Icons.Rounded.EditNote,
+    "nature" to Icons.Rounded.Forest,
 )
 
 val IslamicHabitIconKeys = listOf("prayer", "quran", "dhikr", "dua", "charity", "fast", "mosque", "wudu")
@@ -92,43 +199,6 @@ val HabitColors = listOf(
 )
 
 fun habitColor(index: Int): Color = HabitColors[Math.floorMod(index, HabitColors.size)]
-
-data class StreakInfo(val current: Int, val best: Int)
-
-/**
- * Streaks count consecutive scheduled days that were completed.
- * Days the habit is not scheduled never break a streak, and today
- * does not break the streak until the day is over.
- */
-fun computeStreaks(days: Set<Long>, mask: Int, today: Long): StreakInfo {
-    if (days.isEmpty() || mask == 0) return StreakInfo(0, 0)
-    val first = days.minOrNull() ?: return StreakInfo(0, 0)
-    var best = 0
-    var run = 0
-    for (day in first..today) {
-        if (!isScheduled(mask, day)) continue
-        if (day in days) {
-            run++
-            best = maxOf(best, run)
-        } else if (day != today) {
-            run = 0
-        }
-    }
-
-    // Today remains available until midnight, so an unchecked habit does not
-    // break yesterday's streak early.
-    var current = 0
-    var cursor = today
-    if (isScheduled(mask, cursor) && cursor !in days) cursor--
-    while (cursor >= first) {
-        if (isScheduled(mask, cursor)) {
-            if (cursor !in days) break
-            current++
-        }
-        cursor--
-    }
-    return StreakInfo(current, best)
-}
 
 data class DayRate(val day: Long, val rate: Float?)   // null = nothing scheduled
 
@@ -168,7 +238,7 @@ fun computeInsights(all: List<HabitUi>, today: Long): Insights {
         schedSum += sched.size
         doneSum += sched.count { d in it.days }
     }
-    val rate7 = if (schedSum == 0) 0 else (doneSum * 100) / schedSum
+    val rate7 = ratePercent(doneSum, schedSum)
 
     val todayDow = java.time.LocalDate.ofEpochDay(today).dayOfWeek.value
     val weekStart = today - (todayDow - 1) - 11 * 7

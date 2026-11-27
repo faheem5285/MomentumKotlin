@@ -54,3 +54,39 @@ private fun DesignSystemDarkPreview() {
 private fun DesignSystemLargeTextPreview() {
     MomentumTheme(themeMode = ThemeMode.Light) { DesignSystemGallery() }
 }
+
+@Preview(name = "Compact 360dp", widthDp = 360, showBackground = true)
+@Composable
+private fun DesignSystemCompactPreview() {
+    MomentumTheme(themeMode = ThemeMode.Light) { DesignSystemGallery() }
+}
+
+@Preview(name = "Large text 2x", widthDp = 360, fontScale = 2f, showBackground = true)
+@Composable
+private fun DesignSystemLargeText2xPreview() {
+    MomentumTheme(themeMode = ThemeMode.Light, reduceEffects = true) { DesignSystemGallery() }
+}
+
+@Preview(name = "Dark reduced motion", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun DesignSystemDarkReducedMotionPreview() {
+    MomentumTheme(themeMode = ThemeMode.Dark, reduceEffects = true) { DesignSystemGallery() }
+}
+
+@Preview(name = "Dynamic accent", showBackground = true)
+@Composable
+private fun DesignSystemDynamicAccentPreview() {
+    MomentumTheme(themeMode = ThemeMode.Light, dynamicAccent = true) { DesignSystemGallery() }
+}
+
+@Preview(name = "Glass intensity low", widthDp = 360, showBackground = true)
+@Composable
+private fun DesignSystemLowGlassPreview() {
+    MomentumTheme(themeMode = ThemeMode.Light, glassIntensity = 0.88f) { DesignSystemGallery() }
+}
+
+@Preview(name = "Glass intensity high", widthDp = 360, showBackground = true)
+@Composable
+private fun DesignSystemHighGlassPreview() {
+    MomentumTheme(themeMode = ThemeMode.Light, glassIntensity = 1.12f) { DesignSystemGallery() }
+}

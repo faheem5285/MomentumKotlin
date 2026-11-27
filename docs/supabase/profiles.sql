@@ -2,31 +2,58 @@
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   display_name text not null default '',
+  email text not null default '',
   avatar_url text not null default '',
   phone text not null default '',
   bio text not null default '',
+  member_since bigint not null default 0,
   updated_at timestamptz not null default now()
 );
+alter table public.profiles
+  add column if not exists email text not null default '',
+  add column if not exists member_since bigint not null default 0;
 
 alter table public.profiles enable row level security;
-grant select, insert, update on public.profiles to authenticated;
+revoke all on public.profiles from public, anon;
+grant select, insert, update, delete on public.profiles to authenticated;
 
-drop policy if exists "Users can read their own profile" on public.profiles;
-drop policy if exists "Users can create their own profile" on public.profiles;
-drop policy if exists "Users can update their own profile" on public.profiles;
+-- Use the same policy names as docs/supabase-schema.sql so this standalone
+-- script cannot leave a second, more permissive policy set behind. When the
+-- canonical wipe guard is installed, keep it in the write policies; without
+-- it, the owner checks below are sufficient on a standalone project.
+do $$
+declare
+  wipe_guard_installed boolean := to_regprocedure('public.momentum_sync_writes_allowed()') is not null;
+begin
+  drop policy if exists "Users can read their own profile" on public.profiles;
+  drop policy if exists "Users can create their own profile" on public.profiles;
+  drop policy if exists "Users can update their own profile" on public.profiles;
+  drop policy if exists profiles_owner_select on public.profiles;
+  drop policy if exists profiles_owner_insert on public.profiles;
+  drop policy if exists profiles_owner_update on public.profiles;
+  drop policy if exists profiles_owner_delete on public.profiles;
 
-create policy "Users can read their own profile"
-  on public.profiles for select to authenticated
-  using (auth.uid() = id);
+  create policy profiles_owner_select on public.profiles
+    for select to authenticated using (id = auth.uid());
 
-create policy "Users can create their own profile"
-  on public.profiles for insert to authenticated
-  with check (auth.uid() = id);
-
-create policy "Users can update their own profile"
-  on public.profiles for update to authenticated
-  using (auth.uid() = id)
-  with check (auth.uid() = id);
+  if wipe_guard_installed then
+    create policy profiles_owner_insert on public.profiles
+      for insert to authenticated with check (id = auth.uid() and public.momentum_sync_writes_allowed());
+    create policy profiles_owner_update on public.profiles
+      for update to authenticated using (id = auth.uid() and public.momentum_sync_writes_allowed())
+      with check (id = auth.uid() and public.momentum_sync_writes_allowed());
+    create policy profiles_owner_delete on public.profiles
+      for delete to authenticated using (id = auth.uid() and public.momentum_sync_writes_allowed());
+  else
+    create policy profiles_owner_insert on public.profiles
+      for insert to authenticated with check (id = auth.uid());
+    create policy profiles_owner_update on public.profiles
+      for update to authenticated using (id = auth.uid())
+      with check (id = auth.uid());
+    create policy profiles_owner_delete on public.profiles
+      for delete to authenticated using (id = auth.uid());
+  end if;
+end $$;
 
 create or replace function public.set_profile_updated_at()
 returns trigger language plpgsql as $$

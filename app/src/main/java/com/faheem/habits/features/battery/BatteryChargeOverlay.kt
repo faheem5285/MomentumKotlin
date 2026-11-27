@@ -87,6 +87,12 @@ class BatteryChargingReceiver : BroadcastReceiver() {
 }
 
 internal fun handleAutomaticBatteryPowerEvent(context: Context, action: String?, source: String) {
+        val preferences = context.getSharedPreferences(BatteryAnimationPreferences.NAME, Context.MODE_PRIVATE)
+        val eventDecision = batteryPowerEventAction(
+            action = action,
+            nowElapsedMs = SystemClock.elapsedRealtime(),
+            lastEventElapsedMs = preferences.getLong("last_auto_show_event_elapsed", 0L)
+        )
         when (action) {
             Intent.ACTION_POWER_CONNECTED -> {
                 BatteryAnimationDiagnostics.record(context, "Power connected event received", "$source received Android's ACTION_POWER_CONNECTED event. Auto-show is ${BatteryAnimationPreferences.autoShow(context)}.")
@@ -96,11 +102,11 @@ internal fun handleAutomaticBatteryPowerEvent(context: Context, action: String?,
                     BatteryAnimationDiagnostics.record(context, "Animation skipped", "Automatic charging animation is turned off in Battery settings.")
                     return
                 }
-                val preferences = context.getSharedPreferences(BatteryAnimationPreferences.NAME, Context.MODE_PRIVATE)
-                val now = System.currentTimeMillis()
-                val previousEvent = preferences.getLong("last_auto_show_event", 0L)
-                if (now - previousEvent < 2_000L) return
-                preferences.edit().putLong("last_auto_show_event", now).apply()
+                if (eventDecision == BatteryPowerEventAction.IGNORE_DUPLICATE) {
+                    BatteryAnimationDiagnostics.record(context, "Duplicate power event ignored", "Another power connection was handled moments ago.")
+                    return
+                }
+                preferences.edit().putLong("last_auto_show_event_elapsed", SystemClock.elapsedRealtime()).apply()
                 val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
                 val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
                 if (Settings.canDrawOverlays(context) && power.isInteractive && !keyguard.isKeyguardLocked) {
@@ -119,8 +125,9 @@ internal fun handleAutomaticBatteryPowerEvent(context: Context, action: String?,
             Intent.ACTION_POWER_DISCONNECTED -> {
                 val sessionReading = batteryReading(context.registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED)))
                 BatterySessionHistory.finish(context, sessionReading.percent)
-                context.getSharedPreferences(BatteryAnimationPreferences.NAME, Context.MODE_PRIVATE)
-                    .edit().putLong("last_auto_show_event", 0L).apply()
+                preferences.edit()
+                    .remove("last_auto_show_event")
+                    .putLong("last_auto_show_event_elapsed", 0L).apply()
                 ChargeAnimationOverlay.dismiss(context)
                 NotificationManagerCompat.from(context).cancel(BatteryAnimationPreferences.NOTIFICATION_ID)
                 BatteryAnimationDiagnostics.record(context, "Power disconnected", "The charger was unplugged; any charging overlay and fallback notification were dismissed.")

@@ -22,7 +22,7 @@ class SensitiveClipboardWorker(
             ?.coerceToText(applicationContext)
             ?.toString()
             ?: return Result.success()
-        if (MessageDigest.isEqual(hash(current), VaultCrypto.decode(expected))) {
+        if (MessageDigest.isEqual(sensitiveClipboardHash(current), VaultCrypto.decode(expected))) {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                 clipboard.clearPrimaryClip()
             } else {
@@ -31,9 +31,6 @@ class SensitiveClipboardWorker(
         }
         return Result.success()
     }
-
-    private fun hash(value: String): ByteArray =
-        MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
 
     companion object {
         const val KEY_HASH = "sensitive_clipboard_hash"

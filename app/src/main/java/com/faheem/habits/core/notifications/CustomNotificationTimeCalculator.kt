@@ -1,6 +1,8 @@
 package com.faheem.habits.core.notifications
 
+import com.faheem.habits.core.data.ALL_DAYS
 import com.faheem.habits.core.data.CustomNotification
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.ZonedDateTime
 
@@ -12,6 +14,20 @@ internal object CustomNotificationTimeCalculator {
     const val MONTHLY = "monthly"
 
     val repeatModes = listOf(ONCE, DAILY, WEEKLY, MONTHLY)
+
+    /** Single Monday-first bit mapping shared by the editor, summaries and scheduler. */
+    fun bitFor(day: DayOfWeek): Int = 1 shl (day.value - 1)
+
+    fun dayForBit(bit: Int): DayOfWeek? =
+        DayOfWeek.values().firstOrNull { bitFor(it) == bit }
+
+    /**
+     * Old editor chips used Calendar constants (Sunday = 1 ... Saturday = 7).
+     * The stored format is Monday-first (bit0 = Mon ... bit6 = Sun), so rotate
+     * those legacy bits once before calculating schedules.
+     */
+    fun repairLegacyDaysMask(mask: Int): Int =
+        (((mask shr 1) or ((mask and 1) shl 6)) and ALL_DAYS)
 
     fun next(notification: CustomNotification, now: ZonedDateTime): ZonedDateTime? {
         if (!notification.enabled) return null
@@ -32,8 +48,7 @@ internal object CustomNotificationTimeCalculator {
                 (0L..7L).asSequence()
                     .map { now.toLocalDate().plusDays(it).atTime(hour, minute).atZone(now.zone) }
                     .firstOrNull { candidate ->
-                        val mondayBitIndex = candidate.dayOfWeek.value - 1
-                        ((notification.daysMask shr mondayBitIndex) and 1) == 1 && candidate.isAfter(now)
+                        (notification.daysMask and bitFor(candidate.dayOfWeek)) != 0 && candidate.isAfter(now)
                     }
             }
 
