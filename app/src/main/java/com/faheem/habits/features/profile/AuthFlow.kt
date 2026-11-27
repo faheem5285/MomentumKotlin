@@ -21,7 +21,7 @@ fun signUpMessage(outcome: SignUpOutcome): SignUpMessage = when (outcome) {
     )
     SignUpOutcome.SESSION_STARTED -> SignUpMessage(notice = "Account created. You are signed in.")
     SignUpOutcome.ACCOUNT_EXISTS -> SignUpMessage(
-        error = "An account may already exist for that address. Sign in, or reset your password."
+        error = "An account may already exist for that address. Sign in with your existing method, or reset your password. If you previously used Google, sign in with Google and set a password in Profile."
     )
     SignUpOutcome.RATE_LIMITED -> SignUpMessage(error = "Too many requests. Wait a moment and try again.")
     SignUpOutcome.SERVICE_UNAVAILABLE -> SignUpMessage(error = "The cloud service is temporarily unavailable. Try again shortly.")
